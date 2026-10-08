@@ -3,13 +3,63 @@ local State = {}
 local SCHEMA_VERSION = 1
 
 local function integer(value)
-    return type(value) == "number" and value == math.floor(value)
+    return type(value) == "number" and value ~= math.huge and value ~= -math.huge
+        and value == math.floor(value)
 end
 
 local function poseValid(pose)
     return type(pose) == "table"
         and integer(pose.x) and integer(pose.y) and integer(pose.z)
         and integer(pose.facing) and pose.facing >= 0 and pose.facing <= 3
+end
+
+local function coordinateKeyValid(key)
+    if type(key) ~= "string" then return false end
+    local x, y, z = key:match("^(-?%d+),(-?%d+),(-?%d+)$")
+    if not x then return false end
+    return integer(tonumber(x)) and integer(tonumber(y)) and integer(tonumber(z))
+end
+
+local function routeValid(route, pose)
+    if type(route) ~= "table" or not coordinateKeyValid(route.home)
+        or type(route.edges) ~= "table" or not route.edges[route.home] then
+        return false
+    end
+    local current = pose.x .. "," .. pose.y .. "," .. pose.z
+    if not route.edges[current] then return false end
+    for fromKey, neighbors in pairs(route.edges) do
+        if not coordinateKeyValid(fromKey) or type(neighbors) ~= "table" then return false end
+        local fx, fy, fz = fromKey:match("^(-?%d+),(-?%d+),(-?%d+)$")
+        fx, fy, fz = tonumber(fx), tonumber(fy), tonumber(fz)
+        for toKey, connected in pairs(neighbors) do
+            if connected ~= true or not coordinateKeyValid(toKey) then return false end
+            local tx, ty, tz = toKey:match("^(-?%d+),(-?%d+),(-?%d+)$")
+            tx, ty, tz = tonumber(tx), tonumber(ty), tonumber(tz)
+            if math.abs(fx - tx) + math.abs(fy - ty) + math.abs(fz - tz) ~= 1
+                or type(route.edges[toKey]) ~= "table"
+                or route.edges[toKey][fromKey] ~= true then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+local function pendingActionValid(action)
+    if action == nil then return true end
+    if type(action) ~= "table" then return false end
+    return (action.kind == "move" and (action.direction == "forward" or action.direction == "back"
+            or action.direction == "up" or action.direction == "down"))
+        or (action.kind == "turn" and (action.direction == "left" or action.direction == "right"))
+end
+
+local function configSnapshotValid(config)
+    return type(config) == "table"
+        and integer(config.branch_length) and config.branch_length > 0
+        and integer(config.num_branches) and config.num_branches > 0
+        and integer(config.spacing) and config.spacing >= 2
+        and type(config.pave) == "boolean"
+        and type(config.vein_mine) == "boolean"
 end
 
 local function copy(value)
@@ -26,17 +76,13 @@ local function valid(state)
         and (state.status == "mining" or state.status == "complete" or state.status == "error")
         and (state.poseCertainty == "known" or state.poseCertainty == "uncertain")
         and poseValid(state.pose)
-        and type(state.route) == "table"
-        and type(state.route.home) == "string"
-        and type(state.route.edges) == "table"
-        and type(state.configSnapshot) == "table"
-        and type(state.configSnapshot.branch_length) == "number"
-        and type(state.configSnapshot.num_branches) == "number"
-        and type(state.configSnapshot.spacing) == "number"
-        and type(state.configSnapshot.pave) == "boolean"
-        and type(state.configSnapshot.vein_mine) == "boolean"
-        and (state.pendingAction == nil or type(state.pendingAction) == "table")
+        and routeValid(state.route, state.pose)
+        and configSnapshotValid(state.configSnapshot)
+        and pendingActionValid(state.pendingAction)
         and type(state.progress) == "table"
+        and type(state.progress.workDomain) == "string"
+        and type(state.progress.phase) == "string"
+        and type(state.progress.nextAction) == "string"
 end
 
 local function serialize(state, textutilsApi)
@@ -112,6 +158,7 @@ function State.save(state, path, fsApi, textutilsApi)
 end
 
 function State.load(path, expectedConfig, fsApi, textutilsApi)
+    if not configSnapshotValid(expectedConfig) then return nil, "CONFIG_INVALID" end
     local raw, reason = readFile(path, fsApi)
     local state = raw and decode(raw, textutilsApi) or nil
     local fromBackup = false

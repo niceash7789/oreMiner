@@ -6,7 +6,7 @@ Keep the active single-turtle run's committed pose and traversed route durable, 
 
 ## Implemented behavior
 
-`src/persistence/state.lua` validates schema version 1 snapshots, writes a temporary snapshot, validates it after writing, rotates a valid active snapshot to `.bak`, and then commits the temporary file. Loads fall back to a valid backup, reject configuration mismatches, and report `POSITION_UNCERTAIN` when a movement/turn intent remains pending. A leftover `.tmp` file is not considered by `State.load`; interrupted-write recovery from that file is not implemented. `src/persistence/checkpoint.lua` owns run-state creation/loading and the durable checkpoint lifecycle: snapshotting the live pose/route/config, saving pending action intent, committing or cancelling an action, and recording fatal/complete status. The coordinator keeps its live pose and route in memory and passes them to this boundary; it does not mutate the encoded state record. Startup refuses to overwrite corrupt or incompatible state and refuses to restart an incomplete run because the mining resume cursor is not yet implemented.
+`src/persistence/state.lua` validates schema version 1 snapshots, allowed status/certainty/action enums, finite integer coordinates and config values, and the route graph's coordinate keys, adjacency, reversibility, home, and current-pose membership. It writes a temporary snapshot, validates it after writing, rotates a valid active snapshot to `.bak`, and then commits the temporary file. Loads fall back to a valid backup, reject invalid expected configuration and mismatched saved configuration, and report `POSITION_UNCERTAIN` when a movement/turn intent remains pending. A leftover `.tmp` file is not considered by `State.load`; interrupted-write recovery from that file is not implemented. `src/persistence/checkpoint.lua` owns run-state creation/loading and the durable checkpoint lifecycle: snapshotting the live pose/route/config, saving pending action intent, committing or cancelling an action, and recording fatal/complete status. The coordinator keeps its live pose and route in memory and passes them to this boundary; it does not mutate the encoded state record. Startup refuses to overwrite corrupt or incompatible state and refuses to restart an incomplete run because the mining resume cursor is not yet implemented.
 
 Only the current coordinator's minimal persistent data is stored: run ID/status, committed pose, known-route graph, small baseline progress descriptor, pending action, and job-affecting configuration snapshot. Scratch caches, logs, and statistics are excluded.
 
@@ -26,6 +26,7 @@ Only the current coordinator's minimal persistent data is stored: run ID/status,
 - Any persisted pending action is ambiguous after reboot; callers must stop with `POSITION_UNCERTAIN` before movement.
 - State files are local to the turtle and use CC:Tweaked `fs` and `textutils` APIs.
 - The saved configuration fields must match before loading a run.
+- A route snapshot contains the home and current pose as graph nodes; every recorded edge is between adjacent coordinate keys and has a reverse edge.
 - The live state machine owns pose/route updates; checkpoint methods copy those values into the durable snapshot at each write.
 
 ## Dependencies and limitations
@@ -34,4 +35,4 @@ The module depends on injected CC:Tweaked-compatible filesystem and text seriali
 
 ## Verification
 
-`tests/persistence_state.lua` covers codec roundtrip, backup fallback after corruption, invalid schema rejection, config mismatch, pending-action uncertainty, and checkpoint intent/commit/status operations. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` exercises the coordinator with deterministic in-memory storage.
+`tests/persistence_state.lua` covers codec roundtrip, backup fallback after corruption, schema/enum/coordinate/route rejection, invalid and mismatched config, pending-action uncertainty, and checkpoint intent/commit/status operations. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` exercises the coordinator with deterministic in-memory storage.

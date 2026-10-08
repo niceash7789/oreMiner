@@ -59,6 +59,20 @@ files["state.json.bak"] = encode({ schemaVersion = 99 })
 local corrupt, corruptCode = State.load("state.json", config, fs, textutils)
 assert(corrupt == nil and corruptCode == "STATE_CORRUPT", "invalid schema must fail closed")
 
+local function assertRejectedSnapshot(changes, label)
+    local invalid = State.new(config, pose, route, "invalid-run")
+    for key, value in pairs(changes) do invalid[key] = value end
+    files["invalid.json"] = encode(invalid)
+    local rejected, rejectedCode = State.load("invalid.json", config, fs, textutils)
+    assert(rejected == nil and rejectedCode == "STATE_CORRUPT", label .. " must fail closed")
+end
+assertRejectedSnapshot({ status = "running" }, "unknown status enum")
+assertRejectedSnapshot({ pose = { x = 0.5, y = 0, z = 0, facing = 0 } }, "fractional pose coordinate")
+assertRejectedSnapshot({ route = { home = "0,0,0", edges = { ["0,0,0"] = { ["2,0,0"] = true } } } }, "non-adjacent route edge")
+assertRejectedSnapshot({ pendingAction = { kind = "teleport", direction = "forward" } }, "unknown action enum")
+local invalidConfig, invalidConfigCode = State.load("state.json", {}, fs, textutils)
+assert(invalidConfig == nil and invalidConfigCode == "CONFIG_INVALID", "invalid expected configuration must be rejected")
+
 state.pendingAction = { kind = "move", direction = "forward" }
 assert(State.save(state, "pending.json", fs, textutils))
 local pending, pendingCode = State.load("pending.json", config, fs, textutils)
