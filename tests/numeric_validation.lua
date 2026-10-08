@@ -57,6 +57,15 @@ end
 config = activeConfig()
 config.mining = { surfaceEntryLength = 4, stairWidth = 3, stairHeight = 3 }
 accepted(config, "V1 fixed surface entry and stair geometry should validate")
+config = activeConfig()
+config.mining = { floorMainTurn = "right" }
+accepted(config, "V1 floor main turn should be right")
+for _, value in ipairs({ "left", "forward", "back", 1, false }) do
+    config = activeConfig()
+    config.mining = { floorMainTurn = value }
+    local reason = rejected(config, "V1 should reject floor main turn " .. tostring(value))
+    assert(reason == "mining.floorMainTurn must be right in V1", "unexpected floor main turn error")
+end
 for _, item in ipairs({
     { "surfaceEntryLength", 4, { 0, 3, 5, 4.5 } },
     { "stairWidth", 3, { 0, 2, 4, 3.5 } },

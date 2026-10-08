@@ -64,6 +64,9 @@ function NumericValidation.validate(config)
     if mining.stairStepsPerFloor ~= nil and mining.stairStepsPerFloor ~= 8 then
         return false, "mining.stairStepsPerFloor must be 8 in V1"
     end
+    if mining.floorMainTurn ~= nil and mining.floorMainTurn ~= "right" then
+        return false, "mining.floorMainTurn must be right in V1"
+    end
     local fixedGeometry = {
         { "surfaceEntryLength", 4 },
         { "stairWidth", 3 },
