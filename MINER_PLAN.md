@@ -444,7 +444,7 @@ State invariants:
 - [ ] **MVP / P0** Save after changing the logical mining cursor, before beginning the next unit of work. — **AI-2**
 - [ ] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. — **AI-2**
 - [ ] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. — **AI-2**
-- [ ] **MVP / P0** Save the fatal error before stopping. — **AI-2**
+- [x] **MVP / P0** Save the fatal error before stopping. `markFatal` writes error status and code synchronously on a failed mining outcome; persistence test reloads and verifies the code. — **AI-2**
 - [ ] **MVP / P1** Write to a temporary file, close it, validate it, rotate the current valid file to `.bak`, and move the temporary file into place. — **AI-2**
 - [x] **MVP / P1** On load, validate schema, enum values, coordinate integers, route structure, and configuration compatibility. Version 1 snapshots now fail closed on invalid pose/config data, action/status enums, and malformed/non-reversible route graphs; expected configuration is validated before comparison. — **AI-1**
 - [x] **MVP / P0** If both snapshots are invalid, stop with `STATE_CORRUPT`; never initialise a new run over an unrecognised active state. `State.load` returns `STATE_MISSING` only when active and backup files are both absent; otherwise it requires a valid active or backup snapshot. Startup aborts on `STATE_CORRUPT` before prompting or creating a run. Tests cover both-invalid and both-absent cases. — **AI-2**

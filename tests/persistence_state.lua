@@ -99,4 +99,7 @@ assert(committedCode == "STATE_LOADED" and committedCheckpoint.pose.z == -1,
     "commit should clear intent and encode the supplied live pose")
 assert(session:markFatal("TEST_STOP", movedPose, movedRoute, config), "fatal state should be checkpointed")
 assert(session:status() == "error", "checkpoint session should expose status without exposing mutations")
+local fatalCheckpoint, fatalCode = State.load("checkpoint.json", config, fs, textutils)
+assert(fatalCode == "STATE_LOADED" and fatalCheckpoint.status == "error"
+    and fatalCheckpoint.error == "TEST_STOP", "fatal error code must persist before the run stops")
 print("persistence state checks passed")

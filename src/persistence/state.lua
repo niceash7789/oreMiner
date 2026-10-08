@@ -74,6 +74,7 @@ local function valid(state)
         and state.schemaVersion == SCHEMA_VERSION
         and type(state.runId) == "string" and #state.runId > 0
         and (state.status == "mining" or state.status == "complete" or state.status == "error")
+        and (state.status ~= "error" or type(state.error) == "string")
         and (state.poseCertainty == "known" or state.poseCertainty == "uncertain")
         and poseValid(state.pose)
         and routeValid(state.route, state.pose)
