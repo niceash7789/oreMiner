@@ -49,8 +49,21 @@ function NumericValidation.validate(config)
     local inventory = tableAt(config, "inventory")
     local fuel = tableAt(config, "fuel")
     local supplies = tableAt(config, "supplies")
-    if not mining or not inventory or not fuel or not supplies then
+    local base = tableAt(config, "base")
+    if not mining or not inventory or not fuel or not supplies or not base then
         return false, "configuration sections must be tables"
+    end
+
+    local fixedBaseSides = {
+        { "supply", "left" },
+        { "primaryOutput", "right" },
+        { "bulkOutput", "back" },
+    }
+    for _, item in ipairs(fixedBaseSides) do
+        local value = base[item[1]]
+        if value ~= nil and value ~= item[2] then
+            return false, "base." .. item[1] .. " must be " .. item[2] .. " in V1"
+        end
     end
 
     local fields = {

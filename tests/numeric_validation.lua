@@ -81,6 +81,25 @@ end
 config = activeConfig()
 config.mining = { branchSpacing = 1 }
 rejected(config, "nested branch spacing below two should fail")
+config = activeConfig()
+accepted(config, "omitted base sides should remain valid during schema migration")
+config.base = { supply = "left", primaryOutput = "right", bulkOutput = "back" }
+accepted(config, "fixed V1 chest sides should validate")
+for _, item in ipairs({
+    { "supply", "left", { "right", "back", "forward", 1 } },
+    { "primaryOutput", "right", { "left", "back", "forward", false } },
+    { "bulkOutput", "back", { "left", "right", "forward", 1 } },
+}) do
+    for _, value in ipairs(item[3]) do
+        config = activeConfig()
+        config.base = { [item[1]] = value }
+        local reason = rejected(config, "V1 should reject unsupported base." .. item[1] .. " side")
+        assert(reason == "base." .. item[1] .. " must be " .. item[2] .. " in V1", "unexpected base side error")
+    end
+end
+config = activeConfig()
+config.base = false
+rejected(config, "base section must be a table when supplied")
 for _, value in ipairs({ 0, 16, 2.5 }) do
     config = activeConfig()
     config.inventory.pressureThreshold = value
