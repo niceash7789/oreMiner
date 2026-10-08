@@ -79,6 +79,9 @@ function NumericValidation.validate(config)
     }
     local ok, reason = checkPositiveFields(mining, fields)
     if not ok then return false, reason end
+    if mining.tunnelHeight ~= nil and mining.tunnelHeight ~= 2 then
+        return false, "mining.tunnelHeight must be 2 in V1"
+    end
     if mining.stairStepsPerFloor ~= nil and mining.stairStepsPerFloor ~= 8 then
         return false, "mining.stairStepsPerFloor must be 8 in V1"
     end

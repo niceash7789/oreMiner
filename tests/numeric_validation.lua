@@ -48,6 +48,15 @@ end
 local config = activeConfig()
 config.mining = { stairStepsPerFloor = 8 }
 accepted(config, "V1 stair slice count of eight should validate")
+config = activeConfig()
+config.mining = { tunnelHeight = 2 }
+accepted(config, "V1 tunnel height of two should validate")
+for _, value in ipairs({ 1, 3, 2.5, false }) do
+    config = activeConfig()
+    config.mining = { tunnelHeight = value }
+    local reason = rejected(config, "V1 should reject tunnel height " .. tostring(value))
+    assert(reason == "mining.tunnelHeight must be 2 in V1", "unexpected tunnel height error")
+end
 for _, value in ipairs({ 1, 7, 9, 16 }) do
     config = activeConfig()
     config.mining = { stairStepsPerFloor = value }
