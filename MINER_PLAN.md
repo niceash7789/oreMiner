@@ -1058,7 +1058,7 @@ V1 is complete only when all of these work together:
 - [x] Ore modes, tags, patterns, explicit names, and ignore precedence. — **AI-1**
 - [ ] Vein visited keys, radius boundary, and block limit. — **AI-1**
 - [ ] Mining phase transitions and `nextAction` idempotence. — **AI-1**
-- [ ] Config validation boundary values. — **AI-1**
+- [x] Config validation boundary values. — **AI-1**
 - [ ] State encode/decode, schema validation, temporary-file recovery, and backup fallback. — **AI-2**
 - [ ] Every fatal error produces a stopped state with no subsequent action. — **AI-1**
 

@@ -26,6 +26,21 @@ end
 
 accepted(activeConfig(), "active defaults should validate")
 for _, key in ipairs({ "branch_length", "num_branches" }) do
+    local config = activeConfig()
+    config[key] = 1
+    accepted(config, key .. " should accept its minimum value")
+end
+for _, value in ipairs({ math.huge, -math.huge, 0 / 0 }) do
+    for _, key in ipairs({ "branch_length", "num_branches" }) do
+        local config = activeConfig()
+        config[key] = value
+        rejected(config, key .. " should reject non-finite values")
+    end
+end
+local minimumSpacing = activeConfig()
+minimumSpacing.spacing = 2
+accepted(minimumSpacing, "spacing should accept its minimum value")
+for _, key in ipairs({ "branch_length", "num_branches" }) do
     for _, value in ipairs({ 0, -1, 1.5 }) do
         local config = activeConfig()
         config[key] = value
@@ -48,6 +63,18 @@ end
 local config = activeConfig()
 config.mining = { stairStepsPerFloor = 8 }
 accepted(config, "V1 stair slice count of eight should validate")
+for _, field in ipairs({ "floorCount", "branchLength", "branchPairs" }) do
+    config = activeConfig()
+    config.mining = { [field] = 1 }
+    accepted(config, field .. " should accept its minimum value")
+end
+for _, value in ipairs({ math.huge, -math.huge, 0 / 0 }) do
+    for _, field in ipairs({ "floorCount", "branchLength", "branchPairs" }) do
+        config = activeConfig()
+        config.mining = { [field] = value }
+        rejected(config, field .. " should reject non-finite values")
+    end
+end
 config = activeConfig()
 config.mining = { tunnelHeight = 2 }
 accepted(config, "V1 tunnel height of two should validate")
@@ -91,6 +118,9 @@ config = activeConfig()
 config.mining = { branchSpacing = 1 }
 rejected(config, "nested branch spacing below two should fail")
 config = activeConfig()
+config.mining = { branchSpacing = 2 }
+accepted(config, "nested branch spacing should accept its minimum value")
+config = activeConfig()
 accepted(config, "omitted base sides should remain valid during schema migration")
 config.base = { supply = "left", primaryOutput = "right", bulkOutput = "back" }
 accepted(config, "fixed V1 chest sides should validate")
@@ -126,6 +156,13 @@ for _, value in ipairs({ 0, 16, 2.5 }) do
     config.inventory.pressureThreshold = value
     rejected(config, "threshold should reject " .. value)
 end
+for _, key in ipairs({ "returnThreshold", "pressureThreshold" }) do
+    for _, value in ipairs({ 1, 15 }) do
+        config = activeConfig()
+        config.inventory[key] = value
+        accepted(config, key .. " should accept boundary " .. value)
+    end
+end
 for _, value in ipairs({ -1, 1.5 }) do
     config = activeConfig()
     config.fuel_reserve = value
@@ -134,5 +171,28 @@ for _, value in ipairs({ -1, 1.5 }) do
     config.inventory.retainedItems["minecraft:cobblestone"] = value
     rejected(config, "quota should reject " .. value)
 end
+for _, value in ipairs({ math.huge, -math.huge, 0 / 0 }) do
+    config = activeConfig()
+    config.fuel_reserve = value
+    rejected(config, "fuel reserve should reject non-finite values")
+    config = activeConfig()
+    config.fuel = {}
+    config.fuel.reserve = value
+    rejected(config, "nested fuel reserve should reject non-finite values")
+    config = activeConfig()
+    config.supplies = {}
+    config.supplies.torchTarget = value
+    rejected(config, "torch target should reject non-finite values")
+    config = activeConfig()
+    config.inventory.retainedItems["minecraft:cobblestone"] = value
+    rejected(config, "quota should reject non-finite values")
+end
+config = activeConfig()
+config.fuel_reserve = 0
+config.fuel = { reserve = 0 }
+config.supplies = { torchTarget = 0, minimumTorchesToDepart = 0 }
+config.inventory.retainedItems["minecraft:cobblestone"] = 0
+config.inventory.keep = { ["minecraft:coal"] = 0 }
+accepted(config, "zero should be accepted for reserves, supplies, and quotas")
 
 print("numeric configuration validation checks passed")

@@ -18,4 +18,4 @@ Reject unsafe numeric settings before the active baseline can begin a run, while
 
 The validator uses only Lua tables, `math.floor`, and `math.huge`. It does not implement tunnel traversal or support configurable tunnel geometry.
 
-The deterministic test is `tests/numeric_validation.lua`; it covers accepted fixed geometry including tunnel height 2, right floor-main turn and lighting side, canonical base chest sides, and rejection of unsupported supplied values. No in-world verification is performed by this check.
+The deterministic test is `tests/numeric_validation.lua`; it covers accepted fixed geometry including tunnel height 2, right floor-main turn and lighting side, canonical base chest sides, numeric boundaries (positive integers start at 1, spacing at 2, thresholds include both 1 and 15, and reserves/supplies/quotas include zero), plus rejection of fractional, negative, out-of-range, and non-finite values. Fixed geometry accepts its exact V1 value and rejects neighboring or malformed values. No in-world verification is performed by this check.
