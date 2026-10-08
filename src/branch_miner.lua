@@ -22,6 +22,7 @@ local MainTunnelScan = require("src.mining.main_tunnel_scan")
 local MainShaftBackfill = require("src.mining.main_shaft_backfill")
 local InventoryService = require("src.inventory.service")
 local Checkpoint = require("src.persistence.checkpoint")
+local MiningCursor = require("src.mining.cursor")
 
 -- ============================================================================
 -- GLOBAL STATE
@@ -89,6 +90,17 @@ end
 local function persist()
     if not checkpoint then return false end
     local ok, code = checkpoint:save(pos, knownRoute, configSnapshot())
+    if not ok then persistenceError = code end
+    return ok, code
+end
+
+local function persistMiningCursor(cursor)
+    if not cursor then
+        persistenceError = "INVALID_MINING_CURSOR"
+        return false, persistenceError
+    end
+    if not checkpoint then return false, "STATE_NOT_INITIALIZED" end
+    local ok, code = checkpoint:setProgress(cursor, pos, knownRoute, configSnapshot())
     if not ok then persistenceError = code end
     return ok, code
 end
@@ -511,6 +523,14 @@ local function mineVein(checkpoint, seedInverse)
         end,
         turnRight = turnRight,
         inventoryPressure = inventoryPressureReached,
+        reportCap = function(blocks, maxBlocks, maxRadius)
+            print(string.format(
+                "WARNING: Ore vein cap reached after %d blocks (limits: %d blocks / radius %d); continuing from checkpoint.",
+                blocks,
+                maxBlocks,
+                maxRadius
+            ))
+        end,
     }, seedInverse, function(block)
         return OreClassifier.isOre(block, config.ore)
     end, function(block)
@@ -730,8 +750,14 @@ local function scanMainCell()
     return result.ok
 end
 
-local function mineBranch(length)
+local function mineBranch(length, branchPair, side, mainOffset)
     local outboundResult = BranchProgress.run(length, function(i)
+        local cursor = MiningCursor.branch(branchPair, side, "branch_outbound_lower",
+            i - 1, mainOffset, "mine_branch_cell")
+        if not persistMiningCursor(cursor) then
+            return { ok = false, code = persistenceError or "STATE_WRITE_FAILED",
+                message = "Unable to save branch outbound cursor" }
+        end
         if not serviceInventoryIfFull() then
             return { ok = false, code = "INVENTORY_SERVICE_FAILED", message = "Inventory service failed during branch mining" }
         end
@@ -769,6 +795,10 @@ local function mineBranch(length)
         return false, outboundResult
     end
 
+    local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
+        length, mainOffset, "prepare_branch_return")
+    if not persistMiningCursor(turnaroundCursor) then return false end
+
     local clearedAbove = digUp()
     if not clearedAbove.ok then
         return false, clearedAbove
@@ -785,6 +815,10 @@ local function mineBranch(length)
         turnRight()
 
         for i = 1, length do
+
+            local returnCursor = MiningCursor.branch(branchPair, side, "branch_upper_return",
+                length - i + 1, mainOffset, "scan_and_return_branch_cell")
+            if not persistMiningCursor(returnCursor) then return false end
 
             if not serviceInventoryIfFull() then
                 return false
@@ -810,6 +844,10 @@ local function mineBranch(length)
             end
         end
 
+        local junctionCursor = MiningCursor.branch(branchPair, side,
+            "branch_return_to_junction", 0, mainOffset, "descend_to_junction")
+        if not persistMiningCursor(junctionCursor) then return false end
+
         if down() ~= true then
             print("ERROR: BRANCH_RETURN_MOVE_FAILED")
             return false
@@ -821,6 +859,10 @@ local function mineBranch(length)
         turnRight()
 
         for i = 1, length do
+
+            local returnCursor = MiningCursor.branch(branchPair, side, "branch_lower_return",
+                length - i + 1, mainOffset, "return_branch_cell")
+            if not persistMiningCursor(returnCursor) then return false end
 
             if not safeForward() then
                 print("ERROR: BRANCH_RETURN_MOVE_FAILED")
@@ -977,6 +1019,9 @@ local function executeMining()
 
         for step = 1, config.spacing do
 
+            local mainCursor = MiningCursor.mainShaft(branch, step, branch - 1)
+            if not persistMiningCursor(mainCursor) then return false end
+
             if not serviceInventoryIfFull() then
                 return false
             end
@@ -1009,10 +1054,16 @@ local function executeMining()
 
         print(Status.phase("BRANCH", branch, config.num_branches, "L out"))
 
+        local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch")
+        if not persistMiningCursor(leftJunctionCursor) then return false end
+
         turnLeft()
 
         if not mineBranch(
-            config.branch_length
+            config.branch_length,
+            branch,
+            "left",
+            branch
         ) then
 
             print(
@@ -1031,7 +1082,10 @@ local function executeMining()
         print(Status.phase("BRANCH", branch, config.num_branches, "R out"))
 
         if not mineBranch(
-            config.branch_length
+            config.branch_length,
+            branch,
+            "right",
+            branch
         ) then
 
             print(
@@ -1046,6 +1100,9 @@ local function executeMining()
         if not serviceInventoryIfFull() then
             return false
         end
+
+        local mainFacingCursor = MiningCursor.junction(branch, branch, "restore_main_facing")
+        if not persistMiningCursor(mainFacingCursor) then return false end
 
         turnRight()
 

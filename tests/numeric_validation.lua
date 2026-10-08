@@ -30,6 +30,17 @@ for _, key in ipairs({ "branch_length", "num_branches" }) do
     config[key] = 1
     accepted(config, key .. " should accept its minimum value")
 end
+for _, item in ipairs({
+    { "branch_length", 256 },
+    { "num_branches", 100 },
+}) do
+    local config = activeConfig()
+    config[item[1]] = item[2]
+    accepted(config, item[1] .. " should accept its upper bound")
+    config[item[1]] = item[2] + 1
+    local reason = rejected(config, item[1] .. " should reject values above its upper bound")
+    assert(reason:find("through " .. item[2], 1, true), "upper bound should be reported")
+end
 for _, value in ipairs({ math.huge, -math.huge, 0 / 0 }) do
     for _, key in ipairs({ "branch_length", "num_branches" }) do
         local config = activeConfig()
@@ -40,6 +51,11 @@ end
 local minimumSpacing = activeConfig()
 minimumSpacing.spacing = 2
 accepted(minimumSpacing, "spacing should accept its minimum value")
+local maximumSpacing = activeConfig()
+maximumSpacing.spacing = 64
+accepted(maximumSpacing, "spacing should accept its upper bound")
+maximumSpacing.spacing = 65
+rejected(maximumSpacing, "spacing should reject values above its upper bound")
 for _, key in ipairs({ "branch_length", "num_branches" }) do
     for _, value in ipairs({ 0, -1, 1.5 }) do
         local config = activeConfig()
@@ -59,6 +75,16 @@ for _, field in ipairs({ "floorCount", "stairStepsPerFloor", "branchLength", "br
         config.mining = { [field] = value }
         rejected(config, field .. " should reject " .. value)
     end
+end
+for _, item in ipairs({
+    { "branchLength", 256 },
+    { "branchPairs", 100 },
+}) do
+    local config = activeConfig()
+    config.mining = { [item[1]] = item[2] }
+    accepted(config, "nested " .. item[1] .. " should accept its upper bound")
+    config.mining[item[1]] = item[2] + 1
+    rejected(config, "nested " .. item[1] .. " should reject values above its upper bound")
 end
 local config = activeConfig()
 config.mining = { stairStepsPerFloor = 8 }
@@ -120,6 +146,11 @@ rejected(config, "nested branch spacing below two should fail")
 config = activeConfig()
 config.mining = { branchSpacing = 2 }
 accepted(config, "nested branch spacing should accept its minimum value")
+config = activeConfig()
+config.mining = { branchSpacing = 64 }
+accepted(config, "nested branch spacing should accept its upper bound")
+config.mining.branchSpacing = 65
+rejected(config, "nested branch spacing should reject values above its upper bound")
 config = activeConfig()
 accepted(config, "omitted base sides should remain valid during schema migration")
 config.base = { supply = "left", primaryOutput = "right", bulkOutput = "back" }

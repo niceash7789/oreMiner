@@ -1,5 +1,22 @@
 # Implementation status
 
+- Blocked checklist item: `MVP / P1 — Warn, but do not fail, when configured tag keys are absent in the current modpack` remains unchecked. CC:Tweaked `turtle.inspect`, `inspectUp`, and `inspectDown` report tags only for the particular inspected block; the supported turtle API exposes no modpack-wide tag-key registry. A sample of encountered blocks cannot establish that a configured key is absent. Exact next action: identify a supported, non-world-mutating runtime API or supplied registry that can enumerate available block tag keys; then implement warning-only validation and focused tests. No source, test, or plan changes were made.
+- Last completed checklist item: `MVP / P1 — Define mode behaviour` in the ore configuration section of `MINER_PLAN.md`.
+- Next eligible unchecked item: this blocked configured-tag availability warning; resolve the registry/API prerequisite before retrying.
+- Files changed: `docs/ore-classification.md` and this handoff.
+- Verification: inspected the classifier, defaults, coordinator call sites, original reference, plan, and official CC:Tweaked turtle API. No runtime tests or syntax checks run because no implementation was possible without inventing unavailable tag-registry behavior.
+- Blocker/decision: do not warn based on sampled block tags; that could falsely report a valid but not-yet-encountered tag as absent. The warning must not become a fatal config error.
+# Implementation status
+
+- Blocked checklist item: `MVP / P0 — Save after changing the logical mining cursor, before beginning the next unit of work` remains unchecked. The assigned assumption that cursor state already exists is not true in the current code: `src/branch_miner.lua` uses transient `branch`/`step` loop variables, `src/persistence/state.lua` stores only the generic `active_baseline / continue` progress marker, and startup refuses incomplete runs. Exact next action: define the persistent logical cursor and its safe advancement boundary, then save it through `Checkpoint` before starting the following unit; that prerequisite is outside this assignment's supplied assumptions. No runtime or test changes were made. Reference file was inspected and remains unchanged; no tests were run because no implementation was possible without inventing the missing cursor contract.
+- Last completed checklist item: `MVP / P0 — Save the fatal error before stopping` in the persistence checkpoints section of `MINER_PLAN.md`.
+- Next eligible unchecked item: the blocked logical mining cursor checkpoint remains next; resolve its cursor representation prerequisite before retrying.
+- Files changed: `docs/persistence.md` and this handoff.
+- Verification: documentation/source inspection only; no runtime tests or syntax checks run.
+- Blocker/decision: leave the plan checkbox unchecked. The task explicitly says to stop if cursor state is absent; no changes to movement, veins, returns, or dig retries.
+
+- Blocked checklist item: `MVP / P0 — F02 Build a deterministic mock turtle with configurable action success/failure` remains unchecked. The detailed foundation list marks prerequisite F01 unchecked, while Milestone 1 marks its contracts work complete. Next action: reconcile F01's plan status and confirm F02 readiness, then resume F02. No implementation changes were retained; pre-existing mock remains in `tests/fake_turtle.lua`.
+
 - Last completed checklist item: `MVP / P0 — P01 Implement schema-validated state load/save with temporary and backup files` in `MINER_PLAN.md`.
 - Next eligible unchecked item: `MVP / P0 — F01 Define pose, phase, result, and error-code contracts`; P02 depends on P01 and F03, and F03 is still unchecked.
 - Files changed for P01: `MINER_PLAN.md`, `docs/persistence.md`, and this handoff. Runtime and tests already implemented the assigned behavior, so no source change was needed.
@@ -51,3 +68,32 @@
 - Files changed for this partial implementation: `src/core/contracts.lua`, `tests/contracts.lua`, `docs/contracts.md`, and this handoff. The plan checkbox remains unchecked.
 - Verification: `lua.exe tests/contracts.lua` and `luac.exe -p src/core/contracts.lua tests/contracts.lua` passed for the implemented pose, result, work-domain, and fatal-code contracts. No in-world verification was performed.
 - Blocker: the new module does not define the full run-status set or explicit phase enum required by the plan; it currently defines work domains and only `mining`/`complete`/`error` statuses. The separate F01 checkbox has the same contract scope and also remains unchecked.
+
+- Last completed checklist item: `MVP / P1 — Validate numerical input ranges` in `MINER_PLAN.md`.
+- Next eligible unchecked item: `MVP / P1 — Replace chest-name substring detection with a configurable accepted-block policy`; confirm dependencies and exact scope in the plan before starting.
+- Files changed: `src/config/numeric_validation.lua`, `tests/numeric_validation.lua`, `docs/numeric-configuration.md`, `MINER_PLAN.md`, and this handoff.
+- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/numeric_validation.lua` and `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p src/config/numeric_validation.lua tests/numeric_validation.lua` passed. No in-world verification was performed.
+- Decision/blocker: active and nested branch settings now cap length at 256, branch pairs at 100, and spacing at 64. `reference/branch_miner_phase1.lua` was inspected and remains unchanged.
+
+- Last completed checklist item: `Define contracts, error codes, phases, and pose invariants` in Milestone 1 of `MINER_PLAN.md` (AI-1 entry).
+- Next eligible unchecked item: `Build the mock turtle` in Milestone 1; confirm its dependencies and exact scope in the plan before starting.
+- Files changed: `src/core/contracts.lua`, `tests/contracts.lua`, `docs/contracts.md`, `MINER_PLAN.md`, and this handoff.
+- Verification: `lua.exe tests/contracts.lua` and `luac.exe -p src/core/contracts.lua tests/contracts.lua` passed. No in-world verification was performed.
+- Decision/blocker: status enums follow the plan's `idle|mining|returning|servicing|resuming|complete|error` state model. Phase labels currently cover the plan's saved-state example and active baseline; the separate F01 foundation checklist entry remains unchecked and should be reconciled by the dispatcher. Persistence currently has narrower status/phase validation and was not changed in this assigned contracts item.
+
+
+## Previous dispatcher handoff (2026-10-08)
+
+- Last completed checklist item: `MVP / P1 — Report cap exhaustion and continue the tunnel only after successful unwind` in the vein traversal section of `MINER_PLAN.md`.
+- Next eligible unchecked item: `MVP / P1 — Preserve traversal state in the persistent snapshot`; confirm persistence dependencies and exact scope in `MINER_PLAN.md` before starting.
+- Files changed: `src/mining/vein_traversal.lua`, `src/branch_miner.lua`, `tests/vein_traversal.lua`, `docs/vein-traversal.md`, `MINER_PLAN.md`, and this status note.
+- Verification: `lua.exe tests/vein_traversal.lua` passed; `luac.exe -p src/mining/vein_traversal.lua src/branch_miner.lua tests/vein_traversal.lua` passed. No in-world verification was performed.
+- Decision: cap warning is emitted only after successful unwind to the exact saved checkpoint. A failed inverse movement returns `VEIN_RETURN_BLOCKED`, suppresses the warning, and prevents the caller from continuing the tunnel.
+
+## Latest dispatcher handoff (2026-10-08)
+
+- Last completed checklist item: `MVP / P0 — Save after changing the logical mining cursor, before beginning the next unit of work` in the persistence checkpoints section of `MINER_PLAN.md`.
+- Next eligible unchecked item: `MVP / P1 — Preserve traversal state in the persistent snapshot`; use the new cursor/checkpoint boundary, but keep vein frontier, visited keys, breadcrumbs, checkpoint pose, counters, and abort reason within the ore-work state rather than the baseline floor cursor.
+- Files changed for this item: `src/mining/cursor.lua`, `src/persistence/state.lua`, `src/persistence/checkpoint.lua`, `src/core/contracts.lua`, `src/branch_miner.lua`, `tests/mining_cursor.lua`, `tests/persistence_state.lua`, `tests/contracts.lua`, `tests/active_baseline_wiring.lua`, `docs/persistence.md`, `docs/contracts.md`, `MINER_PLAN.md`, and this handoff.
+- Verification: `tests/mining_cursor.lua`, `tests/persistence_state.lua`, `tests/contracts.lua`, and `tests/active_baseline_wiring.lua` passed with Lua 5.4; `luac.exe -p` passed for all changed Lua files. `git diff --check` passed. No in-world verification was performed.
+- Decision/limitation: the saved cursor describes the next bounded unit in the existing surface-level baseline and is written before that unit starts. It does not add resume dispatch, stairs/floors, or persisted vein traversal. Startup still refuses incomplete runs, and older development snapshots containing only the generic `active_baseline / continue` marker fail closed.

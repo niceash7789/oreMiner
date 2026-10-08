@@ -44,6 +44,17 @@ function Session.save(self, pose, route, configSnapshot)
     return self.stateApi.save(self.state, self.path, self.fsApi, self.textutilsApi)
 end
 
+function Session.setProgress(self, progress, pose, route, configSnapshot)
+    if not self.stateApi.validateProgress(progress) then
+        return false, "INVALID_MINING_CURSOR"
+    end
+    local previous = self.state.progress
+    self.state.progress = copy(progress)
+    local ok, code = self:save(pose, route, configSnapshot)
+    if not ok then self.state.progress = previous end
+    return ok, code
+end
+
 function Session.beginAction(self, kind, direction, pose, route, configSnapshot)
     self.state.pendingAction = { kind = kind, direction = direction }
     local ok, code = self:save(pose, route, configSnapshot)

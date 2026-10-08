@@ -149,6 +149,9 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
     end
 
     local ok, code = unwind()
+    if ok and capReached and type(ops.reportCap) == "function" then
+        pcall(ops.reportCap, blocks, MAX_BLOCKS, MAX_DEPTH)
+    end
     return { ok = ok, code = code or (capReached and "VEIN_CAP_REACHED" or "VEIN_COMPLETE"), blocks = blocks }
 end
 

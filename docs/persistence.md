@@ -10,19 +10,22 @@ Keep the active single-turtle run's committed pose and traversed route durable, 
 
 The active movement/turn wrappers in `src/branch_miner.lua` persist a typed `pendingAction` before invoking the turtle API. On literal success they install the returned pose (and movement route edge) and immediately save it with the pending action cleared. On API failure they retain the old pose and cancel the intent; a failed post-action save stops execution and leaves the previous durable pending intent to force `POSITION_UNCERTAIN` on reboot.
 
+`src/mining/cursor.lua` defines the active baseline's validated logical cursor. It records a stable work-unit ID, surface baseline floor `0`, branch pair, side, phase, local offset, main offset, and the next action. The coordinator saves that cursor through `Checkpoint.setProgress` before each bounded main-shaft cell, junction turn, branch outbound cell, turnaround, and lower or upper return cell. A rejected or failed cursor save stops the coordinator before that unit begins and retains the previous in-memory cursor. Physical-action intent snapshots therefore carry the cursor for the logical unit that issued the move or turn.
+
 This satisfies persistence checklist item P01: the serializer output is written and closed at `.tmp`, decoded and schema-validated from disk, then installed after rotating the validated active file to `.bak`. P01 does not cover promotion of a leftover `.tmp` after a crash; that recovery remains separate work.
 
 Only the current coordinator's minimal persistent data is stored: run ID/status, committed pose, known-route graph, small baseline progress descriptor, pending action, and job-affecting configuration snapshot. Scratch caches, logs, and statistics are excluded.
 
 ## Public entry points
 
+- `require("src.mining.cursor")` provides `initial`, `mainShaft`, `junction`, `branch`, and `validate`.
 - `State.new(configSnapshot, pose, route, runId)`
 - `State.validate(state)`
 - `State.save(state, path, fsApi, textutilsApi)`
 - `State.load(path, expectedConfig, fsApi, textutilsApi)`
 - `Checkpoint.create(configSnapshot, pose, route, runId, path, fsApi, textutilsApi)`
 - `Checkpoint.load(path, expectedConfig, fsApi, textutilsApi)`
-- Session methods: `save`, `beginAction`, `commitAction`, `cancelAction`, `markFatal`, `markComplete`, and `status`.
+- Session methods: `save`, `setProgress`, `beginAction`, `commitAction`, `cancelAction`, `markFatal`, `markComplete`, and `status`.
 
 ## Invariants and assumptions
 
@@ -32,11 +35,12 @@ Only the current coordinator's minimal persistent data is stored: run ID/status,
 - The saved configuration fields must match before loading a run.
 - A route snapshot contains the home and current pose as graph nodes; every recorded edge is between adjacent coordinate keys and has a reverse edge.
 - The live state machine owns pose/route updates; checkpoint methods copy those values into the durable snapshot at each write.
+- `progress.nextAction` names work that has not yet begun; a cursor is persisted before its bounded unit invokes service, digging, movement, or turning.
 
 ## Dependencies and limitations
 
-The module depends on injected CC:Tweaked-compatible filesystem and text serialization APIs. Full mining phase, service, vein, statistics, and restart cursor persistence remain future work; current startup therefore refuses to automatically resume an incomplete run. Unexpected Lua exceptions escaping the coordinator are not intercepted. Manual in-world power-loss testing has not been performed.
+The module depends on injected CC:Tweaked-compatible filesystem and text serialization APIs. The implemented cursor covers only the current surface-level baseline (`floor = 0`); staircase/floor phases, service state, vein frontier state, cursor-driven execution, and automatic restart remain future work. Startup therefore still refuses to resume an incomplete run. Snapshots from an earlier development version that contain only the old generic `active_baseline / continue` marker fail validation rather than being treated as resumable. Unexpected Lua exceptions escaping the coordinator are not intercepted. Manual in-world power-loss testing has not been performed.
 
 ## Verification
 
-`tests/persistence_state.lua` covers codec roundtrip, backup fallback after corruption, `STATE_CORRUPT` when both existing snapshots are invalid, `STATE_MISSING` only when both are absent, schema/enum/coordinate/route rejection, invalid and mismatched config, pending-action uncertainty, and checkpoint intent/commit/status operations, and reload of the persisted fatal error code. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` exercises the coordinator with deterministic in-memory storage.
+`tests/mining_cursor.lua` covers cursor construction, phase/action agreement, and rejection of incomplete or invalid cursors. `tests/persistence_state.lua` covers codec roundtrip, backup fallback after corruption, `STATE_CORRUPT` when both existing snapshots are invalid, `STATE_MISSING` only when both are absent, schema/enum/coordinate/route rejection, invalid and mismatched config, durable cursor updates, pending-action uncertainty, checkpoint intent/commit/status operations, and reload of the persisted fatal error code. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` verifies that physical actions observe both their durable intent and a durable logical cursor.

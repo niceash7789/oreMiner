@@ -16,6 +16,7 @@ local function run(world, opts)
         return result
     end
     local function key(p) return p.x .. "," .. p.y .. "," .. p.z end
+    local capReports = {}
     local api = {
         pose = function() return pose end,
         project = function(direction) return target(direction) end,
@@ -37,11 +38,15 @@ local function run(world, opts)
         end,
         turnRight = function() pose.facing = (pose.facing + 1) % 4 return true end,
         inventoryPressure = function() return opts and opts.pressure == true end,
+        reportCap = function(blocks, maxBlocks, maxRadius)
+            capReports[#capReports + 1] = { blocks = blocks, maxBlocks = maxBlocks, maxRadius = maxRadius }
+        end,
     }
     local checkpoint = { x = 0, y = 0, z = 0, facing = 0 }
-    return VeinTraversal.run(checkpoint, api, "back", function(block)
+    local result = VeinTraversal.run(checkpoint, api, "back", function(block)
         return block.qualified == true
-    end), pose
+    end)
+    return result, pose, capReports
 end
 
 -- A branching, cyclic vein visits each cell once and unwinds to the exact pose.
@@ -71,9 +76,18 @@ local longVein = {}
 for distance = 2, 12 do
     longVein["0,0,-" .. distance] = { qualified = true }
 end
-result, pose = run(longVein)
+local capReports
+result, pose, capReports = run(longVein)
 assert(result.ok and result.code == "VEIN_CAP_REACHED" and result.blocks == 8)
 assert(pose.z == 0 and pose.facing == 0, "capped DFS must still unwind to its checkpoint")
+assert(#capReports == 1 and capReports[1].blocks == 8
+    and capReports[1].maxBlocks == 64 and capReports[1].maxRadius == 8,
+    "cap exhaustion must be reported after successful unwind")
+
+-- A failed cap unwind must not report exhaustion or claim the tunnel can continue.
+result, pose, capReports = run(longVein, { failInverse = "back" })
+assert(not result.ok and result.code == "VEIN_RETURN_BLOCKED")
+assert(#capReports == 0, "failed unwind must suppress cap report and tunnel continuation")
 
 -- Classification, rather than equality to the seed ID, defines vein membership.
 local mixedVein = {

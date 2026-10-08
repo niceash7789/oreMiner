@@ -40,4 +40,6 @@ The classifier has no turtle or external dependencies. There is no runtime confi
 ## Verification
 
 Run `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/ore_classifier.lua` and the focused vein/fuel tests listed in `docs/STATUS.md`.
+## Tag availability warning limitation
 
+The active API provides tags only in the result for a specific block returned by `turtle.inspect*`; it does not expose the current modpack's complete tag-key registry. The code therefore cannot truthfully distinguish an absent configured tag from a valid tag not yet observed. Do not infer absence from sampled world blocks. Revisit this warning only if a supported registry API or explicit available-tag source is provided. The relevant API is documented at [CC:Tweaked turtle API](https://tweaked.cc/module/turtle.html#v:turtle.inspect).

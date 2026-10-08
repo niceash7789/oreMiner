@@ -18,8 +18,22 @@ expect(not Contracts.isResult({ ok = false, code = "BLOCKED", retryable = "no" }
 
 expect(Contracts.WORK_DOMAINS.shaft and Contracts.WORK_DOMAINS.floor
     and Contracts.WORK_DOMAINS.ore and Contracts.WORK_DOMAINS.service, "work domains")
-expect(Contracts.RUN_STATUSES.mining and Contracts.RUN_STATUSES.complete
-    and Contracts.RUN_STATUSES.error, "run statuses")
+for _, status in ipairs({ "idle", "mining", "returning", "servicing", "resuming", "complete", "error" }) do
+    expect(Contracts.isRunStatus(status), "known run status: " .. status)
+end
+expect(not Contracts.isRunStatus("paused"), "reject unknown run status")
+expect(Contracts.isPhase("branch_outbound_lower"), "saved-state phase")
+expect(Contracts.isPhase("active_baseline"), "active baseline phase")
+expect(Contracts.isPhase("main_shaft") and Contracts.isPhase("junction"), "main route cursor phases")
+expect(Contracts.isPhase("branch_turnaround") and Contracts.isPhase("branch_upper_return")
+    and Contracts.isPhase("branch_lower_return")
+    and Contracts.isPhase("branch_return_to_junction"), "branch cursor phases")
+expect(not Contracts.isPhase("branch_outbound_upper"), "reject unspecified phase")
+expect(Contracts.isWorkDomain("ore"), "known work domain")
+expect(not Contracts.isWorkDomain("fleet"), "reject non-V1 work domain")
+expect(Contracts.isPoseCertainty("known") and Contracts.isPoseCertainty("uncertain"),
+    "pose certainty values")
+expect(not Contracts.isPoseCertainty("estimated"), "reject unsupported pose certainty")
 expect(Contracts.isFatalCode("POSITION_UNCERTAIN"), "known fatal code")
 expect(not Contracts.isFatalCode("NO_BLOCK"), "ordinary result is not a fatal code")
 

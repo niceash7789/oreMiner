@@ -106,7 +106,7 @@ Cost-control workflow:
 - [x] **MVP / P1** After each ore vein entered from the main shaft unwinds, seal every resulting opening in the main-shaft wall, floor, or ceiling flush with `minecraft:cobblestone` before main-shaft travel resumes. Do not solid-fill hidden vein cavities or place blocks in the 1×2 passage. Verify every placement and restore the exact checkpoint pose/facing. The coordinator seals only the exposed checkpoint face after exact vein unwind, verifies `place` and inspected cobblestone, and stops on failure. — **AI-2**
 - [x] **MVP / P1** Make paving default to `false`. While disabled, give cobblestone no paving-only quota; while enabled, allow paving to consume only stock above the separate mandatory main-shaft backfill reserve and never fuel, torches, ores, unknown items, or other protected inventory. Defaults and the active CLI disable paving unless explicitly enabled. The mandatory backfill reserve remains a separate unchecked requirement. — **AI-1**
 - [x] **MVP / P1** Protect a configurable `minecraft:cobblestone` working reserve for mandatory main-shaft backfill even when paving is disabled; paving and shaft-end ejection may consume only cobblestone above that reserve. `inventory.retainedItems["minecraft:cobblestone"]` is the shared reserve/quota, defaults to 64, and is enforced by paving eligibility and aggregate chest unloading regardless of paving state. No runtime shaft-end ejection path exists yet. — **AI-1**
-- [ ] **MVP / P1** Validate numerical input ranges; the current CLI accepts negative, zero, fractional, and impractically large values. — **AI-1**
+- [x] **MVP / P1** Validate numerical input ranges; reject nonpositive, fractional, and impractically large values before confirmation. Active and nested settings bound branch length to `1..256`, branch pairs to `1..100`, and spacing to `2..64`; deterministic numeric validation passes. — **AI-1**
 - [x] **MVP / P1** Replace chest-name substring detection with a configurable accepted-block policy and, most importantly, verify the result of every drop. Exact configured block IDs gate chest acceptance; each drop must return literal success and leave the source slot empty. — **AI-1**
 - [x] **MVP / P1** Preserve configured quantities, not a privileged slot. Aggregate configured item-ID quotas are allocated across stacks in slot order, and excess drops are verified. — **AI-1**
 - [x] **MVP / P1** Separate safety errors from normal `false` results. For example, “nothing to dig” and “unbreakable block” must not share an ambiguous boolean. The active dig outcome is `NO_BLOCK` for an empty cell and typed fatal codes for dig/movement/scan/inventory safety failures; caller propagation is covered by deterministic tests. — **AI-1**
@@ -441,7 +441,7 @@ State invariants:
 ### Persistence checkpoints
 
 - [x] **MVP / P0** Save an intent before every physical move and turn; commit the resulting pose immediately after success. The active coordinator persists pending intent before the turtle API and commits only after literal success; pending intent reports `POSITION_UNCERTAIN` after reboot. — **AI-2**
-- [ ] **MVP / P0** Save after changing the logical mining cursor, before beginning the next unit of work. — **AI-2**
+- [x] **MVP / P0** Save after changing the logical mining cursor, before beginning the next unit of work. `src/mining/cursor.lua` defines the validated next-action cursor for the active baseline, and the coordinator saves it through `Checkpoint.setProgress` before each main-shaft, junction, branch-outbound, turnaround, and return unit. Failed cursor persistence stops before the unit starts. — **AI-2**
 - [ ] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. — **AI-2**
 - [ ] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. — **AI-2**
 - [x] **MVP / P0** Save the fatal error before stopping. `markFatal` writes error status and code synchronously on a failed mining outcome; persistence test reloads and verifies the code. — **AI-2**
@@ -694,7 +694,7 @@ Vein backlog:
 - [ ] **MVP / P0** Treat any failed inverse movement as fatal `VEIN_RETURN_BLOCKED`. — **AI-2**
 - [ ] **MVP / P1** Classify ore using explicit names, tags, patterns, and ignore rules. — **AI-1**
 - [ ] **MVP / P1** Preserve traversal state in the persistent snapshot. — **AI-2**
-- [ ] **MVP / P1** Report cap exhaustion and continue the tunnel only after successful unwind. — **AI-1**
+- [x] **MVP / P1** Report cap exhaustion and continue the tunnel only after successful unwind. — **AI-1** `VeinTraversal` reports cap exhaustion through the coordinator callback only after exact checkpoint unwind succeeds; failed unwind remains fatal and suppresses the report. `tests/vein_traversal.lua` covers both outcomes.
 - [ ] **NEXT / P2** Record ore counts by block/item type. — **AI-1**
 - [ ] **NEXT / P2** Improve ore grouping when stone/deepslate variants or modded variants touch. — **AI-1**
 - [ ] **LATER / P3** Add modpack-specific classifier packs as optional user files. — **AI-1**
@@ -1191,7 +1191,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 
 This should be the first implementation milestone and the first approval boundary.
 
-- [ ] Define contracts, error codes, phases, and pose invariants. — **AI-1**
+- [x] Define contracts, error codes, phases, and pose invariants. `src/core/contracts.lua` exposes validated pose/result shapes, run status, work-domain, phase, certainty, and fatal-code contracts; `tests/contracts.lua` covers them. — **AI-1**
 - [ ] Build the mock turtle. — **AI-1**
 - [ ] Implement checked movement/turn wrappers. — **AI-1**
 - [ ] Implement bounded forward clearing/entity recovery. — **AI-1**

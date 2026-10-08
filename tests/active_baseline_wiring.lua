@@ -44,8 +44,22 @@ local selectedSlot = 5
 local pavingCount = 16
 local placements = 0
 local world = { x = 0, y = 0, z = 0, facing = 0 }
+local persistedFiles = {}
+local physicalActionProgress = {}
 
-local function moveForward()
+local function recordPhysicalAction(kind, direction)
+    local raw = persistedFiles["oreMiner/state.json"]
+    assert(raw, "physical actions require an active durable snapshot")
+    local state = assert(load("return " .. raw))()
+    assert(state.pendingAction and state.pendingAction.kind == kind
+        and state.pendingAction.direction == direction,
+        "physical action intent must be durable before the turtle API")
+    assert(state.progress and state.progress.workUnitId,
+        "physical actions require a durable logical cursor")
+    physicalActionProgress[#physicalActionProgress + 1] = state.progress
+end
+
+local function translateForward()
     if world.facing == 0 then
         world.z = world.z - 1
     elseif world.facing == 1 then
@@ -70,17 +84,37 @@ local turtleApi = {
         return nil
     end,
     refuel = function() return false end,
-    forward = moveForward,
+    forward = function()
+        recordPhysicalAction("move", "forward")
+        return translateForward()
+    end,
     back = function()
+        recordPhysicalAction("move", "back")
         world.facing = (world.facing + 2) % 4
-        moveForward()
+        translateForward()
         world.facing = (world.facing + 2) % 4
         return true
     end,
-    up = function() world.y = world.y + 1 return true end,
-    down = function() world.y = world.y - 1 return true end,
-    turnLeft = function() world.facing = (world.facing - 1) % 4 return true end,
-    turnRight = function() world.facing = (world.facing + 1) % 4 return true end,
+    up = function()
+        recordPhysicalAction("move", "up")
+        world.y = world.y + 1
+        return true
+    end,
+    down = function()
+        recordPhysicalAction("move", "down")
+        world.y = world.y - 1
+        return true
+    end,
+    turnLeft = function()
+        recordPhysicalAction("turn", "left")
+        world.facing = (world.facing - 1) % 4
+        return true
+    end,
+    turnRight = function()
+        recordPhysicalAction("turn", "right")
+        world.facing = (world.facing + 1) % 4
+        return true
+    end,
     detect = function() return false end,
     detectUp = function() return false end,
     detectDown = function() return false end,
@@ -112,7 +146,6 @@ for key, value in pairs(_G) do
     environment[key] = value
 end
 environment.turtle = turtleApi
-local persistedFiles = {}
 environment.fs = {
     exists = function(path) return persistedFiles[path] ~= nil end,
     makeDir = function() end,
@@ -194,6 +227,21 @@ assert(selectedSlot == 5, "active helpers should restore the original selected s
 -- With spacing 1, the main-tunnel step advances to z=-1 and is not retraced;
 -- branch excursions return to that junction and finish facing north.
 assert(world.x == 0 and world.y == 0 and world.z == -1 and world.facing == 0, "short branch pair should restore the current active baseline endpoint")
+
+local seenCursor = {}
+for _, progress in ipairs(physicalActionProgress) do
+    seenCursor[progress.phase .. ":" .. progress.side .. ":" .. progress.nextAction] = true
+end
+assert(seenCursor["main_shaft:none:mine_main_cell"],
+    "main-shaft movement should carry its saved logical cursor")
+assert(seenCursor["branch_outbound_lower:left:mine_branch_cell"]
+    and seenCursor["branch_outbound_lower:right:mine_branch_cell"],
+    "both outbound branches should carry their saved logical cursor")
+assert(seenCursor["branch_lower_return:left:return_branch_cell"]
+    and seenCursor["branch_lower_return:right:return_branch_cell"],
+    "both lower returns should carry their saved logical cursor")
+assert(seenCursor["junction:none:restore_main_facing"],
+    "junction-facing restoration should carry its saved logical cursor")
 
 local foundFinalPose = false
 local foundFinalSummary = false

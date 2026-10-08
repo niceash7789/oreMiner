@@ -1,6 +1,7 @@
 -- Local, schema-checked snapshots for the active single-turtle run.
 local State = {}
 local SCHEMA_VERSION = 1
+local MiningCursor = require("src.mining.cursor")
 
 local function integer(value)
     return type(value) == "number" and value ~= math.huge and value ~= -math.huge
@@ -80,10 +81,7 @@ local function valid(state)
         and routeValid(state.route, state.pose)
         and configSnapshotValid(state.configSnapshot)
         and pendingActionValid(state.pendingAction)
-        and type(state.progress) == "table"
-        and type(state.progress.workDomain) == "string"
-        and type(state.progress.phase) == "string"
-        and type(state.progress.nextAction) == "string"
+        and MiningCursor.validate(state.progress)
 end
 
 local function serialize(state, textutilsApi)
@@ -117,7 +115,12 @@ function State.validate(state)
     return valid(state)
 end
 
+function State.validateProgress(progress)
+    return MiningCursor.validate(progress)
+end
+
 function State.new(configSnapshot, pose, route, runId)
+    local initialProgress = MiningCursor.initial()
     local state = {
         schemaVersion = SCHEMA_VERSION,
         runId = runId,
@@ -125,7 +128,7 @@ function State.new(configSnapshot, pose, route, runId)
         poseCertainty = "known",
         pose = copy(pose),
         route = copy(route),
-        progress = { workDomain = "floor", phase = "active_baseline", nextAction = "continue" },
+        progress = initialProgress,
         pendingAction = nil,
         configSnapshot = copy(configSnapshot),
     }

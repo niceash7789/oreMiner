@@ -1,5 +1,9 @@
 local NumericValidation = {}
 
+local MAX_BRANCH_LENGTH = 256
+local MAX_BRANCH_PAIRS = 100
+local MAX_BRANCH_SPACING = 64
+
 local function integerAtLeast(value, minimum)
     return type(value) == "number"
         and value ~= math.huge
@@ -14,6 +18,10 @@ local function nonNegative(value)
         and value ~= -math.huge
         and value == math.floor(value)
         and value >= 0
+end
+
+local function integerInRange(value, minimum, maximum)
+    return integerAtLeast(value, minimum) and value <= maximum
 end
 
 local function tableAt(config, key)
@@ -74,11 +82,15 @@ function NumericValidation.validate(config)
     local fields = {
         { "floorCount", "mining.floorCount" },
         { "stairStepsPerFloor", "mining.stairStepsPerFloor" },
-        { "branchLength", "mining.branchLength" },
-        { "branchPairs", "mining.branchPairs" },
     }
     local ok, reason = checkPositiveFields(mining, fields)
     if not ok then return false, reason end
+    if mining.branchLength ~= nil and not integerInRange(mining.branchLength, 1, MAX_BRANCH_LENGTH) then
+        return false, "mining.branchLength must be an integer from 1 through " .. MAX_BRANCH_LENGTH
+    end
+    if mining.branchPairs ~= nil and not integerInRange(mining.branchPairs, 1, MAX_BRANCH_PAIRS) then
+        return false, "mining.branchPairs must be an integer from 1 through " .. MAX_BRANCH_PAIRS
+    end
     if mining.tunnelHeight ~= nil and mining.tunnelHeight ~= 2 then
         return false, "mining.tunnelHeight must be 2 in V1"
     end
@@ -99,18 +111,19 @@ function NumericValidation.validate(config)
             return false, "mining." .. item[1] .. " must be " .. item[2] .. " in V1"
         end
     end
-    if mining.branchSpacing ~= nil and not integerAtLeast(mining.branchSpacing, 2) then
-        return false, "mining.branchSpacing must be an integer of at least 2"
+    if mining.branchSpacing ~= nil and not integerInRange(mining.branchSpacing, 2, MAX_BRANCH_SPACING) then
+        return false, "mining.branchSpacing must be an integer from 2 through " .. MAX_BRANCH_SPACING
     end
 
     -- The active baseline still uses these names while configuration migrates.
-    ok, reason = checkPositiveFields(config, {
-        { "branch_length", "branch_length" },
-        { "num_branches", "num_branches" },
-    })
-    if not ok then return false, reason end
-    if config.spacing ~= nil and not integerAtLeast(config.spacing, 2) then
-        return false, "spacing must be an integer of at least 2"
+    if config.branch_length ~= nil and not integerInRange(config.branch_length, 1, MAX_BRANCH_LENGTH) then
+        return false, "branch_length must be an integer from 1 through " .. MAX_BRANCH_LENGTH
+    end
+    if config.num_branches ~= nil and not integerInRange(config.num_branches, 1, MAX_BRANCH_PAIRS) then
+        return false, "num_branches must be an integer from 1 through " .. MAX_BRANCH_PAIRS
+    end
+    if config.spacing ~= nil and not integerInRange(config.spacing, 2, MAX_BRANCH_SPACING) then
+        return false, "spacing must be an integer from 2 through " .. MAX_BRANCH_SPACING
     end
 
     local function checkThreshold(value, name)
