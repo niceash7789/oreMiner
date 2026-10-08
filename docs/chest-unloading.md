@@ -25,10 +25,12 @@ Accept the configured output chest by exact block ID and verify each inventory d
 - Fuel, torches, ores, unknown IDs, and configured protected IDs retain the existing protected-item policy and are never dropped by quota processing.
 - The inventory service wraps unloading in `SlotGuard.run` so the selected slot is restored after the operation.
 
+`tests/inventory_mixed_partial_stacks.lua` exercises the public inventory service with an item split across two partial stacks alongside protected fuel, ore, and unprotected excess. It verifies aggregate retention, unloading, and preservation of the base pose and selected slot.
+
 ## Dependencies and limitations
 
 The chest module uses the injected CC:Tweaked turtle API, item policy, and standard Lua. The inventory service covers the active baseline's single output chest check and unload loop. The planned left/right/rear chest routing and verified world ejection remain separate backlog items. Deterministic tests validate full, partial, and failed API/count handling without a Minecraft world. The active wiring fixture uses spacing 1, so the miner ends at the first main-tunnel junction `(0,0,-1,facing=0)`; its assertion reflects that current baseline route.
 
 ## Verification
 
-`tests/active_baseline_wiring.lua`, `tests/chest_policy.lua`, `tests/item_policy.lua`, `tests/inventory_slot_guard.lua`, and `tests/inventory_pressure.lua` passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe`. Syntax checks passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p` for changed Lua and fixture files.
+`tests/active_baseline_wiring.lua`, `tests/chest_policy.lua`, `tests/item_policy.lua`, `tests/inventory_slot_guard.lua`, `tests/inventory_pressure.lua`, and `tests/inventory_mixed_partial_stacks.lua` passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe`. Syntax checks passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p` for changed Lua and fixture files.

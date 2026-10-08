@@ -1133,7 +1133,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [ ] Trigger inventory return at 14 occupied slots. — **AI-1**
 - [ ] Keep/refill up to one coal stack and one torch stack. — **AI-1**
 - [ ] At every completed branch endpoint without a rear chest, preserve the configured mandatory backfill reserve and eject only excess cobblestone, regardless of whether optional paving is enabled. — **AI-1**
-- [ ] Test mixed partial stacks. — **AI-1**
+- [x] Test mixed partial stacks. — **AI-1** `tests/inventory_mixed_partial_stacks.lua` verifies inventory service retention across two partial stacks beside protected fuel/ore and eligible excess, including slot and base-pose restoration.
 - [ ] Fill the right output chest and verify the turtle remains safely at base. — **AI-1**
 - [ ] Fill the enabled rear bulk chest and verify the turtle remains safely at base. — **AI-1**
 - [ ] Remove each required chest in turn and verify its specific error. — **AI-1**
