@@ -6,6 +6,7 @@ local Motion = require("src.navigation.motion")
 local Turn = require("src.navigation.turn")
 local SlotGuard = require("src.inventory.slot_guard")
 local ItemPolicy = require("src.config.item_policy")
+local NumericValidation = require("src.config.numeric_validation")
 local OreClassifier = require("src.mining.ore_classifier")
 local itemConfig = require("src.config.defaults")
 local Status = require("src.reporting.status")
@@ -1179,8 +1180,15 @@ local function getUserInput(
         return default
     end
 
-    return tonumber(input)
-        or default
+    local value = tonumber(input)
+    while value == nil or value ~= math.floor(value) do
+        print("Enter a whole number.")
+        write(prompt .. " (default: " .. tostring(default) .. "): ")
+        input = read()
+        if input == "" or input == nil then return default end
+        value = tonumber(input)
+    end
+    return value
 end
 
 local function getConfiguration()
@@ -1208,6 +1216,15 @@ local function getConfiguration()
             "Spacing between branches",
             3
         )
+
+    local validConfig, configError = NumericValidation.validate(config)
+    while not validConfig do
+        print("Invalid configuration: " .. configError)
+        config.branch_length = getUserInput("Branch length", 30)
+        config.num_branches = getUserInput("Number of branches", 20)
+        config.spacing = getUserInput("Spacing between branches", 3)
+        validConfig, configError = NumericValidation.validate(config)
+    end
 
     write("Enable floor paving? (y/n, default: n): ")
 
