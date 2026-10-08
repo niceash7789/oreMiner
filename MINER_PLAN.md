@@ -341,7 +341,7 @@ Configuration rules:
 
 - [x] **MVP / P0** Reject non-integers, non-positive floor/step/branch counts and lengths, spacing below 2, thresholds outside `1..15`, and negative reserves/quotas. `src.config.numeric_validation.validate` checks active and nested-schema settings before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Require `stairStepsPerFloor = 8` in V1. Keep it configurable in the schema for later validation/testing, but do not silently accept a geometry the implementation has not proved. `src.config.numeric_validation.validate` rejects any supplied value other than 8 before run confirmation; deterministic numeric validation tests pass. — **AI-2**
-- [ ] **MVP / P0** Require `surfaceEntryLength = 4`, `stairWidth = 3`, and `stairHeight = 3` in V1 rather than pretending the first implementation supports arbitrary stair geometry. — **AI-2**
+- [x] **MVP / P0** Require `surfaceEntryLength = 4`, `stairWidth = 3`, and `stairHeight = 3` in V1 rather than pretending the first implementation supports arbitrary stair geometry. `src.config.numeric_validation.validate` rejects any supplied value other than the fixed geometry before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [ ] **MVP / P0** Require `floorMainTurn = "right"` in V1 so landing orientation and return routes stay canonical. — **AI-2**
 - [ ] **MVP / P0** Require supply left, primary output right, and optional bulk output behind relative to the initial surface facing. — **AI-2**
 - [ ] **MVP / P0** Require `lighting.side = "right"`; other sides are not supported until their route-frame semantics are tested. — **AI-2**

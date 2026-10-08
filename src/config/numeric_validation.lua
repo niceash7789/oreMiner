@@ -64,6 +64,17 @@ function NumericValidation.validate(config)
     if mining.stairStepsPerFloor ~= nil and mining.stairStepsPerFloor ~= 8 then
         return false, "mining.stairStepsPerFloor must be 8 in V1"
     end
+    local fixedGeometry = {
+        { "surfaceEntryLength", 4 },
+        { "stairWidth", 3 },
+        { "stairHeight", 3 },
+    }
+    for _, item in ipairs(fixedGeometry) do
+        local value = mining[item[1]]
+        if value ~= nil and value ~= item[2] then
+            return false, "mining." .. item[1] .. " must be " .. item[2] .. " in V1"
+        end
+    end
     if mining.branchSpacing ~= nil and not integerAtLeast(mining.branchSpacing, 2) then
         return false, "mining.branchSpacing must be an integer of at least 2"
     end

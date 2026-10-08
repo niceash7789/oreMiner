@@ -55,6 +55,21 @@ for _, value in ipairs({ 1, 7, 9, 16 }) do
     assert(reason == "mining.stairStepsPerFloor must be 8 in V1", "unexpected stair count error")
 end
 config = activeConfig()
+config.mining = { surfaceEntryLength = 4, stairWidth = 3, stairHeight = 3 }
+accepted(config, "V1 fixed surface entry and stair geometry should validate")
+for _, item in ipairs({
+    { "surfaceEntryLength", 4, { 0, 3, 5, 4.5 } },
+    { "stairWidth", 3, { 0, 2, 4, 3.5 } },
+    { "stairHeight", 3, { 0, 2, 4, 3.5 } },
+}) do
+    for _, value in ipairs(item[3]) do
+        config = activeConfig()
+        config.mining = { [item[1]] = value }
+        local reason = rejected(config, "V1 should reject unsupported " .. item[1] .. " " .. value)
+        assert(reason == "mining." .. item[1] .. " must be " .. item[2] .. " in V1", "unexpected fixed geometry error")
+    end
+end
+config = activeConfig()
 config.mining = { branchSpacing = 1 }
 rejected(config, "nested branch spacing below two should fail")
 for _, value in ipairs({ 0, 16, 2.5 }) do
