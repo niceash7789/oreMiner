@@ -10,11 +10,14 @@ Mine a connected ore excursion without Lua recursion and return to its exact tun
 
 The active coordinator in `src/branch_miner.lua` supplies the existing fuel-gated movement wrappers, inspect/dig callbacks, and inventory-pressure check. It starts an excursion only after successfully digging and entering the inspected seed ore block. Each adjacent inspected block independently passes through `OreClassifier.isOre` from `src/mining/ore_classifier.lua`; qualifying neighboring IDs join the same connected vein, while non-ore neighbors are not dug.
 
+For veins entered from a main-shaft scan, the coordinator calls `MainShaftBackfill.seal` after successful unwind and before inventory service or shaft travel. It places cobblestone only in the exposed face at the saved checkpoint (forward for a wall scan, up, or down), then inspects that face and requires `minecraft:cobblestone`. Hidden vein cavities remain open. Missing cobblestone or any placement/verification failure stops the scan. This path does not yet protect a working cobblestone reserve; reserve policy is a separate unchecked plan item.
+
 Return-path movement failures are propagated: vein inverse breadcrumbs stop with `VEIN_RETURN_BLOCKED`; the branch upper-scan ascent, per-step return, and descent stop the branch with `BRANCH_RETURN_MOVE_FAILED`; and `safeBack()` reports failure when its fallback turn or movement fails. Pose and known-route edges remain committed only by movement wrappers after the turtle API succeeds.
 
 ## Public entry points
 
 - `require("src.mining.vein_traversal")`
+- `require("src.mining.main_shaft_backfill")`; `MainShaftBackfill.seal(checkpoint, direction, ops)` seals one exposed face and returns a typed `{ok, code}` outcome.
 - `VeinTraversal.run(checkpoint, ops)` returns `{ok, code, blocks}`. Callbacks are `pose`, `project(direction)`, `inspect(direction)`, `dig(direction)`, `move(direction)`, `turnRight()`, and `inventoryPressure()`.
 - The coordinator's inspect callback returns the classifier result as its ore flag; it does not require equality with the seed ID.
 - Physical action callbacks must report literal `true` on success. `project` returns the candidate world pose; the traversal commits visited coordinates only after movement succeeds.

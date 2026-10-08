@@ -7,8 +7,7 @@ end
 
 function Backfill.seal(checkpoint, direction, ops)
     if type(checkpoint) ~= "table" or type(ops) ~= "table"
-        or type(ops.pose) ~= "function" or type(ops.turnRight) ~= "function"
-        or type(ops.turnLeft) ~= "function" or type(ops.selectCobblestone) ~= "function"
+        or type(ops.pose) ~= "function" or type(ops.selectCobblestone) ~= "function"
         or type(ops.place) ~= "function" or type(ops.inspect) ~= "function" then
         return { ok = false, code = "BACKFILL_INVALID_OPS" }
     end
@@ -19,14 +18,10 @@ function Backfill.seal(checkpoint, direction, ops)
         return { ok = false, code = "BACKFILL_INVALID_DIRECTION" }
     end
 
-    local restoreTurn
-    local function restore()
-        if restoreTurn and ops[restoreTurn]() ~= true then return false end
-        restoreTurn = nil
-        return samePose(ops.pose(), checkpoint)
-    end
     local function fail(code)
-        if not restore() then return { ok = false, code = "BACKFILL_POSE_RESTORE_FAILED" } end
+        if not samePose(ops.pose(), checkpoint) then
+            return { ok = false, code = "BACKFILL_POSE_RESTORE_FAILED" }
+        end
         return { ok = false, code = code }
     end
 
@@ -38,7 +33,9 @@ function Backfill.seal(checkpoint, direction, ops)
     if found ~= true or type(block) ~= "table" or block.name ~= "minecraft:cobblestone" then
         return fail("BACKFILL_VERIFY_FAILED")
     end
-    if not restore() then return { ok = false, code = "BACKFILL_POSE_RESTORE_FAILED" } end
+    if not samePose(ops.pose(), checkpoint) then
+        return { ok = false, code = "BACKFILL_POSE_RESTORE_FAILED" }
+    end
     return { ok = true, code = "BACKFILL_SEALED" }
 end
 

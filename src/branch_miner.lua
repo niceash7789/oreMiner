@@ -504,8 +504,6 @@ end
 local function sealMainShaftOpening(checkpoint, direction)
     local result = MainShaftBackfill.seal(checkpoint, direction, {
         pose = function() return pos end,
-        turnRight = turnRight,
-        turnLeft = turnLeft,
         selectCobblestone = function()
             for slot = 1, 16 do
                 local detail = turtle.getItemDetail(slot)

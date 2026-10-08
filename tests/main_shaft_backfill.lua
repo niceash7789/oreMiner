@@ -16,7 +16,7 @@ local function run(direction, options)
         end,
         inspect = function(target)
             inspected[#inspected + 1] = target
-            return options.verifyResult == false and true or true,
+            return true,
                 { name = options.wrongBlock and "minecraft:stone" or "minecraft:cobblestone" }
         end,
     }
