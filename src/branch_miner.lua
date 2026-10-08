@@ -3,6 +3,7 @@
 
 local Pose = require("src.navigation.pose")
 local Motion = require("src.navigation.motion")
+local Turn = require("src.navigation.turn")
 local SlotGuard = require("src.inventory.slot_guard")
 local ItemPolicy = require("src.config.item_policy")
 local OreClassifier = require("src.mining.ore_classifier")
@@ -55,7 +56,13 @@ local stats = Statistics.new({
     branches_completed = 0,
     fuel_used = 0,
     ores_mined = 0,
-    veins_found = 0
+    veins_found = 0,
+    service_trips = 0,
+    branches_completed = 0,
+    tunnel_blocks_mined = 0,
+    torches_placed = 0,
+    stair_slices_completed = 0,
+    floors_completed = 0,
 })
 local terminalPrint = print
 local function print(...)
@@ -353,6 +360,7 @@ local function paveDown()
                 detail.name, itemConfig, available
             ) then
                 if turtle.select(slot) and turtle.placeDown() then
+                    stats:add("blocks_placed", 1)
                     return true
                 end
             end
@@ -421,10 +429,14 @@ end
 -- ============================================================================
 
 local function turnToFacing(targetFacing)
-    local delta = (targetFacing - pos.facing) % 4
-    if delta == 1 then turnRight()
-    elseif delta == 2 then turnRight(); turnRight()
-    elseif delta == 3 then turnLeft() end
+    local faced, result = Turn.face(pos, targetFacing, function(direction)
+        local succeeded, reason = turn(direction)
+        if succeeded then return pos, { ok = true } end
+        return pos, type(reason) == "table" and reason
+            or { ok = false, code = "TURN_FAILED", message = tostring(reason), retryable = false }
+    end)
+    if faced then pos = faced end
+    return result.ok, result
 end
 
 local inventoryService = InventoryService.new({
@@ -440,7 +452,12 @@ local inventoryService = InventoryService.new({
     reportError = function(message) print("ERROR: " .. message) end,
 })
 local inventoryPressureReached = inventoryService.pressureReached
-local serviceInventoryIfFull = inventoryService.serviceIfNeeded
+local serviceInventoryRaw = inventoryService.serviceIfNeeded
+local function serviceInventoryIfFull()
+    local serviced, code = serviceInventoryRaw()
+    if serviced and code == "SERVICE_COMPLETE" then stats:add("service_trips", 1) end
+    return serviced
+end
 -- ============================================================================
 -- VEIN MINING
 -- ============================================================================
@@ -495,6 +512,8 @@ local function mineVein(checkpoint, seedInverse)
         inventoryPressure = inventoryPressureReached,
     }, seedInverse, function(block)
         return OreClassifier.isOre(block, config.ore)
+    end, function(block)
+        Statistics.addOreCounts(stats, block, 1)
     end)
     stats:add("ores_mined", result.blocks - 1)
     veinInventoryPressureReached = result.code == "INVENTORY_RETURN"
@@ -672,6 +691,7 @@ local function mineForward()
         end
     end
 
+    stats:add("tunnel_blocks_mined", 1)
     paveDown()
 
     return Result.new(true, "MINED_FORWARD")
@@ -871,6 +891,8 @@ end
 
 local function executeMining()
 
+    local startedAt = os.epoch("utc") / 1000
+
     local fuelLevel =
         turtle.getFuelLevel()
 
@@ -1047,6 +1069,17 @@ local function executeMining()
     print(
         "=== Mining Complete! ==="
     )
+
+    local summary = Statistics.jobSummary(stats, {
+        startedAt = startedAt,
+        endedAt = os.epoch("utc") / 1000,
+    })
+    for _, line in ipairs(Statistics.formatJobSummary(summary)) do print(line) end
+    for key, amount in pairs(summary.oreByType) do
+        if key:sub(1, 9) == "ore_type:" and amount > 0 then
+            print(string.format("Ore %s: %d", key:sub(10), amount))
+        end
+    end
 
     print(
         string.format(

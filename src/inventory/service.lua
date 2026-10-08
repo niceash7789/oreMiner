@@ -28,6 +28,14 @@ function Service.new(deps)
         return guarded.ok and guarded.value == true
     end
 
+    local function face(facing)
+        if deps.turnToFacing(facing) == false then
+            deps.reportError("Could not turn to the required facing.")
+            return false
+        end
+        return true
+    end
+
     local function returnToStartAndUnload()
         local pos = deps.pose()
         local saved = { x = pos.x, y = pos.y, z = pos.z, facing = pos.facing }
@@ -43,12 +51,12 @@ function Service.new(deps)
         end
 
         if pos.x > 0 then
-            deps.turnToFacing(3)
+            if not face(3) then return false end
             while deps.pose().x > 0 do
                 if not deps.safeForward() then deps.reportError("Could not return to main tunnel."); return false end
             end
         elseif pos.x < 0 then
-            deps.turnToFacing(1)
+            if not face(1) then return false end
             while deps.pose().x < 0 do
                 if not deps.safeForward() then deps.reportError("Could not return to main tunnel."); return false end
             end
@@ -56,18 +64,18 @@ function Service.new(deps)
 
         pos = deps.pose()
         if pos.z < 0 then
-            deps.turnToFacing(2)
+            if not face(2) then return false end
             while deps.pose().z < 0 do
                 if not deps.safeForward() then deps.reportError("Could not return to start."); return false end
             end
         elseif pos.z > 0 then
-            deps.turnToFacing(0)
+            if not face(0) then return false end
             while deps.pose().z > 0 do
                 if not deps.safeForward() then deps.reportError("Could not return to start."); return false end
             end
         end
 
-        deps.turnToFacing(2)
+        if not face(2) then return false end
         local hasBlock, block = deps.turtle.inspect()
         if not hasBlock or not block or not Chest.acceptsBlock(block.name, deps.config.base) then
             deps.reportError("No accepted chest found directly behind the starting position.")
@@ -77,23 +85,23 @@ function Service.new(deps)
         deps.report("[Inventory] Unloaded; configured retained quantities preserved.")
 
         if saved.z < 0 then
-            deps.turnToFacing(0)
+            if not face(0) then return false end
             while deps.pose().z > saved.z do
                 if not deps.safeForward() then deps.reportError("Could not return to mining position."); return false end
             end
         elseif saved.z > 0 then
-            deps.turnToFacing(2)
+            if not face(2) then return false end
             while deps.pose().z < saved.z do
                 if not deps.safeForward() then deps.reportError("Could not return to mining position."); return false end
             end
         end
         if saved.x > 0 then
-            deps.turnToFacing(1)
+            if not face(1) then return false end
             while deps.pose().x < saved.x do
                 if not deps.safeForward() then deps.reportError("Could not return to branch position."); return false end
             end
         elseif saved.x < 0 then
-            deps.turnToFacing(3)
+            if not face(3) then return false end
             while deps.pose().x > saved.x do
                 if not deps.safeForward() then deps.reportError("Could not return to branch position."); return false end
             end
@@ -107,7 +115,7 @@ function Service.new(deps)
             if not deps.down() then deps.reportError("Could not restore mining height."); return false end
             pos = deps.pose()
         end
-        deps.turnToFacing(saved.facing)
+        if not face(saved.facing) then return false end
         deps.report("[Inventory] Back at mining position.")
         return true
     end
@@ -116,7 +124,9 @@ function Service.new(deps)
         pressureReached = pressureReached,
         serviceIfNeeded = function()
             if not pressureReached() then return true end
-            return returnToStartAndUnload()
+            local serviced = returnToStartAndUnload()
+            if serviced then return true, "SERVICE_COMPLETE" end
+            return false, "INVENTORY_SERVICE_FAILED"
         end,
     }
 end

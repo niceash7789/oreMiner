@@ -26,11 +26,13 @@ function ItemPolicy.isPaving(itemId, config)
 end
 
 function ItemPolicy.retainedCount(itemId, config)
-    if itemId == "minecraft:cobblestone"
-        and (not config or not config.paving or config.paving.enabled ~= true) then
-        return 0
-    end
     local configured = config and config.inventory and config.inventory.retainedItems
+    if itemId == "minecraft:cobblestone" then
+        if type(configured) == "table" and type(configured[itemId]) == "number" then
+            return math.max(0, configured[itemId])
+        end
+        return 64
+    end
     if type(configured) == "table" and type(configured[itemId]) == "number" then
         return math.max(0, configured[itemId])
     end
@@ -39,10 +41,6 @@ function ItemPolicy.retainedCount(itemId, config)
     end
     if itemId == "minecraft:torch" then
         return math.max(0, config.inventory and config.inventory.torchRetainedCount or 64)
-    end
-    if config and config.paving and config.paving.enabled == true
-        and itemId == "minecraft:cobblestone" then
-        return math.max(0, config.paving.retainedCount or 64)
     end
     return 0
 end
@@ -66,6 +64,7 @@ function ItemPolicy.isProtected(itemId, config)
     end
     local oreConfig = config and config.ore
     if type(oreConfig) ~= "table" then return true end
+    if itemId == "minecraft:cobblestone" then return false end
     if ItemPolicy.isPaving(itemId, config)
         and ItemPolicy.retainedCount(itemId, config) > 0 then
         return false

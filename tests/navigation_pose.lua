@@ -28,14 +28,60 @@ end
 local start = assert(Pose.new(0, 0, 0, 0))
 local expectedStart = { x = 0, y = 0, z = 0, facing = 0 }
 
--- Successful API movement advances both the simulated turtle and tracked pose.
-local world = FakeTurtle.new(start)
-local apiResult = world:move("forward", true)
-local tracked, result = Pose.afterMove(start, "forward", apiResult)
-assert(result.ok == true, "successful movement should succeed")
-assertPose(world.pose, { x = 0, y = 0, z = -1, facing = 0 }, "simulated turtle success")
-assertPose(tracked, world.pose, "tracked pose after success")
-assertPose(start, expectedStart, "original input after success")
+-- Every horizontal direction is checked in every facing; vertical movement is
+-- independent of facing. Compare the pure transform with the fake turtle.
+local expectedHorizontal = {
+    forward = {
+        { x = 0, y = 0, z = -1 },
+        { x = 1, y = 0, z = 0 },
+        { x = 0, y = 0, z = 1 },
+        { x = -1, y = 0, z = 0 },
+    },
+    back = {
+        { x = 0, y = 0, z = 1 },
+        { x = -1, y = 0, z = 0 },
+        { x = 0, y = 0, z = -1 },
+        { x = 1, y = 0, z = 0 },
+    },
+}
+
+for facing = 0, 3 do
+    for movement, expectedByFacing in pairs(expectedHorizontal) do
+        local pose = assert(Pose.new(5, 7, 11, facing))
+        local original = { x = pose.x, y = pose.y, z = pose.z, facing = pose.facing }
+        local expectedDelta = expectedByFacing[facing + 1]
+        local expected = {
+            x = original.x + expectedDelta.x,
+            y = original.y + expectedDelta.y,
+            z = original.z + expectedDelta.z,
+            facing = facing,
+        }
+        local world = FakeTurtle.new(pose)
+        local apiResult = world:move(movement, true)
+        local tracked, result = Pose.afterMove(pose, movement, apiResult)
+
+        assert(result.ok == true, movement .. " facing " .. facing .. " should succeed")
+        assertPose(world.pose, expected, movement .. " facing " .. facing .. " simulated turtle")
+        assertPose(tracked, expected, movement .. " facing " .. facing .. " tracked pose")
+        assertPose(pose, original, movement .. " facing " .. facing .. " original input")
+    end
+
+    for _, vertical in ipairs({
+        { movement = "up", delta = 1 },
+        { movement = "down", delta = -1 },
+    }) do
+        local pose = assert(Pose.new(5, 7, 11, facing))
+        local world = FakeTurtle.new(pose)
+        local apiResult = world:move(vertical.movement, true)
+        local tracked, result = Pose.afterMove(pose, vertical.movement, apiResult)
+        local expected = { x = 5, y = 7 + vertical.delta, z = 11, facing = facing }
+
+        assert(result.ok == true, vertical.movement .. " facing " .. facing .. " should succeed")
+        assertPose(world.pose, expected, vertical.movement .. " facing " .. facing .. " simulated turtle")
+        assertPose(tracked, expected, vertical.movement .. " facing " .. facing .. " tracked pose")
+        assertPose(pose, { x = 5, y = 7, z = 11, facing = facing }, vertical.movement .. " input unchanged")
+    end
+end
 
 -- A failed, absent, or malformed API result must leave both poses unchanged.
 checkFailure(false, "false result")
@@ -63,4 +109,21 @@ checkTurn("left", false, 2, "TURN_FAILED")
 checkTurn("right", false, 2, "TURN_FAILED")
 checkTurn("left", true, 1, "POSE_TURNED")
 checkTurn("right", true, 3, "POSE_TURNED")
+
+-- Crossing north exercises the negative left-turn intermediate explicitly.
+for facing = 0, 3 do
+    local pose = assert(Pose.new(0, 0, 0, facing))
+    local expectedLeft = (facing + 3) % 4
+    local expectedRight = (facing + 1) % 4
+    local left, leftResult = Pose.afterTurn(pose, "left", true)
+    local right, rightResult = Pose.afterTurn(pose, "right", true)
+    assert(leftResult.ok and left.facing == expectedLeft, "left normalization from " .. facing)
+    assert(rightResult.ok and right.facing == expectedRight, "right normalization from " .. facing)
+end
+
+local north = assert(Pose.new(0, 0, 0, 0))
+local west, westResult = Pose.afterTurn(north, "left", true)
+assert(westResult.ok and west.facing == 3, "left from north wraps to west")
+local returnedNorth, northResult = Pose.afterTurn(west, "right", true)
+assert(northResult.ok and returnedNorth.facing == 0, "right from west wraps to north")
 print("navigation pose turn checks passed")

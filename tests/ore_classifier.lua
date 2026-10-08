@@ -34,6 +34,24 @@ assert(ore({ name = "example:listed" }, whitelist))
 assert(ore({ name = "example:tagged", tags = { ["example:listed_tag"] = true } }, whitelist))
 assert(not ore({ name = "minecraft:iron_ore" }, whitelist), "whitelist must ignore fallback patterns")
 
+local blacklist = {
+    mode = "blacklist",
+    names = { "example:known_ore" },
+    tags = { "example:ore_tag" },
+    namePatterns = { "_ore$" },
+    ignoreNames = { "example:blocked_ore" },
+    ignoreTags = { "example:blocked_tag" },
+}
+assert(ore({ name = "example:known_ore" }, blacklist), "blacklist mode must accept positively classified names")
+assert(ore({ name = "example:tagged", tags = { ["example:ore_tag"] = true } }, blacklist),
+    "blacklist mode must accept positively classified tags")
+assert(ore({ name = "example:modded_ore" }, blacklist), "blacklist mode must accept configured ore patterns")
+assert(not ore({ name = "example:blocked_ore" }, blacklist), "blacklist mode must reject explicitly ignored names")
+assert(not ore({ name = "example:other", tags = { ["example:blocked_tag"] = true } }, blacklist),
+    "blacklist mode must reject explicitly ignored tags")
+assert(not ore({ name = "example:unclassified" }, blacklist),
+    "blacklist mode must require positive ore evidence")
+
 local valuable = { mode = "valuable", valuableNames = { "example:diamond_like" }, tags = {}, ignoreNames = {}, ignoreTags = {} }
 assert(ore({ name = "example:diamond_like" }, valuable))
 assert(not ore({ name = "minecraft:iron_ore" }, valuable))

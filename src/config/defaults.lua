@@ -5,7 +5,7 @@ return {
         fuelRetainedCount = 64,
         torchRetainedCount = 64,
         retainedItems = {
-            ["minecraft:cobblestone"] = 64,
+            ["minecraft:cobblestone"] = 64, -- mandatory main-shaft backfill reserve
         },
         protectedItems = {},
     },
@@ -25,7 +25,6 @@ return {
     },
     paving = {
         enabled = false,
-        retainedCount = 64,
         protectedItems = {},
         allowedItems = {
             "minecraft:cobblestone",

@@ -18,7 +18,7 @@ The recommended V1 is a deliberately constrained multi-floor shaft miner:
 - When a floor is complete, it returns to that floor's landing centre, restores the stairs-facing orientation, and descends to the next floor from the front-centre edge.
 - Paired left and right shafts at each junction.
 - Shaft junctions three blocks apart, measured centreline-to-centreline.
-- Shaft length 32 and 20 shaft pairs by default.
+- Shaft length 30 and 20 shaft pairs by default. This preserves the proven single-turtle baseline while configuration validation is added.
 - Floor count is configurable; four floors is the proposed bounded default.
 - Floor paving is off by default.
 - Torch placement is enabled, supplied from the left chest, and always uses the route-defined right-hand wall.
@@ -104,8 +104,8 @@ Cost-control workflow:
 - [x] **MVP / P1** Permit a connected vein to contain multiple qualifying ore block IDs instead of requiring every block to have the first ore's exact name. — **AI-1**
 - [x] **MVP / P1** Scan the main shaft as well as the paired shafts. The supplied script only vein-scanned the routes historically called branches. Main-shaft cells now inspect both walls, floor, and ceiling through the configured classifier and bounded vein traversal. — **AI-1**
 - [x] **MVP / P1** After each ore vein entered from the main shaft unwinds, seal every resulting opening in the main-shaft wall, floor, or ceiling flush with `minecraft:cobblestone` before main-shaft travel resumes. Do not solid-fill hidden vein cavities or place blocks in the 1×2 passage. Verify every placement and restore the exact checkpoint pose/facing. The coordinator seals only the exposed checkpoint face after exact vein unwind, verifies `place` and inspected cobblestone, and stops on failure. — **AI-2**
-- [x] **MVP / P1** Make paving default to `false`. While disabled, give cobblestone no paving quota; while enabled, allow paving to consume its retained cobblestone working stock but never fuel, torches, ores, unknown items, or other protected inventory. Defaults and the active CLI now disable paving unless explicitly enabled; the item policy enforces the conditional paving reserve and blocks protected IDs from placement. The new mandatory main-shaft backfill reserve is a separate unchecked requirement. — **AI-1**
-- [ ] **MVP / P1** Protect a configurable `minecraft:cobblestone` working reserve for mandatory main-shaft backfill even when paving is disabled; paving and shaft-end ejection may consume only cobblestone above that reserve. — **AI-1**
+- [x] **MVP / P1** Make paving default to `false`. While disabled, give cobblestone no paving-only quota; while enabled, allow paving to consume only stock above the separate mandatory main-shaft backfill reserve and never fuel, torches, ores, unknown items, or other protected inventory. Defaults and the active CLI disable paving unless explicitly enabled. The mandatory backfill reserve remains a separate unchecked requirement. — **AI-1**
+- [x] **MVP / P1** Protect a configurable `minecraft:cobblestone` working reserve for mandatory main-shaft backfill even when paving is disabled; paving and shaft-end ejection may consume only cobblestone above that reserve. `inventory.retainedItems["minecraft:cobblestone"]` is the shared reserve/quota, defaults to 64, and is enforced by paving eligibility and aggregate chest unloading regardless of paving state. No runtime shaft-end ejection path exists yet. — **AI-1**
 - [ ] **MVP / P1** Validate numerical input ranges; the current CLI accepts negative, zero, fractional, and impractically large values. — **AI-1**
 - [x] **MVP / P1** Replace chest-name substring detection with a configurable accepted-block policy and, most importantly, verify the result of every drop. Exact configured block IDs gate chest acceptance; each drop must return literal success and leave the source slot empty. — **AI-1**
 - [x] **MVP / P1** Preserve configured quantities, not a privileged slot. Aggregate configured item-ID quotas are allocated across stacks in slot order, and excess drops are verified. — **AI-1**
@@ -205,7 +205,7 @@ Recommended defaults:
 | Floor main direction | Right from landing | Keeps the branch grid separate from the staircase column and makes every landing identical. |
 | Main tunnel | 1 wide × 2 high | Minimum excavation with safe player/turtle access. |
 | Branch tunnel | 1 wide × 2 high | Matches the baseline's efficient lower-outbound/upper-return scan. |
-| Branch length | 32 | Convenient power-of-two distance, enough exposure without making each recovery leg excessive. |
+| Branch length | 30 | Preserves the proven reference baseline and bounds each recovery leg; configuration validation may accept other safe positive integers. |
 | Branch pairs | 20 | A bounded initial job rather than an infinite miner. |
 | Branch spacing | 3 | Junction centreline distance; leaves two solid block rows between parallel branches, each exposed from one side. |
 | Both sides | `true` | Nearly doubles useful exposure per main-tunnel distance and keeps junctions canonical. |
@@ -245,7 +245,7 @@ return {
     stairWidth = 3,
     stairHeight = 3,
     floorMainTurn = "right",
-    branchLength = 32,
+    branchLength = 30,
     branchPairs = 20,
     branchSpacing = 3,
     tunnelHeight = 2,
@@ -259,7 +259,7 @@ return {
     keep = {
       ["minecraft:coal"] = 64,
       ["minecraft:torch"] = 64,
-      ["minecraft:cobblestone"] = 0, -- remains zero while paving is disabled
+      ["minecraft:cobblestone"] = 64, -- mandatory main-shaft backfill reserve
     },
   },
 
@@ -347,7 +347,7 @@ Configuration rules:
 - [ ] **MVP / P0** Require `lighting.side = "right"`; other sides are not supported until their route-frame semantics are tested. — **AI-2**
 - [ ] **MVP / P0** Reject unsupported `tunnelHeight`; V1 supports exactly 2 rather than pretending the algorithm is generic. — **AI-2**
 - [x] **MVP / P1** Explain that `ore.mode="all"` means “all blocks positively classified as ore,” not “mine every adjacent block.” — **AI-1**
-- [ ] **MVP / P1** Define mode behaviour: — **AI-1**
+- [x] **MVP / P1** Define mode behaviour: — **AI-1**
   - `all`: any block matching an ore tag, configured name, or configured ore-name pattern, minus ignores.
   - `whitelist`: only explicit names/tags.
   - `blacklist`: all positively classified ores except explicit ignored names/tags.
@@ -497,7 +497,7 @@ Navigation backlog:
 - [ ] **MVP / P0** Implement wrappers for six movements and two turns. — **AI-2**
 - [ ] **MVP / P0** Prohibit direct turtle movement outside navigation. — **AI-2**
 - [ ] **MVP / P0** Implement `face(targetFacing)` using the fewest checked turns. — **AI-2**
-- [ ] **MVP / P0** Implement reversible action records and inverse mapping. — **AI-2**
+- [x] **MVP / P0** Implement reversible action records and inverse mapping. `src/navigation/action_stack.lua` records successful local actions, maps all supported inverses, and preserves the failed record when checked LIFO unwind stops. — **AI-2**
 - [ ] **MVP / P0** Implement the four-block surface-entry route and its exact reverse. — **AI-2**
 - [ ] **MVP / P0** Implement a checked 3×3 stair-slice sweep that restores centreline pose before moving down. — **AI-2**
 - [ ] **MVP / P0** Implement the exact inverse centreline climb: move up, then back, with no new digging on a known-clear staircase. — **AI-2**
@@ -532,13 +532,13 @@ Consolidation is a best-effort pass over all slots. Attempt `transferTo` between
 
 ### Keep quotas, routing, and resupply
 
-Keep rules are totals by item ID across all slots, not designated slot numbers. The default service targets are one coal stack as emergency onboard fuel and one torch stack. When paving is enabled, retain up to one stack (64 items) of `minecraft:cobblestone` exclusively for paving; paving is expected to consume that working stock as blocks are placed. When paving is disabled, its effective keep quota is zero, so cobblestone receives no protection from ejection or unloading.
+Keep rules are totals by item ID across all slots, not designated slot numbers. The default service targets are one coal stack as emergency onboard fuel, one torch stack, and a configurable 64-item `minecraft:cobblestone` working reserve for mandatory main-shaft backfill. That backfill reserve applies whether paving is enabled or disabled. Optional paving and branch-end ejection may consume only cobblestone above the reserve; paving does not create a second implicit quota.
 
 ### Branch-end cobblestone ejection
 
 When no rear bulk chest is configured, eject excess `minecraft:cobblestone` at the physical dead end of every successfully completed branch. Perform this after the lower outbound pass reaches its configured endpoint and before ascending for the upper return pass, so the dropped items remain in the dead end and outside the return path. This is the only planned world-dropping behavior in V1.
 
-Consolidate first, preserve the effective paving quota across arbitrary slots, then use checked `turtle.drop()` calls for the remaining cobblestone. Verify that the selected-slot and total cobblestone counts decrease by the requested amount. Bound all attempts and stop with `EJECT_FAILED` if an excess stack cannot be ejected completely; do not claim the branch turnaround is complete. Never eject ores, unknown items, fuel, torches, or other configured bulk items. If a service return occurs before the branch endpoint, carry the inventory home normally rather than making an early dump in a travel cell.
+Consolidate first, preserve the mandatory backfill reserve across arbitrary slots, then use checked `turtle.drop()` calls for cobblestone above that reserve. Verify that the selected-slot and total cobblestone counts decrease by the requested amount. Bound all attempts and stop with `EJECT_FAILED` if an excess stack cannot be ejected completely; do not claim the branch turnaround is complete. Never eject ores, unknown items, fuel, torches, or other configured bulk items. If a service return occurs before the branch endpoint, carry the inventory home normally rather than making an early dump in a travel cell.
 
 When a rear bulk chest is configured and enabled, do not perform branch-end ejection. Preserve configured bulk items for verified unloading into that chest.
 
@@ -726,7 +726,7 @@ Safe V1 behaviour is to stop. Turtles cannot reliably solve every flowing-water/
 
 - [ ] **MVP / P1** Keep paving optional and disabled by default. — **AI-1**
 - [ ] **MVP / P1** Place only explicitly allowed items. — **AI-1**
-- [ ] **MVP / P1** When paving is disabled, perform no paving selection or placement and apply no cobblestone retention quota. — **AI-1**
+- [ ] **MVP / P1** When paving is disabled, perform no paving selection or placement; retain only the independently configured mandatory main-shaft backfill reserve. — **AI-1**
 - [ ] **MVP / P1** When paving is enabled, treat the retained cobblestone quota as consumable paving working stock; never select or place fuel, torches, ores, unknown items, or other protected inventory. — **AI-1**
 - [ ] **MVP / P1** Treat “no paving material” as a warning when paving is optional; never substitute ore or arbitrary inventory items. — **AI-1**
 - [ ] **NEXT / P2** Make paving-required mode stop at base for resupply rather than continuing over gaps. — **AI-1**
@@ -806,12 +806,12 @@ Examples:
 [MAIN] pair 5/20  step 2/3
 [STAIR] floor 2/4  step 6/8
 [FLOOR] 2/4  landing y=-16
-[BRANCH] L 17/32 out
+[BRANCH] L 17/30 out
 [VEIN] iron 8/64  r=4
 [INV] 14/16 -> return
 [RETURN] branch -> junction
 [UNLOAD] ok; 2 kept
-[RESUME] L 17/32 out
+[RESUME] L 17/30 out
 ```
 
 - [ ] **MVP / P2** Track blocks dug, ore blocks dug, veins started, fuel used, service trips, branch pairs completed, and active runtime. — **AI-1**
@@ -876,6 +876,10 @@ Each domain should consume an explicit origin/route frame and return a structure
 - Relevant verification must exercise the active `src/branch_miner.lua` path when an item is wired. Unit tests alone are sufficient only for a deliberately deferred building block.
 - Never modify the preserved reference file as part of checklist implementation.
 
+### Active execution order
+
+Choose only dependency-ready work. Within that set, complete P0 safety/correctness before P1 capability and P2 quality. The immediate queue is: mandatory main-shaft backfill reserve; numerical configuration validation using the resolved branch-length default of 30; exact known-route home-cost coverage; then the four-block surface entry and 3x3 stairs primitive. Re-evaluate readiness after each item instead of skipping an unmet prerequisite.
+
 ### Foundation and safety kernel
 
 - [ ] **MVP / P0 — F01** Define pose, phase, result, and error-code contracts. — **AI-2**
@@ -938,7 +942,7 @@ Each domain should consume an explicit origin/route frame and return a structure
 - [ ] **NEXT / P1 — N02** Support configurable fuel/torch substitute groups and smarter mixed-supply extraction. — **AI-1**
 - [ ] **NEXT / P1 — N03** Add assisted `home`, `reset`, and uncertain-pose reconciliation. — **AI-1**
 - [ ] **NEXT / P2 — N04** Improve ore-classifier configuration and diagnostics. — **AI-1**
-- [ ] **NEXT / P2 — N05** Add detailed statistics and final job summaries. — **AI-1**
+- [x] **NEXT / P2 — N05** Add detailed statistics and final job summaries. — **AI-1**
 - [ ] **NEXT / P2 — N06** Improve liquid identification while retaining stop-safe V1 behaviour. — **AI-1**
 - [ ] **NEXT / P2 — N07** Add minimal CLI overrides and help text. — **AI-1**
 
@@ -1033,25 +1037,25 @@ V1 is complete only when all of these work together:
 
 ### Unit-testable logic
 
-- [ ] Pose delta for forward/back/up/down in all four facings. — **AI-1**
-- [ ] Left/right turn normalisation, including negative modulo cases. — **AI-1**
-- [ ] `face()` chooses and records the correct checked turns. — **AI-1**
-- [ ] Inverse route mapping and LIFO unwind. — **AI-2**
+- [x] Pose delta for forward/back/up/down in all four facings. — **AI-1** `tests/navigation_pose.lua` compares every movement delta across all four facings against the deterministic fake turtle.
+- [x] Left/right turn normalisation, including negative modulo cases. — **AI-1** `tests/navigation_pose.lua` verifies both turn directions from every facing, including west/north wraparound.
+- [x] `face()` chooses and records the correct checked turns. — **AI-1** `src/navigation/turn.lua` sequences the shortest checked turns through the coordinator's persistent turn boundary; `tests/navigation_face.lua` covers all facing pairs, failure stopping, and committed pose tracking.
+- [x] Inverse route mapping and LIFO unwind. — **AI-2** `src/navigation/action_stack.lua` owns the six-action inverse map and removes records only after literal-success LIFO application; `tests/navigation_action_stack.lua` verifies ordering, invalid actions, and resumable failure state.
 - [ ] Exact route-home cost for surface entry, stair slice sub-phases, every floor-mining phase, and vein depth. — **AI-2**
 - [ ] 3×3 stair-slice target coordinates and centre-bottom/facing postcondition for all four staircase facings. — **AI-2**
 - [ ] Route-frame right-side calculation remains stable during return-facing changes. — **AI-1**
-- [ ] Unlimited-fuel handling never performs numeric comparisons or formatting. — **AI-1**
+- [x] Unlimited-fuel handling never performs numeric comparisons or formatting. — **AI-1**
 - [ ] Refuel policy consumes only permitted items and restores selected slot. — **AI-1**
-- [ ] Inventory occupied/free counts with mixed partial stacks. — **AI-1**
+- [x] Inventory occupied/free counts with mixed partial stacks. — **AI-1**
 - [ ] Consolidation with mergeable and incompatible stacks. — **AI-1**
-- [ ] Keep quotas spread over multiple arbitrary slots. — **AI-1**
-- [ ] Partial chest drop leaves a detected remainder. — **AI-1**
+- [x] Keep quotas spread over multiple arbitrary slots. — **AI-1** `src/inventory/chest.lua` allocates each item-ID quota across inventory slots in slot order; `tests/chest_policy.lua` verifies two independent quotas split across nonadjacent slots.
+- [x] Partial chest drop leaves a detected remainder. — **AI-1** `src/inventory/chest.lua` returns `CHEST_FULL` with the observed remainder when an exact-count drop transfers only part; `tests/chest_policy.lua` covers direct and unload-path detection.
 - [ ] Item routing sends ores right and configured bulk rear when enabled; without a rear chest it ejects only excess cobblestone at a completed branch endpoint and sends all inventory that reaches base right. — **AI-1**
-- [ ] Branch-end ejection preserves up to 64 total cobblestone across arbitrary slots as consumable paving stock when paving is enabled; with paving disabled, cobblestone has a zero quota and none is protected. — **AI-1**
+- [ ] Branch-end ejection preserves the configured mandatory backfill reserve across arbitrary slots whether paving is enabled or disabled; optional paving and ejection consume only the excess. — **AI-1**
 - [ ] A partial or failed branch-end drop produces `EJECT_FAILED`; ores, unknown items, fuel, torches, and non-cobblestone bulk items are never ejected. — **AI-1**
 - [ ] Mixed fuel/torch supply extraction succeeds for both item orders or stops at its bounded limit. — **AI-1**
 - [ ] Torch interval and restart cursor never place twice at the same route position. — **AI-1**
-- [ ] Ore modes, tags, patterns, explicit names, and ignore precedence. — **AI-1**
+- [x] Ore modes, tags, patterns, explicit names, and ignore precedence. — **AI-1**
 - [ ] Vein visited keys, radius boundary, and block limit. — **AI-1**
 - [ ] Mining phase transitions and `nextAction` idempotence. — **AI-1**
 - [ ] Config validation boundary values. — **AI-1**
@@ -1128,7 +1132,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [ ] Resume exact position after unload without duplicating/skipping a block or branch. — **AI-2**
 - [ ] Trigger inventory return at 14 occupied slots. — **AI-1**
 - [ ] Keep/refill up to one coal stack and one torch stack. — **AI-1**
-- [ ] At every completed branch endpoint without a rear chest, eject all cobblestone when paving is disabled or preserve up to one 64-item stack as consumable paving stock when paving is enabled. — **AI-1**
+- [ ] At every completed branch endpoint without a rear chest, preserve the configured mandatory backfill reserve and eject only excess cobblestone, regardless of whether optional paving is enabled. — **AI-1**
 - [ ] Test mixed partial stacks. — **AI-1**
 - [ ] Fill the right output chest and verify the turtle remains safely at base. — **AI-1**
 - [ ] Fill the enabled rear bulk chest and verify the turtle remains safely at base. — **AI-1**
@@ -1263,13 +1267,13 @@ None of these items should add networking code, multiple active workers, or flee
 
 ## 21. Approval checklist before coding
 
-- [ ] Approve branch length 32, 20 branch pairs, and centreline spacing 3. — **AI-1**
+- [x] Approve branch length 30, 20 branch pairs, and centreline spacing 3. The 30-block default preserves the active/reference baseline; validated configuration may select another supported positive length. — **AI-1**
 - [ ] Approve paired left/right branches and the two-level scan route. — **AI-1**
 - [ ] Approve a four-block level surface entry followed by a 3-wide × 3-tall diagonal staircase. — **AI-1**
 - [ ] Approve one-forward/one-down centreline progress and a floor landing every eight blocks of depth. — **AI-1**
 - [ ] Approve four floors as the initial bounded default. — **AI-1**
-- [ ] Approve paving off by default, with no protected cobblestone quota while it is off. — **AI-1**
-- [ ] Approve inventory threshold 14 and service targets of 64 coal/64 torches; retain up to 64 cobblestone exclusively for placement when paving is enabled. — **AI-1**
+- [x] Approve paving off by default while retaining a separate configurable cobblestone reserve for mandatory main-shaft backfill. — **AI-1**
+- [x] Approve inventory threshold 14 and service targets of 64 coal/64 torches; retain 64 cobblestone by default for mandatory backfill, with optional paving limited to excess stock. — **AI-1**
 - [ ] Approve the required left fuel/torch chest and right ore/output chest. — **AI-1**
 - [ ] Approve the optional rear bulk chest; without it, eject excess cobblestone at each completed branch dead end and send inventory that reaches base to the right chest. — **AI-1**
 - [ ] Approve automated base refuelling and torch restocking in V1. — **AI-1**

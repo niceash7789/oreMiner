@@ -100,7 +100,9 @@ function Pose.afterTurn(pose, direction, succeeded)
     end
 
     local delta = direction == "right" and 1 or -1
-    updated.facing = (updated.facing + delta) % 4
+    -- Lua's modulo behavior differs by version for negative dividends. Shift
+    -- into a non-negative range before taking the remainder.
+    updated.facing = ((updated.facing + delta) % 4 + 4) % 4
     return updated, { ok = true, code = "POSE_TURNED" }
 end
 

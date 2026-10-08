@@ -35,15 +35,25 @@ assert(not itemPolicy.isPaving("minecraft:cobblestone", {}))
 
 local enabled = {
     fuel = { allowedItems = { "minecraft:coal" } },
-    paving = { enabled = true, retainedCount = 64, allowedItems = { "minecraft:cobblestone" } },
-    inventory = { fuelRetainedCount = 64, torchRetainedCount = 64 },
+    paving = { enabled = true, retainedCount = 1, allowedItems = { "minecraft:cobblestone" } },
+    inventory = {
+        fuelRetainedCount = 64,
+        torchRetainedCount = 64,
+        retainedItems = { ["minecraft:cobblestone"] = 9 },
+    },
     ore = { names = { "minecraft:diamond_ore" }, valuableNames = {}, namePatterns = { "_ore$" } },
 }
 assert(itemPolicy.isPaving("minecraft:cobblestone", enabled))
-assert(itemPolicy.retainedCount("minecraft:cobblestone", defaults) == 0)
-assert(itemPolicy.retainedCount("minecraft:cobblestone", enabled) == 64)
-assert(itemPolicy.mayConsumeForPaving("minecraft:cobblestone", enabled, 65))
-assert(not itemPolicy.mayConsumeForPaving("minecraft:cobblestone", enabled, 64))
+assert(itemPolicy.retainedCount("minecraft:cobblestone", defaults) == 64,
+    "mandatory backfill reserve applies while paving is disabled")
+assert(itemPolicy.retainedCount("minecraft:cobblestone", enabled) == 9,
+    "configured backfill reserve takes precedence over any paving quota")
+assert(itemPolicy.mayConsumeForPaving("minecraft:cobblestone", enabled, 10))
+assert(not itemPolicy.mayConsumeForPaving("minecraft:cobblestone", enabled, 9))
+enabled.paving.enabled = false
+assert(itemPolicy.retainedCount("minecraft:cobblestone", enabled) == 9,
+    "configured reserve is independent of paving state")
+enabled.paving.enabled = true
 for _, protectedId in ipairs({ "minecraft:coal", "minecraft:torch", "minecraft:diamond_ore", "mod:unclassified" }) do
     enabled.paving.allowedItems[2] = protectedId
     enabled.paving.protectedItems = { "mod:unclassified" }

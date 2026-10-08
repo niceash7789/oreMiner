@@ -1,12 +1,17 @@
 local Pressure = {}
 
-function Pressure.occupiedSlots(turtleApi)
+function Pressure.slotCounts(turtleApi)
     local occupied = 0
     for slot = 1, 16 do
         if turtleApi.getItemCount(slot) > 0 then
             occupied = occupied + 1
         end
     end
+    return occupied, 16 - occupied
+end
+
+function Pressure.occupiedSlots(turtleApi)
+    local occupied = Pressure.slotCounts(turtleApi)
     return occupied
 end
 

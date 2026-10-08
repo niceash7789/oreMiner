@@ -34,10 +34,30 @@ local service = InventoryService.new({
 })
 
 assert(service.pressureReached(), "occupied-slot threshold should be evaluated by the service")
-assert(service.serviceIfNeeded(), "accepted chest should complete the inventory service")
+local serviced, serviceCode = service.serviceIfNeeded()
+assert(serviced and serviceCode == "SERVICE_COMPLETE", "accepted chest should report completed service")
 assert(count == 64, "configured cobblestone quota should remain after unload")
 assert(selected == 6, "inventory service should restore the selected slot")
 assert(pose.facing == 0, "inventory service should restore the saved facing")
+
+pose.x = 1
+count = 70
+local forwardCalls = 0
+local failedFacingService = InventoryService.new({
+    turtle = api,
+    config = config,
+    itemConfig = defaults,
+    pose = function() return pose end,
+    turnToFacing = function() return false end,
+    safeForward = function() forwardCalls = forwardCalls + 1; return true end,
+    up = function() return true end,
+    down = function() return true end,
+    report = function() end,
+    reportError = function() end,
+})
+local failedService = failedFacingService.serviceIfNeeded()
+assert(failedService == false, "service should stop when checked facing fails")
+assert(forwardCalls == 0, "service must not move after a failed facing change")
 defaults.paving.enabled = previousPaving
 
 print("inventory service checks passed")

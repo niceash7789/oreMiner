@@ -196,13 +196,15 @@ assert(selectedSlot == 5, "active helpers should restore the original selected s
 assert(world.x == 0 and world.y == 0 and world.z == -1 and world.facing == 0, "short branch pair should restore the current active baseline endpoint")
 
 local foundFinalPose = false
+local foundFinalSummary = false
 for _, line in ipairs(output) do
     if line:find("Final position: x=0, y=0, z=0", 1, true) then
         foundFinalPose = true
-        break
     end
+    if line:find("Job summary:", 1, true) then foundFinalSummary = true end
 end
 assert(foundFinalPose or #output > 0, "active run should report its final pose")
+assert(foundFinalSummary, "successful active run should report its final job summary")
 
 print("active baseline wiring checks passed")
 

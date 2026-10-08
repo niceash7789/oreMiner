@@ -15,12 +15,13 @@ Keep inventory accounting and service-trip policy outside branch, staircase, and
 - Pressure uses the configured threshold (default 14 occupied slots).
 - An unload trip returns through the existing cleared route and restores the saved coordinates and facing only through checked coordinator movement callbacks.
 - Chest acceptance uses exact configured block IDs. Drops require verified API success and post-drop counts; aggregate retained quotas and protected items are handled by the existing item policy.
+- `inventory.retainedItems["minecraft:cobblestone"]` protects the configurable mandatory main-shaft backfill reserve across arbitrary slots, regardless of paving state. Unloading drops only cobblestone above this reserve.
 - The slot guard restores the selected slot after unloading, including helper failures.
 - The service is single-turtle and synchronous; the coordinator owns live pose and persistent checkpoints.
 
 ## Dependencies and limitations
 
-Depends on the injected CC:Tweaked turtle API and the pressure, chest, and slot-guard modules. The current baseline still uses the original single output-chest-at-start layout and coordinate-axis return trip; hierarchical multi-floor service routing remains future work. Invalid numerical configuration remains blocked by the unresolved branch-length 30/32 specification approval.
+Depends on the injected CC:Tweaked turtle API and the pressure, chest, and slot-guard modules. The current baseline still uses the original single output-chest-at-start layout and coordinate-axis return trip; hierarchical multi-floor service routing remains future work. There is no runtime branch-end ejection path yet. The product plan resolves the default branch length to the existing baseline value of 30; numerical configuration validation remains a separate configuration item.
 
 ## Verification
 

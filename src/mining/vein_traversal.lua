@@ -12,7 +12,7 @@ local function samePose(a, b)
 end
 
 -- Callbacks must report literal true for successful physical actions.
-function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies)
+function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
     if type(qualifies) ~= "function" then
         return { ok = false, code = "VEIN_INVALID_QUALIFIER", blocks = 0 }
     end
@@ -99,6 +99,7 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies)
                         elseif ops.move(direction) ~= true then
                             return { ok = false, code = "VEIN_MOVE_FAILED", blocks = blocks }
                         else
+                            if type(onMined) == "function" then pcall(onMined, block) end
                             visited[key(ops.pose())] = true
                             route[#route + 1] = { inverse = "back", facing = ops.pose().facing }
                             blocks = blocks + 1
@@ -131,6 +132,7 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies)
                         elseif ops.move(direction) ~= true then
                             return { ok = false, code = "VEIN_MOVE_FAILED", blocks = blocks }
                         else
+                            if type(onMined) == "function" then pcall(onMined, block) end
                             visited[key(ops.pose())] = true
                             route[#route + 1] = {
                                 inverse = direction == "up" and "down" or "up",

@@ -6,9 +6,16 @@ Classify inspected blocks for ore seed discovery and bounded vein traversal with
 
 ## Implemented behavior
 
-`OreClassifier.isOre(block, config)` consumes the block record returned by `turtle.inspect*`, including `name` and optional `tags`. Ignore names and tags take precedence. `whitelist` accepts configured names or tags; `valuable` accepts configured `valuableNames`; `all` and `blacklist` accept configured names, tags, or Lua name patterns. Missing or malformed block data and missing config fail closed. Invalid Lua patterns are ignored safely. Defaults use `c:ores`, `forge:ores`, and `_ore$` as a fallback, with empty explicit and ignore lists.
+`OreClassifier.isOre(block, config)` consumes the block record returned by `turtle.inspect*`, including `name` and optional `tags`. Ignore names and tags take precedence in every mode. The modes behave as follows:
 
-In `all` mode, “all” means every block that the classifier positively recognizes as ore under those configured tags, names, and patterns, after ignores. It does not mean mining every adjacent block. An adjacent block that does not match any positive ore rule is left alone.
+- `all`: accept a configured name, configured ore tag, or configured Lua name pattern, except ignored names/tags.
+- `whitelist`: accept only configured names or tags, except ignored names/tags; name patterns are not consulted.
+- `blacklist`: accept every positively classified ore (configured names, tags, or patterns) except ignored names/tags.
+- `valuable`: accept only names in the user-maintained `valuableNames` list; no broad modpack database is included.
+
+Missing or malformed block data and missing config fail closed. Invalid Lua patterns are ignored safely. Defaults use `c:ores`, `forge:ores`, and `_ore$` as a fallback, with empty explicit and ignore lists.
+
+In `all` and `blacklist` modes, positive recognition comes only from configured tags, names, or patterns. “All” does not mean mining every adjacent block. An adjacent block that does not match a positive ore rule is left alone.
 
 The active coordinator applies the same classifier to forward, up, down, and adjacent inspected blocks. Each adjacent block is accepted into a vein based on its own classifier result, so connected qualifying resources may use different block IDs. For the traversal boundary, inspected block records and an explicit `qualifies(block)` predicate are passed separately; the traversal does not load classifier or configuration modules.
 
