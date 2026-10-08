@@ -46,6 +46,15 @@ for _, field in ipairs({ "floorCount", "stairStepsPerFloor", "branchLength", "br
     end
 end
 local config = activeConfig()
+config.mining = { stairStepsPerFloor = 8 }
+accepted(config, "V1 stair slice count of eight should validate")
+for _, value in ipairs({ 1, 7, 9, 16 }) do
+    config = activeConfig()
+    config.mining = { stairStepsPerFloor = value }
+    local reason = rejected(config, "V1 should reject stair slice count " .. value)
+    assert(reason == "mining.stairStepsPerFloor must be 8 in V1", "unexpected stair count error")
+end
+config = activeConfig()
 config.mining = { branchSpacing = 1 }
 rejected(config, "nested branch spacing below two should fail")
 for _, value in ipairs({ 0, 16, 2.5 }) do
