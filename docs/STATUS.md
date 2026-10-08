@@ -1,5 +1,11 @@
 # Implementation status
 
+- Last completed checklist item: `MVP / P0 — P01 Implement schema-validated state load/save with temporary and backup files` in `MINER_PLAN.md`.
+- Next eligible unchecked item: `MVP / P0 — F01 Define pose, phase, result, and error-code contracts`; P02 depends on P01 and F03, and F03 is still unchecked.
+- Files changed for P01: `MINER_PLAN.md`, `docs/persistence.md`, and this handoff. Runtime and tests already implemented the assigned behavior, so no source change was needed.
+- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/persistence_state.lua` passed; `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p src/persistence/state.lua src/persistence/checkpoint.lua tests/persistence_state.lua` passed. No in-world verification was performed.
+- Limitation: recovery from an orphaned `.tmp` is a separate unchecked item; current load checks active and backup files.
+
 - Last completed checklist item: `MVP / P0 — If both snapshots are invalid, stop with STATE_CORRUPT; never initialise a new run over an unrecognised active state` in the persistence section of `MINER_PLAN.md`.
 - Next eligible unchecked persistence item: `MVP / P1 — Recover a valid leftover .tmp snapshot when the active and backup snapshots are invalid` in the reliability test checklist; confirm its exact wording and dependencies in `MINER_PLAN.md` before implementation.
 - Files changed for this item: `tests/persistence_state.lua`, `docs/persistence.md`, `MINER_PLAN.md`, and this handoff. Runtime load and startup behavior already enforced the requirement.
@@ -28,3 +34,9 @@
 - Pose-transform handoff: `lua.exe tests/navigation_pose.lua` passed (`navigation pose movement checks passed`; `navigation pose turn checks passed`), and `luac.exe -p src/navigation/pose.lua tests/navigation_pose.lua` passed. The exact navigation backlog item is checked; the focused behavior and public API are documented in `docs/navigation-pose.md`. No in-world verification was performed.
 - Scope: `miner.lua` executes the active `src/branch_miner.lua` copy. V1 remains single-turtle; no networking, controller, or fleet code was added.
 - Fixed-geometry verification: `lua.exe tests/numeric_validation.lua` and `luac.exe -p src/config/numeric_validation.lua tests/numeric_validation.lua` passed. Tests cover acceptance of 4/3/3 and rejection of unsupported supplied geometry. No in-world verification was performed. The reference phase-one script has no staircase routine or geometry settings; fixed V1 geometry comes from the product plan.
+
+- Last completed checklist item: `MVP / P0 — Save an intent before every physical move and turn; commit the resulting pose immediately after success` in the persistence checkpoints section of `MINER_PLAN.md`.
+- Next eligible unchecked item: `MVP / P0 — Save after changing the logical mining cursor, before beginning the next unit of work`; confirm its exact scope and current implementation before starting.
+- Files changed: `MINER_PLAN.md`, `tests/active_baseline_wiring.lua`, `docs/navigation-pose.md`, `docs/persistence.md`, and this handoff. The active implementation was already present in `src/branch_miner.lua`, `src/navigation/motion.lua`, and `src/persistence/checkpoint.lua`; no runtime source change was needed. The wiring fixture now supplies valid minimum spacing `2`.
+- Verification: `tests/navigation_motion.lua`, `tests/persistence_state.lua`, and `tests/active_baseline_wiring.lua` passed with Lua 5.4; `luac.exe -p tests/active_baseline_wiring.lua` passed. No in-world verification was performed.
+- Decision/blocker: source inspection confirms coordinator ordering for movement and turns, with intent before each turtle API and pose commit after literal success. No blocker remains for this item. The next eligible item concerns saving the logical mining cursor before beginning the next unit of work.

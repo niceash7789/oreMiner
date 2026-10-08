@@ -440,7 +440,7 @@ State invariants:
 
 ### Persistence checkpoints
 
-- [ ] **MVP / P0** Save an intent before every physical move and turn; commit the resulting pose immediately after success. — **AI-2**
+- [x] **MVP / P0** Save an intent before every physical move and turn; commit the resulting pose immediately after success. The active coordinator persists pending intent before the turtle API and commits only after literal success; pending intent reports `POSITION_UNCERTAIN` after reboot. — **AI-2**
 - [ ] **MVP / P0** Save after changing the logical mining cursor, before beginning the next unit of work. — **AI-2**
 - [ ] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. — **AI-2**
 - [ ] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. — **AI-2**
@@ -929,7 +929,7 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 
 ### Persistence and recovery
 
-- [ ] **MVP / P0 — P01** Implement schema-validated state load/save with temporary and backup files. — **AI-2**
+- [x] **MVP / P0 — P01** Implement schema-validated state load/save with temporary and backup files. `src/persistence/state.lua` validates snapshots and commits through a validated `.tmp`, preserving the prior valid snapshot as `.bak`; `tests/persistence_state.lua` verifies roundtrip and backup recovery. — **AI-2**
 - [ ] **MVP / P0 — P02** Implement action intent/commit records for every move and turn. — **AI-3**
 - [ ] **MVP / P0 — P03** Persist floor/stair cursor, landing poses, mining cursor, resume checkpoint, service stage, and vein route/frontier. — **AI-2**
 - [ ] **MVP / P0 — P04** Detect ambiguous pending actions and enter `POSITION_UNCERTAIN`. — **AI-3**

@@ -103,7 +103,7 @@ local turtleApi = {
     drop = function() return true end,
 }
 
-local inputs = { "1", "1", "1", "n", "n", "y", "y" }
+local inputs = { "1", "1", "2", "n", "n", "y", "y" }
 local inputIndex = 0
 local output = {}
 local failedOneReport = false

@@ -10,6 +10,8 @@ Track the single turtle's local `{x, y, z, facing}` pose without mutating the ca
 
 `Pose.afterTurn(pose, direction, succeeded)` computes facing only when `succeeded` is literal `true`. It normalizes left and right turns into facing 0..3, including the westward wrap from left-of-north; false, nil, and other values return an unchanged pose with `TURN_FAILED`. The active coordinator journals turn intent through `src.persistence.state` before calling the turtle API and durably commits the changed facing only after literal success.
 
+For both movement and turning, `src/branch_miner.lua` calls `Checkpoint.beginAction` before the physical API and `Checkpoint.commitAction` immediately after installing a successful new pose (and route edge for movement). A failed turtle API result cancels the pending intent while retaining the prior pose. If commit persistence fails after physical success, execution stops and the on-disk pending intent remains the safe reboot signal.
+
 `src.navigation.action_stack` records bounded local route actions with explicit inverses. Unwind applies records in strict last-in-first-out order and removes a record only after its inverse callback returns literal `true`. A failed inverse therefore remains at the top of the stack so the caller cannot claim that physical recovery completed.
 
 ## Public entry points
