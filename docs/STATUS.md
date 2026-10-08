@@ -45,3 +45,9 @@
 - Files changed: `src/persistence/state.lua`, `tests/persistence_state.lua`, `docs/persistence.md`, `MINER_PLAN.md`, and this handoff.
 - Verification: `lua.exe tests/persistence_state.lua` passed; `luac.exe -p src/persistence/state.lua tests/persistence_state.lua` passed. No in-world verification was performed. Git diff was unavailable because `git` is not on PATH.
 - Decision/blocker: mining failure outcomes call `markFatal` synchronously before `main` returns; the persistence test reloads the snapshot and verifies status and error code. Unexpected Lua exceptions are not intercepted.
+
+- Last attempted checklist item: `Define contracts, error codes, phases, and pose invariants` in Milestone 1 of `MINER_PLAN.md`; it remains unchecked.
+- Next action: define the plan's run-status and phase enums in `src/core/contracts.lua`, using the saved-state example in `MINER_PLAN.md`, then add focused tests and update both duplicate contract checklist entries only after verification.
+- Files changed for this partial implementation: `src/core/contracts.lua`, `tests/contracts.lua`, `docs/contracts.md`, and this handoff. The plan checkbox remains unchecked.
+- Verification: `lua.exe tests/contracts.lua` and `luac.exe -p src/core/contracts.lua tests/contracts.lua` passed for the implemented pose, result, work-domain, and fatal-code contracts. No in-world verification was performed.
+- Blocker: the new module does not define the full run-status set or explicit phase enum required by the plan; it currently defines work domains and only `mining`/`complete`/`error` statuses. The separate F01 checkbox has the same contract scope and also remains unchecked.
