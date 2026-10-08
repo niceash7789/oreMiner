@@ -100,6 +100,18 @@ end
 config = activeConfig()
 config.base = false
 rejected(config, "base section must be a table when supplied")
+config = activeConfig()
+config.lighting = { side = "right" }
+accepted(config, "V1 lighting side should be right")
+for _, value in ipairs({ "left", "forward", "back", "none", 1, false }) do
+    config = activeConfig()
+    config.lighting = { side = value }
+    local reason = rejected(config, "V1 should reject unsupported lighting side " .. tostring(value))
+    assert(reason == "lighting.side must be right in V1", "unexpected lighting side error")
+end
+config = activeConfig()
+config.lighting = false
+rejected(config, "lighting section must be a table when supplied")
 for _, value in ipairs({ 0, 16, 2.5 }) do
     config = activeConfig()
     config.inventory.pressureThreshold = value

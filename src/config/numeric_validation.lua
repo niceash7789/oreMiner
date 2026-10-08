@@ -50,8 +50,13 @@ function NumericValidation.validate(config)
     local fuel = tableAt(config, "fuel")
     local supplies = tableAt(config, "supplies")
     local base = tableAt(config, "base")
-    if not mining or not inventory or not fuel or not supplies or not base then
+    local lighting = tableAt(config, "lighting")
+    if not mining or not inventory or not fuel or not supplies or not base or not lighting then
         return false, "configuration sections must be tables"
+    end
+
+    if lighting.side ~= nil and lighting.side ~= "right" then
+        return false, "lighting.side must be right in V1"
     end
 
     local fixedBaseSides = {
