@@ -447,7 +447,7 @@ State invariants:
 - [ ] **MVP / P0** Save the fatal error before stopping. — **AI-2**
 - [ ] **MVP / P1** Write to a temporary file, close it, validate it, rotate the current valid file to `.bak`, and move the temporary file into place. — **AI-2**
 - [x] **MVP / P1** On load, validate schema, enum values, coordinate integers, route structure, and configuration compatibility. Version 1 snapshots now fail closed on invalid pose/config data, action/status enums, and malformed/non-reversible route graphs; expected configuration is validated before comparison. — **AI-1**
-- [ ] **MVP / P0** If both snapshots are invalid, stop with `STATE_CORRUPT`; never initialise a new run over an unrecognised active state. — **AI-2**
+- [x] **MVP / P0** If both snapshots are invalid, stop with `STATE_CORRUPT`; never initialise a new run over an unrecognised active state. `State.load` returns `STATE_MISSING` only when active and backup files are both absent; otherwise it requires a valid active or backup snapshot. Startup aborts on `STATE_CORRUPT` before prompting or creating a run. Tests cover both-invalid and both-absent cases. — **AI-2**
 
 Important limitation: local persistence cannot make movement perfectly atomic. If power is lost after the turtle physically moves but before the commit is saved, the file cannot determine whether the move happened. The intent record narrows the ambiguity to one action but does not resolve it. Without GPS, a landmark, or user confirmation, the safe result is `POSITION_UNCERTAIN`, not automatic movement.
 

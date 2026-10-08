@@ -1,10 +1,10 @@
 # Implementation status
 
-- Last completed checklist item: `MVP / P1 — On load, validate schema, enum values, coordinate integers, route structure, and configuration compatibility` in the persistence section of `MINER_PLAN.md`.
-- Next eligible unchecked persistence item: `MVP / P0 — If both snapshots are invalid, stop with STATE_CORRUPT; never initialise a new run over an unrecognised active state`.
-- Files changed: `src/persistence/state.lua`, `tests/persistence_state.lua`, `docs/persistence.md`, `MINER_PLAN.md`, and this handoff.
-- Verification: `lua.exe tests/persistence_state.lua` passed; `luac.exe -p src/persistence/state.lua tests/persistence_state.lua` passed. No in-world verification was performed.
-- Blocker/decision: none for this item. The separate unchecked `.tmp` load recovery item in the reliability test checklist remains outstanding; do not infer recovery from temporary snapshots from these load-validation changes.
+- Last completed checklist item: `MVP / P0 — If both snapshots are invalid, stop with STATE_CORRUPT; never initialise a new run over an unrecognised active state` in the persistence section of `MINER_PLAN.md`.
+- Next eligible unchecked persistence item: `MVP / P1 — Recover a valid leftover .tmp snapshot when the active and backup snapshots are invalid` in the reliability test checklist; confirm its exact wording and dependencies in `MINER_PLAN.md` before implementation.
+- Files changed for this item: `tests/persistence_state.lua`, `docs/persistence.md`, `MINER_PLAN.md`, and this handoff. Runtime load and startup behavior already enforced the requirement.
+- Verification: `lua.exe tests/persistence_state.lua` passed; `luac.exe -p src/persistence/state.lua src/persistence/checkpoint.lua tests/persistence_state.lua` passed. No in-world verification was performed.
+- Blocker/decision: `STATE_MISSING` remains the new-run path only when active and backup snapshots are both absent. A `.tmp` snapshot is still ignored; its recovery item is separate and remains unchecked.
 
 - Previous handoff item: `MVP / P0 — Reject unsupported tunnelHeight` in the configuration rules of `MINER_PLAN.md`. The numeric validator accepts supplied `mining.tunnelHeight = 2` and rejects other supplied values before run confirmation; runtime tunnel geometry was not changed.
 - Also completed: `MVP / P0 — Implement and unit-test pose transforms for all facings`; source and tests cover all four facings and failed movement behavior.

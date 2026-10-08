@@ -42,6 +42,9 @@ local textutils = { serialize = encode, unserialize = function(raw) return load(
 local config = { branch_length = 30, num_branches = 20, spacing = 3, pave = false, vein_mine = true }
 local pose = { x = 0, y = 0, z = 0, facing = 0 }
 local route = { home = "0,0,0", edges = { ["0,0,0"] = {} } }
+local absent, absentCode = State.load("fresh.json", config, fs, textutils)
+assert(absent == nil and absentCode == "STATE_MISSING",
+    "only an installation with no active or backup snapshot may start as a new run")
 local state = assert(State.new(config, pose, route, "run-1"))
 
 assert(State.save(state, "state.json", fs, textutils))
@@ -58,6 +61,8 @@ files["state.json"] = encode({ schemaVersion = 99 })
 files["state.json.bak"] = encode({ schemaVersion = 99 })
 local corrupt, corruptCode = State.load("state.json", config, fs, textutils)
 assert(corrupt == nil and corruptCode == "STATE_CORRUPT", "invalid schema must fail closed")
+assert(files["state.json"] ~= nil and files["state.json.bak"] ~= nil,
+    "failed recovery must leave both unrecognised snapshots available for diagnosis")
 
 local function assertRejectedSnapshot(changes, label)
     local invalid = State.new(config, pose, route, "invalid-run")
