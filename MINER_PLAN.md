@@ -493,7 +493,7 @@ Resume performs the recorded route in reverse hierarchy: surface origin down the
 
 Navigation backlog:
 
-- [ ] **MVP / P0** Implement and unit-test pose transforms for all facings. — **AI-2**
+- [x] **MVP / P0** Implement and unit-test pose transforms for all facings. `src/navigation/pose.lua` computes movement deltas for forward/back/up/down in every facing, with failure-safe turn transforms; `tests/navigation_pose.lua` verifies the transforms against the fake turtle. — **AI-2**
 - [ ] **MVP / P0** Implement wrappers for six movements and two turns. — **AI-2**
 - [ ] **MVP / P0** Prohibit direct turtle movement outside navigation. — **AI-2**
 - [ ] **MVP / P0** Implement `face(targetFacing)` using the fewest checked turns. — **AI-2**
