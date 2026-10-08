@@ -1,10 +1,10 @@
 # Implementation status
 
 - Last completed checklist item: `Config validation boundary values` in `MINER_PLAN.md`. `tests/numeric_validation.lua` now covers accepted/rejected endpoints for configured numeric ranges and fixed V1 values; runtime validation behavior did not need changes.
-- Next eligible unchecked item: `State encode/decode, schema validation, temporary-file recovery, and backup fallback` in the adjacent reliability test checklist; verify its dependencies in `MINER_PLAN.md` before starting.
-- Files changed for this item: `tests/numeric_validation.lua`, `docs/numeric-configuration.md`, `MINER_PLAN.md`, and this handoff. Runtime modules, route/fuel behavior, inventory behavior, and persistence behavior were not changed.
-- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/numeric_validation.lua` passed; `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p src/config/numeric_validation.lua tests/numeric_validation.lua` passed. No in-world verification was needed or performed.
-- Blockers: none. Numeric validation is a pure config boundary and does not invoke movement, fuel policy, inventory operations, or persistence.
+- Next eligible unchecked item: `State encode/decode, schema validation, temporary-file recovery, and backup fallback` in the reliability test checklist; it remains unchecked pending implementation and verification of `.tmp` load recovery.
+- Files changed for this attempted item: `docs/persistence.md` and this handoff. No runtime or test files changed; `MINER_PLAN.md` remains unchecked for this item.
+- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/persistence_state.lua` passed for existing cases; the fixture has no `.tmp` recovery case, and inspection found `State.load` ignores leftover `.tmp` files. The assigned checklist item therefore remains unverified.
+- Blocker and next action: implement safe temporary-file recovery in `src/persistence/state.lua` under a runtime persistence task, then add deterministic fixture cases for valid, invalid, and competing `.tmp`/active/backup files and rerun `tests/persistence_state.lua`. Do not check off the item before those cases pass.
 
 - Previous handoff item: `MVP / P0 — Reject unsupported tunnelHeight` in the configuration rules of `MINER_PLAN.md`. The numeric validator accepts supplied `mining.tunnelHeight = 2` and rejects other supplied values before run confirmation; runtime tunnel geometry was not changed.
 - Also completed: `MVP / P0 — Implement and unit-test pose transforms for all facings`; source and tests cover all four facings and failed movement behavior.
