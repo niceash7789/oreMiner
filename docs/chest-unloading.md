@@ -1,36 +1,31 @@
-# Chest acceptance and verified drops
+# Chest routing and verified drops
 
-## Purpose and behavior
+## Purpose and implemented behavior
 
-Accept the configured output chest by exact block ID and verify each inventory drop before continuing. The default accepted IDs are `minecraft:chest` and `minecraft:trapped_chest`; modded chest IDs can be added to `base.acceptedChestBlockIds` in `src/config/defaults.lua`.
+Accept each configured base chest by exact block ID, preserve aggregate supply quotas, and route output by item ID. The base service verifies the required left supply and right primary-output chests. With `base.separateBulk=true`, it also requires the rear chest and sends only IDs in `supplies.bulkNames` there. It then sends every remaining non-supply item—including ores and unknown modded drops—to the right chest.
 
-`src/inventory/service.lua` checks the block behind the starting position against that allowlist before unloading. `Chest.unload(turtleApi, itemConfig)` scans all 16 slots, computes retention by item ID across stacks, and drops only the excess from each eligible item. Protected fuel, torches, ores, unknown items, and configured protected items remain untouched. Each exact-count drop requires literal API success and the expected post-drop count; partial transfers return `CHEST_FULL` with the observed `remaining` count and stop the unload.
+`Chest.unload` snapshots all 16 slots and allocates each retained quota across matching stacks in slot order. Every exact-count drop requires literal API success and the expected post-drop count; a partial transfer returns `CHEST_FULL` and stops service.
 
-## Public entry points
+## Public API
 
-- `require("src.inventory.chest").acceptsBlock(blockId, baseConfig)` checks exact membership in `acceptedChestBlockIds`.
-- `require("src.inventory.chest").dropSlot(turtleApi, slot)` returns `{ ok, code, ... }`; failure codes include `DROP_SELECT_FAILED`, `DROP_FAILED`, `DROP_NOT_VERIFIED`, `CHEST_FULL`, and `DROP_COUNT_UNAVAILABLE`.
-- `require("src.inventory.chest").unload(turtleApi, itemConfig)` returns `{ ok, code, retained }`, preserving configured aggregate quotas across all slots.
-- `require("src.inventory.chest").dropSlotCount(turtleApi, slot, count)` verifies an exact requested excess drop.
-- `src.config.defaults.base.acceptedChestBlockIds` provides the default block allowlist.
-- `src.config.defaults.inventory.retainedItems` provides per-item quantity quotas; paving retention remains conditional on paving being enabled.
+- `Chest.acceptsBlock(blockId, baseConfig)` checks exact membership in `acceptedChestBlockIds`.
+- `Chest.dropSlot(turtleApi, slot)` verifies a complete-slot drop.
+- `Chest.dropSlotCount(turtleApi, slot, count)` verifies an exact requested count.
+- `Chest.unload(turtleApi, itemConfig, predicate)` unloads matching excess while preserving quotas; without a predicate it targets the primary output.
+- `Chest.unloadBulk(turtleApi, itemConfig)` targets configured bulk IDs only.
 
 ## Invariants and assumptions
 
-- Block names are treated as exact IDs. No substring or display-name matching is used.
-- A non-empty slot is complete only when `turtle.drop()` returns literal `true` and its post-drop count is zero.
-- A `true` result with items remaining returns `CHEST_FULL`; a `false` result remains `DROP_FAILED` even if the observed count reached zero.
-- `dropSlotCount` reports a partial transfer as `CHEST_FULL` and includes the source slot's observed remainder; the caller must stop rather than retry blindly.
-- Quotas are aggregate item-ID counts allocated in slot order; no slot receives privileged status.
-- Fuel, torches, ores, unknown IDs, and configured protected IDs retain the existing protected-item policy and are never dropped by quota processing.
-- The inventory service wraps unloading in `SlotGuard.run` so the selected slot is restored after the operation.
-
-`tests/inventory_mixed_partial_stacks.lua` exercises the public inventory service with an item split across two partial stacks alongside protected fuel, ore, and unprotected excess. It verifies aggregate retention, unloading, and preservation of the base pose and selected slot.
+- No substring or display-name chest matching is used.
+- Quotas are totals by item ID across arbitrary slots.
+- Fuel, torches, and the mandatory cobblestone reserve remain according to their quotas. Ores and unknown items have no implicit keep rule and route right.
+- A successful partial transfer is not completion. Count mismatches stop the operation.
+- Inventory service restores the original selected slot and canonical home facing.
 
 ## Dependencies and limitations
 
-The chest module uses the injected CC:Tweaked turtle API, item policy, and standard Lua. The inventory service covers the active baseline's single output chest check and unload loop. The planned left/right/rear chest routing and verified world ejection remain separate backlog items. Deterministic tests validate full, partial, and failed API/count handling without a Minecraft world. The active wiring fixture uses spacing 1, so the miner ends at the first main-tunnel junction `(0,0,-1,facing=0)`; its assertion reflects that current baseline route.
+The module depends on the injected CC:Tweaked turtle API and item policy. Resupply from the left chest remains a separate backlog item. In-world chest-full and modded-container behavior has not yet been exercised.
 
 ## Verification
 
-`tests/active_baseline_wiring.lua`, `tests/chest_policy.lua`, `tests/item_policy.lua`, `tests/inventory_slot_guard.lua`, `tests/inventory_pressure.lua`, and `tests/inventory_mixed_partial_stacks.lua` passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe`. Syntax checks passed with `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p` for changed Lua and fixture files.
+`tests/chest_policy.lua`, `tests/inventory_mixed_partial_stacks.lua`, and `tests/inventory_routing.lua` cover quotas, classification, side detection, error mapping, partial transfers, and restoration.

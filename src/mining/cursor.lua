@@ -102,4 +102,10 @@ function Cursor.branch(branchPair, side, phase, offset, mainOffset, nextAction)
         string.format("%s-%s-%d", side, phase, offset))
 end
 
+-- Advance the durable cursor only after its named unit has completed.
+function Cursor.transition(progress, event, updates)
+    local PhaseMachine = require("src.mining.phase_machine")
+    return PhaseMachine.transition(progress, event, Cursor, updates)
+end
+
 return Cursor

@@ -65,4 +65,30 @@ function OreClassifier.isOre(block, config)
         or matchesPattern(block.name, config.namePatterns)
 end
 
+-- CC:Tweaked exposes tags only on inspected blocks, not a global registry.
+-- Use an explicitly supplied authoritative list when one is available and do
+-- not infer missing tags from the blocks encountered so far.
+function OreClassifier.missingConfiguredTags(config)
+    if type(config) ~= "table" or type(config.availableTagKeys) ~= "table" then
+        return {}
+    end
+    local available = {}
+    for _, tag in ipairs(config.availableTagKeys) do
+        if type(tag) == "string" then available[tag] = true end
+    end
+    local missing, seen = {}, {}
+    for _, configured in ipairs({ config.tags, config.ignoreTags }) do
+        if type(configured) == "table" then
+            for _, tag in ipairs(configured) do
+                if type(tag) == "string" and not available[tag] and not seen[tag] then
+                    seen[tag] = true
+                    missing[#missing + 1] = tag
+                end
+            end
+        end
+    end
+    table.sort(missing)
+    return missing
+end
+
 return OreClassifier

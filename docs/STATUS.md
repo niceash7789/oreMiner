@@ -6,7 +6,6 @@
 - Files changed: `docs/ore-classification.md` and this handoff.
 - Verification: inspected the classifier, defaults, coordinator call sites, original reference, plan, and official CC:Tweaked turtle API. No runtime tests or syntax checks run because no implementation was possible without inventing unavailable tag-registry behavior.
 - Blocker/decision: do not warn based on sampled block tags; that could falsely report a valid but not-yet-encountered tag as absent. The warning must not become a fatal config error.
-# Implementation status
 
 - Blocked checklist item: `MVP / P0 — Save after changing the logical mining cursor, before beginning the next unit of work` remains unchecked. The assigned assumption that cursor state already exists is not true in the current code: `src/branch_miner.lua` uses transient `branch`/`step` loop variables, `src/persistence/state.lua` stores only the generic `active_baseline / continue` progress marker, and startup refuses incomplete runs. Exact next action: define the persistent logical cursor and its safe advancement boundary, then save it through `Checkpoint` before starting the following unit; that prerequisite is outside this assignment's supplied assumptions. No runtime or test changes were made. Reference file was inspected and remains unchanged; no tests were run because no implementation was possible without inventing the missing cursor contract.
 - Last completed checklist item: `MVP / P0 — Save the fatal error before stopping` in the persistence checkpoints section of `MINER_PLAN.md`.
@@ -97,3 +96,20 @@
 - Files changed for this item: `src/mining/cursor.lua`, `src/persistence/state.lua`, `src/persistence/checkpoint.lua`, `src/core/contracts.lua`, `src/branch_miner.lua`, `tests/mining_cursor.lua`, `tests/persistence_state.lua`, `tests/contracts.lua`, `tests/active_baseline_wiring.lua`, `docs/persistence.md`, `docs/contracts.md`, `MINER_PLAN.md`, and this handoff.
 - Verification: `tests/mining_cursor.lua`, `tests/persistence_state.lua`, `tests/contracts.lua`, and `tests/active_baseline_wiring.lua` passed with Lua 5.4; `luac.exe -p` passed for all changed Lua files. `git diff --check` passed. No in-world verification was performed.
 - Decision/limitation: the saved cursor describes the next bounded unit in the existing surface-level baseline and is written before that unit starts. It does not add resume dispatch, stairs/floors, or persisted vein traversal. Startup still refuses incomplete runs, and older development snapshots containing only the generic `active_baseline / continue` marker fail closed.
+
+## Dispatcher handoff — 2026-10-09 06:45 UTC
+
+- Re-read `AGENTS.md`, `docs/STATUS.md`, the surface-entry/stairs/floor-grid docs, the relevant `MINER_PLAN.md` sections, and the active coordinator/reference context. The assigned surface-entry/stairs/landing/main-shaft item remains unchecked.
+- Reservation audit: the visible project snapshot lists this assigned worker and dispatcher runs, with no other visible `oreMiner item: ...` implementation worker. The chat inventory is capped at 50 and has no pagination; older unfinished workers therefore cannot be ruled out. Independence remains uncertain under the task's required check.
+- No source, tests, or plan checkbox changed. Verification not run. This handoff note is the only repository change.
+- Blocker: cannot establish that the exclusive coordinator, navigation/checkpoint contracts, tests, and focused docs are free from an older reservation. Exact next action: obtain a complete reservation audit (including older project chats) or explicit dispatcher confirmation that no other implementation worker is active; then restart this item from its required file reads and recheck target files before editing.
+## Dispatcher handoff — 2026-10-09 07:20 UTC
+
+- Prior active implementation count: 0 unfinished implementation chats visible; the known assigned worker is complete. Older chats are not enumerable past the 50-item listing cap.
+- No worker dispatched because local-project thread creation has repeatedly failed. No independent candidate was proven; the first P0 surface/stairs item is coupled to the exclusive coordinator and persisted cursor, while other P0 candidates alter shared navigation/persistence behavior.
+- No implementation item was changed in this run. Verification not run; no Lua executable is available. No chat archive or automation pause.
+- Blocker and next action: resolve the dispatch API or perform a single-worker integration of stair/landing cursor fields and the coordinator path, then verify the complete route before checking the plan item.
+## Dispatcher handoff — 2026-10-09 08:00 UTC
+
+- Prior active implementation chats: 0. Recent archived workers for dig retry outcomes, slot quota accounting, threshold service, and vein cap reporting were read and show completed turns; older visible implementation chats are not active. No reservations retained.
+- Blocker key: SURFACE-ENTRY-INTEGRATION. Evidence: the assigned checkbox covers a complete multi-floor route and landing-driven main-shaft coordinator; the active coordinator only runs the legacy origin-level pattern, and the persisted snapshot lacks landing/staircase state. Dependencies S01/S02/M01/P03 and M02 are unchecked. Attempts: 1 fallback assessment after 3 thread-creation failures. Current owner: none. Exact next action: implement the dependency chain in plan order, beginning with unchecked S01 coordinator integration and focused tests; then extend phase/persistence state for S02 before claiming this integrated checkbox. User input required: no; no plan conflict found.

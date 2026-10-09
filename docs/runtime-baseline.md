@@ -19,14 +19,14 @@ Completed modules are wired immediately when they replace behavior the active ba
 ## Invariants and assumptions
 
 - `reference/branch_miner_phase1.lua` remains the read-only original for comparison.
-- `src/branch_miner.lua` is the active writable copy and currently retains the original interactive configuration and `main()` call.
+- `src/branch_miner.lua` is the active writable copy. It loads the validated root `config.lua`, shows a read-only summary/confirmation, and retains the current `main()` call.
 - Paths are resolved from `shell.getRunningProgram()`, so the launcher does not depend on the shell's current directory.
 - This wiring is migration scaffolding, not evidence that any unchecked plan defect has been corrected.
 - `MINER_PLAN.md` remains authoritative for the behavior of every migrated module.
 
 ## Dependencies and current limitations
 
-The launcher depends on the CC:Tweaked `turtle`, `fs`, and `shell` globals. Until the relevant todo items correct them, the active source copy still has the defects catalogued under “Fix before reuse” and does not satisfy the planned surface-entry, staircase, chest-layout, fuel-route, bounded-retry, persistence, or modularity requirements. Do not treat this baseline as V1-complete or safe for unattended operation.
+The launcher depends on the CC:Tweaked `turtle`, `fs`, and `shell` globals. Configuration is now file-backed and validated, but the active coordinator does not yet run the isolated surface-entry/stairs modules or the later multi-floor phase machine. Do not treat this baseline as V1-complete or safe for unattended operation.
 
 ## Verification
 

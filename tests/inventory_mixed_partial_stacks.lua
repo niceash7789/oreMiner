@@ -43,7 +43,7 @@ local itemConfig = {
     ore = { names = {}, valuableNames = {}, ignoreNames = {}, namePatterns = {} },
 }
 local config = {
-    inventory = { pressureThreshold = 1 },
+    inventory = { returnThreshold = 1, autoConsolidate = false },
     base = defaults.base,
 }
 local pose = { x = 0, y = 0, z = 0, facing = 0 }
@@ -66,7 +66,7 @@ assert(stacks[1].count == 3 and stacks[4].count == 3,
     "aggregate quota must retain six items across mixed partial stacks: "
         .. tostring(stacks[1].count) .. "/" .. tostring(stacks[4].count))
 assert(stacks[7].count == 2, "coal fuel must remain untouched")
-assert(stacks[10].count == 4, "ore must remain untouched")
+assert(stacks[10] == nil or stacks[10].count == 0, "ore must unload to the primary output chest")
 assert(stacks[13] == nil or stacks[13].count == 0, "unprotected material without a quota must unload")
 assert(selected == 9, "service must restore the selected slot")
 assert(pose.x == 0 and pose.y == 0 and pose.z == 0 and pose.facing == 0,

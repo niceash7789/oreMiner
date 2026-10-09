@@ -7,11 +7,26 @@ local function copyPose(pose)
     return { x = pose.x, y = pose.y, z = pose.z, facing = pose.facing }
 end
 
-function FakeTurtle.new(pose)
-    return setmetatable({ pose = copyPose(pose) }, FakeTurtle)
+function FakeTurtle.new(pose, outcomes)
+    return setmetatable({ pose = copyPose(pose), outcomes = outcomes or {}, calls = {} }, FakeTurtle)
+end
+
+function FakeTurtle:setOutcomes(action, outcomes)
+    assert(type(action) == "string" and type(outcomes) == "table")
+    self.outcomes[action] = {}
+    for index, value in ipairs(outcomes) do self.outcomes[action][index] = value end
+end
+
+function FakeTurtle:nextOutcome(action, explicit)
+    self.calls[#self.calls + 1] = action
+    if explicit ~= nil then return explicit end
+    local queue = self.outcomes[action]
+    if type(queue) == "table" and #queue > 0 then return table.remove(queue, 1) end
+    return nil
 end
 
 function FakeTurtle:move(movement, apiResult)
+    apiResult = self:nextOutcome(movement, apiResult)
     if apiResult ~= true then
         return apiResult
     end
@@ -40,6 +55,7 @@ function FakeTurtle:move(movement, apiResult)
 end
 
 function FakeTurtle:turn(direction, apiResult)
+    apiResult = self:nextOutcome("turn_" .. direction, apiResult)
     if apiResult ~= true then
         return apiResult
     end
@@ -51,6 +67,14 @@ function FakeTurtle:turn(direction, apiResult)
         error("unsupported fake turn: " .. tostring(direction))
     end
     return true
+end
+
+function FakeTurtle:callCount(action)
+    local count = 0
+    for _, called in ipairs(self.calls) do
+        if called == action then count = count + 1 end
+    end
+    return count
 end
 
 return FakeTurtle

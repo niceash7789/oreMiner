@@ -32,6 +32,9 @@ assert(not itemPolicy.isFuel("minecraft:coal", customConfig))
 assert(not itemPolicy.isPaving("minecraft:cobblestone", customConfig))
 assert(not itemPolicy.isFuel("minecraft:coal", {}))
 assert(not itemPolicy.isPaving("minecraft:cobblestone", {}))
+assert(itemPolicy.isBulk("minecraft:cobblestone", defaults))
+assert(itemPolicy.isBulk("minecraft:gravel", defaults))
+assert(not itemPolicy.isBulk("minecraft:diamond_ore", defaults))
 
 local enabled = {
     fuel = { allowedItems = { "minecraft:coal" } },

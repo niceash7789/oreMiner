@@ -31,8 +31,28 @@ local unbreakable = DigClear.run({
 assert(not unbreakable.ok and unbreakable.code == "UNBREAKABLE_BLOCK",
     "failed dig must remain a distinct safety error")
 
+local overBudget = DigClear.run({
+    detect = function() error("invalid policy must not inspect") end,
+    dig = function() error("invalid policy must not dig") end,
+    now = function() return 0 end,
+    maxAttempts = 65,
+    maxElapsed = 3,
+})
+assert(not overBudget.ok and overBudget.code == "INVALID_DIG_CLEAR_POLICY",
+    "dig attempts must have a hard upper bound")
+
+local invalidClock = DigClear.run({
+    detect = function() error("invalid clock must stop before inspection") end,
+    dig = function() error("invalid clock must stop before digging") end,
+    now = function() return 0 / 0 end,
+    maxAttempts = 4,
+    maxElapsed = 3,
+})
+assert(not invalidClock.ok and invalidClock.code == "INVALID_DIG_CLEAR_CLOCK")
+
 result = scenario(8, { maxAttempts = 2, maxElapsed = 5 })
-assert(not result.ok and result.code == "DIG_ATTEMPTS_EXHAUSTED" and result.attempts == 2)
+assert(not result.ok and result.code == "BLOCKED" and result.attempts == 2,
+    "a persistent obstruction must stop as BLOCKED at the attempt limit")
 
 local state = { blocks = 8, time = 0, digs = 0 }
 result = DigClear.run({
@@ -43,6 +63,35 @@ result = DigClear.run({
     now = function() return state.time end,
     wait = function() state.time = state.time + 0.6 end,
 })
-assert(not result.ok and result.code == "DIG_TIME_EXHAUSTED" and result.attempts == 2)
+assert(not result.ok and result.code == "BLOCKED" and result.attempts == 2,
+    "a persistent obstruction must stop as BLOCKED at the time limit")
+
+local blockState = { blocks = { "minecraft:gravel", "minecraft:sand" }, index = 1 }
+local observed = {}
+result = DigClear.run({
+    maxAttempts = 4,
+    maxElapsed = 3,
+    detect = function() return blockState.index <= #blockState.blocks end,
+    inspect = function()
+        return { name = blockState.blocks[blockState.index] }
+    end,
+    dig = function() blockState.index = blockState.index + 1; return true end,
+    onBlock = function(name, attempt) observed[#observed + 1] = { name, attempt } end,
+    now = function() return 0 end,
+})
+assert(result.ok and #observed == 2
+    and observed[1][1] == "minecraft:gravel" and observed[1][2] == 1
+    and observed[2][1] == "minecraft:sand" and observed[2][2] == 2,
+    "each successful dig retry must report the block inspected before that dig")
+
+local invalidInspection = DigClear.run({
+    maxAttempts = 2,
+    maxElapsed = 3,
+    detect = function() return true end,
+    inspect = function() return false end,
+    dig = function() error("invalid inspection must stop before digging") end,
+    now = function() return 0 end,
+})
+assert(not invalidInspection.ok and invalidInspection.code == "INVALID_BLOCK_INSPECTION")
 
 print("dig_clear: ok")

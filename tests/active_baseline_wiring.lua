@@ -2,6 +2,7 @@ local Pose = require("src.navigation.pose")
 local SlotGuard = require("src.inventory.slot_guard")
 local ItemPolicy = require("src.config.item_policy")
 local defaults = require("src.config.defaults")
+local fileConfig = require("config")
 
 local poseMoves = 0
 local guardedOperations = 0
@@ -15,6 +16,11 @@ local originalPavingEnabled = defaults.paving.enabled
 local originalRetainedCount = defaults.paving.retainedCount
 local originalPavingProtected = defaults.paving.protectedItems
 local originalPavingIsPaving = defaults.paving.isPaving
+local originalBranchLength = fileConfig.mining.branchLength
+local originalBranchPairs = fileConfig.mining.branchPairs
+local originalBranchSpacing = fileConfig.mining.branchSpacing
+local originalFeaturePaving = fileConfig.features.paving
+local originalOreEnabled = fileConfig.ore.enabled
 
 Pose.afterMove = function(...)
     poseMoves = poseMoves + 1
@@ -36,6 +42,11 @@ defaults.paving.retainedCount = 0
 defaults.paving.allowedItems = { "test:paver" }
 defaults.paving.protectedItems = { "minecraft:coal", "minecraft:torch" }
 defaults.paving.isPaving = true
+fileConfig.mining.branchLength = 1
+fileConfig.mining.branchPairs = 1
+fileConfig.mining.branchSpacing = 2
+fileConfig.features.paving = false
+fileConfig.ore.enabled = false
 local activeConfig = require("src.config.item_policy")
 local originalMayConsume = activeConfig.mayConsumeForPaving
 local originalPolicyIsPaving = activeConfig.isPaving
@@ -137,7 +148,7 @@ local turtleApi = {
     drop = function() return true end,
 }
 
-local inputs = { "1", "1", "2", "n", "n", "y", "y" }
+local inputs = { "y" }
 local inputIndex = 0
 local output = {}
 local failedOneReport = false
@@ -214,13 +225,18 @@ defaults.paving.enabled = originalPavingEnabled
 defaults.paving.retainedCount = originalRetainedCount
 defaults.paving.protectedItems = originalPavingProtected
 defaults.paving.isPaving = originalPavingIsPaving
+fileConfig.mining.branchLength = originalBranchLength
+fileConfig.mining.branchPairs = originalBranchPairs
+fileConfig.mining.branchSpacing = originalBranchSpacing
+fileConfig.features.paving = originalFeaturePaving
+fileConfig.ore.enabled = originalOreEnabled
 activeConfig.mayConsumeForPaving = originalMayConsume
 activeConfig.isPaving = originalPolicyIsPaving
 
 assert(ok, runtimeError)
 assert(failedOneReport, "the test should inject an optional reporting failure")
 assert(ok, runtimeError)
-assert(guardedOperations == 0, "disabled default paving should not select slots")
+assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard")
 assert(pavingChecks == 0, "disabled default paving should not classify items")
 assert(placements == 0, "disabled default paving should not place blocks")
 assert(selectedSlot == 5, "active helpers should restore the original selected slot")

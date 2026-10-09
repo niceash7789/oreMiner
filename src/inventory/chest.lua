@@ -56,8 +56,10 @@ function Chest.dropSlot(turtleApi, slot)
     return { ok = true, code = "DROP_COMPLETE", transferred = before - after }
 end
 
--- Preserve an item quota across stacks by allowing only the aggregate excess to drop.
-function Chest.unload(turtleApi, itemConfig)
+-- Preserve item quotas across stacks and drop matching excess. The optional
+-- predicate selects a destination class; omitted means the primary output and
+-- therefore accepts every non-retained item.
+function Chest.unload(turtleApi, itemConfig, shouldUnload)
     if type(turtleApi) ~= "table" or type(turtleApi.getItemCount) ~= "function"
         or type(turtleApi.getItemDetail) ~= "function" then
         return { ok = false, code = "UNLOAD_API_UNAVAILABLE" }
@@ -84,22 +86,28 @@ function Chest.unload(turtleApi, itemConfig)
     for slot = 1, 16 do
         if counts[slot] > 0 then
             local itemId = itemIds[slot]
-            local keep = counts[slot]
-            if itemId and not ItemPolicy.isProtected(itemId, itemConfig) then
-                local quota = ItemPolicy.retainedCount(itemId, itemConfig)
-                local remainingQuota = math.max(0, quota - (retained[itemId] or 0))
-                keep = math.min(counts[slot], remainingQuota)
-                retained[itemId] = (retained[itemId] or 0) + keep
-            end
+            local quota = itemId and ItemPolicy.retainedCount(itemId, itemConfig) or counts[slot]
+            local remainingQuota = math.max(0, quota - (retained[itemId] or 0))
+            local keep = math.min(counts[slot], remainingQuota)
+            if itemId then retained[itemId] = (retained[itemId] or 0) + keep end
 
             local dropCount = counts[slot] - keep
-            if dropCount > 0 then
+            local selectedForDestination = shouldUnload == nil
+                or (itemId and shouldUnload(itemId) == true)
+            if dropCount > 0 and selectedForDestination then
                 local result = Chest.dropSlotCount(turtleApi, slot, dropCount)
                 if not result.ok then return result end
             end
         end
     end
     return { ok = true, code = "UNLOAD_COMPLETE", retained = retained }
+end
+
+
+function Chest.unloadBulk(turtleApi, itemConfig)
+    return Chest.unload(turtleApi, itemConfig, function(itemId)
+        return ItemPolicy.isBulk(itemId, itemConfig)
+    end)
 end
 
 -- Drop exactly the requested excess and verify the selected source count changed by that amount.

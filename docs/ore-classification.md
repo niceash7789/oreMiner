@@ -35,11 +35,11 @@ The active coordinator applies the same classifier to forward, up, down, and adj
 
 ## Dependencies and limitations
 
-The classifier has no turtle or external dependencies. There is no runtime config loader yet, so users change the default policy in `src/config/defaults.lua`. The code cannot determine whether a configured tag is absent from a modpack; warning about unavailable tags requires a tag registry or validation layer. Vein traversal remains bounded by its block and distance caps and returns `VEIN_INVALID_QUALIFIER` if no predicate is supplied.
+The classifier has no turtle or external dependencies. Users configure ore policy in root `config.lua`; the validated normalized copy is supplied to the active coordinator. `OreClassifier.missingConfiguredTags(config)` returns a deterministic warning list only when `config.availableTagKeys` supplies an authoritative registry; without one it returns no speculative warnings. Vein traversal remains bounded by its block and distance caps and returns `VEIN_INVALID_QUALIFIER` if no predicate is supplied.
 
 ## Verification
 
 Run `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/ore_classifier.lua` and the focused vein/fuel tests listed in `docs/STATUS.md`.
-## Tag availability warning limitation
+## Tag availability warning
 
-The active API provides tags only in the result for a specific block returned by `turtle.inspect*`; it does not expose the current modpack's complete tag-key registry. The code therefore cannot truthfully distinguish an absent configured tag from a valid tag not yet observed. Do not infer absence from sampled world blocks. Revisit this warning only if a supported registry API or explicit available-tag source is provided. The relevant API is documented at [CC:Tweaked turtle API](https://tweaked.cc/module/turtle.html#v:turtle.inspect).
+The active API provides tags only for a specific block returned by `turtle.inspect*`; it does not expose the current modpack's complete registry. The implementation never infers absence from sampled blocks. Pack authors may provide `ore.availableTagKeys` to enable warning-only validation before movement.

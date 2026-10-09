@@ -1,21 +1,33 @@
-# Numeric configuration validation
+# Validated configuration
 
 ## Purpose
 
-Reject unsafe numeric settings before the active baseline can begin a run, while the configuration schema is still migrating.
+Load one versioned V1 job configuration, reject invalid or incomplete settings before the turtle acts, and provide an immutable normalized copy to the coordinator.
 
 ## Implemented behavior
 
-`src.config.numeric_validation.validate(config)` accepts either the active baseline field names or the corresponding nested plan schema fields. It checks branch length in `1..256`, branch pairs in `1..100`, and branch spacing in `2..64`, along with positive integer floor and stair-step counts; inventory thresholds from 1 through 15; and non-negative integer fuel reserves, supply targets, and item quotas. The same branch limits apply to the active CLI names (`branch_length`, `num_branches`, `spacing`) and nested names (`mining.branchLength`, `mining.branchPairs`, `mining.branchSpacing`). Supplied V1 route geometry fields must be `mining.stairStepsPerFloor = 8`, `mining.surfaceEntryLength = 4`, `mining.stairWidth = 3`, `mining.stairHeight = 3`, `mining.tunnelHeight = 2`, and `mining.floorMainTurn = "right"`. Supplied `base.supply`, `base.primaryOutput`, and `base.bulkOutput` sides must be `left`, `right`, and `back`, respectively. Supplied `lighting.side` must be `right`; this names the planned outbound route's right-hand side. These schema fields remain available for later configuration, but unsupported supplied values are rejected; omission remains valid while the active baseline has no configuration for those features. Validation runs before the start prompt and before any turtle movement.
+Root `config.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
+
+The coordinator loads and normalizes this file before constructing a run, shows a read-only summary, and asks only for start confirmation. Branch dimensions, paving, and ore behavior are no longer changed interactively. Invalid configuration raises `CONFIG_INVALID` before persistence setup, movement, digging, refuelling, or inventory actions.
+
+`src.config.numeric_validation.validate(config)` remains the pure migration-compatible lower-level validator. It continues accepting omitted nested fields for focused legacy callers, while the loader requires the complete file schema.
+
+## Public entry points
+
+- `require("config")` returns the operator-edited V1 configuration table.
+- `require("src.config.loader").normalize(config)` returns `normalized, outcome`.
+- `require("src.config.numeric_validation").validate(config)` remains available for lower-level numeric/fixed-geometry checks.
 
 ## Invariants and assumptions
 
-- Validation is pure and performs no turtle action or inventory operation.
-- Missing optional fields are allowed while the runtime config is migrated; supplied branch ranges are bounded as above, and supplied stair geometry, tunnel height, floor-main turn, chest sides, and lighting side must match the fixed V1 values exactly. Tunnel-height validation does not change runtime geometry. Lighting-side validation does not implement torch placement.
+- Validation and normalization are pure and perform no turtle, filesystem, or inventory operation.
+- The complete loader requires schema version 1 and all documented V1 sections. Fixed stairs geometry, tunnel height, floor-main turn, chest sides, and lighting side must match the implemented values.
+- The normalized table is a deep copy. Runtime compatibility aliases do not appear in or mutate `config.lua`.
+- Configuration is loaded once for a run and is not changed after confirmation.
 - Configuration validation is independent of movement, inventory, and persistence modules.
 
 ## Dependencies and limitations
 
-The validator uses only Lua tables, `math.floor`, and `math.huge`. It does not implement tunnel traversal or support configurable tunnel geometry.
+The loader depends on the numeric validator and shared structured-result helper. It uses only CC:Tweaked-compatible Lua features and does not dynamically execute configuration text beyond normal `require` loading.
 
-The deterministic test is `tests/numeric_validation.lua`; it covers accepted fixed geometry including tunnel height 2, right floor-main turn and lighting side, canonical base chest sides, branch lower and upper bounds, numeric boundaries (thresholds include both 1 and 15, and reserves/supplies/quotas include zero), plus rejection of fractional, negative, out-of-range, and non-finite values. Fixed geometry accepts its exact V1 value and rejects neighboring or malformed values. No in-world verification is performed by this check.
+`tests/config_loader.lua` verifies the shipped file, copy/normalization behavior, required fields, lists, flags, patterns, and representative invalid values. `tests/config_startup.lua` proves the active coordinator rejects an invalid schema with zero turtle calls. `tests/numeric_validation.lua` retains exhaustive numeric boundary coverage, and `tests/active_baseline_wiring.lua` exercises a short run using file-backed values. Floor/stairs execution does not consume its new configuration fields until those later phases are wired. No in-world verification has been performed.

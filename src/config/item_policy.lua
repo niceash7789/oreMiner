@@ -25,6 +25,14 @@ function ItemPolicy.isPaving(itemId, config)
     return contains(config and config.paving and config.paving.allowedItems, itemId)
 end
 
+function ItemPolicy.isBulk(itemId, config)
+    return contains(config and config.supplies and config.supplies.bulkNames, itemId)
+end
+
+function ItemPolicy.isSupply(itemId, config)
+    return ItemPolicy.retainedCount(itemId, config) > 0
+end
+
 function ItemPolicy.retainedCount(itemId, config)
     local configured = config and config.inventory and config.inventory.retainedItems
     if itemId == "minecraft:cobblestone" then

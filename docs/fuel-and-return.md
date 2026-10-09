@@ -8,6 +8,8 @@ Keep ordinary return travel on edges the turtle has already traversed and keep f
 
 `KnownRoute.hasEdge(route, fromPose, toPose)` confirms that a proposed return step is an existing recorded edge. `ReturnMove.run(options)` rejects unknown edges without moving, retries movement on a known edge within the supplied bound, and returns `RETURN_BLOCKED` after persistent failure. The coordinator's `safeForward()` uses this helper; return movement no longer invokes `digForward()` as a shortcut fallback. Successful physical moves continue to update pose and route only through the checked movement commit path.
 
+The startup estimate no longer prints “continue anyway.” If permitted onboard fuel cannot satisfy that estimate, the run stops with `NO_FUEL` before mining movement. Every later move remains independently gated by the exact known-route cost plus reserve.
+
 ## Public entry points
 
 - `require("src.fuel.known_route").hasEdge(route, fromPose, toPose)`

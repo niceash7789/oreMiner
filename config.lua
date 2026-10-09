@@ -1,0 +1,97 @@
+-- V1 single-turtle job configuration. The runtime validates and copies this
+-- table before any movement or inventory action.
+return {
+    schemaVersion = 1,
+    mining = {
+        floorCount = 4,
+        surfaceEntryLength = 4,
+        stairStepsPerFloor = 8,
+        stairWidth = 3,
+        stairHeight = 3,
+        floorMainTurn = "right",
+        branchLength = 30,
+        branchPairs = 20,
+        branchSpacing = 3,
+        tunnelHeight = 2,
+        scanMainTunnel = true,
+    },
+    inventory = {
+        returnThreshold = 14,
+        autoConsolidate = true,
+        autoUnload = true,
+        keep = {
+            ["minecraft:coal"] = 64,
+            ["minecraft:torch"] = 64,
+            ["minecraft:cobblestone"] = 64,
+        },
+    },
+    fuel = {
+        autoRefuel = true,
+        reserve = 100,
+        allowedItems = {
+            "minecraft:coal",
+            "minecraft:charcoal",
+            "minecraft:coal_block",
+        },
+    },
+    ore = {
+        enabled = true,
+        mode = "all",
+        names = {},
+        tags = { "c:ores", "forge:ores" },
+        namePatterns = { "_ore$" },
+        ignoreNames = {},
+        ignoreTags = {},
+        valuableNames = {},
+        maxBlocks = 64,
+        maxRadius = 8,
+    },
+    base = {
+        supply = "left",
+        primaryOutput = "right",
+        bulkOutput = "back",
+        separateBulk = false,
+        acceptedChestBlockIds = {
+            "minecraft:chest",
+            "minecraft:trapped_chest",
+        },
+    },
+    supplies = {
+        torchTarget = 64,
+        minimumTorchesToDepart = 8,
+        bulkNames = {
+            "minecraft:cobblestone",
+            "minecraft:cobbled_deepslate",
+            "minecraft:gravel",
+            "minecraft:dirt",
+            "minecraft:netherrack",
+        },
+    },
+    lighting = {
+        enabled = true,
+        itemNames = { "minecraft:torch" },
+        stairInterval = 4,
+        tunnelInterval = 8,
+        skipLandingSlice = true,
+        side = "right",
+        wallHeight = 1,
+    },
+    safety = {
+        moveRetries = 5,
+        digRetries = 12,
+        digTimeLimit = 5,
+        entityRetries = 5,
+        retryDelay = 0.4,
+        stopOnLiquid = true,
+    },
+    features = {
+        paving = false,
+        persistence = true,
+        autoResupply = true,
+        torches = true,
+    },
+    paving = {
+        allowedItems = { "minecraft:cobblestone" },
+        retainedTarget = 64,
+    },
+}

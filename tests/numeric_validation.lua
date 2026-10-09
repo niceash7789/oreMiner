@@ -7,7 +7,7 @@ local function activeConfig()
         spacing = 3,
         fuel_reserve = 100,
         inventory = {
-            pressureThreshold = 14,
+            returnThreshold = 14,
             retainedItems = { ["minecraft:cobblestone"] = 64 },
         },
     }
@@ -171,6 +171,21 @@ config = activeConfig()
 config.base = false
 rejected(config, "base section must be a table when supplied")
 config = activeConfig()
+config.base = { separateBulk = true }
+accepted(config, "boolean bulk separation should be accepted")
+config.base.separateBulk = "yes"
+rejected(config, "bulk separation must be boolean")
+config = activeConfig()
+config.supplies = { bulkNames = { "minecraft:cobblestone", "minecraft:gravel" } }
+accepted(config, "bulk item IDs should be accepted")
+config.supplies.bulkNames = { "minecraft:cobblestone", false }
+rejected(config, "bulk item IDs must be strings")
+config = activeConfig()
+config.ore = { availableTagKeys = { "c:ores" } }
+accepted(config, "authoritative tag keys should be accepted")
+config.ore.availableTagKeys = "c:ores"
+rejected(config, "authoritative tag keys must be a table")
+config = activeConfig()
 config.lighting = { side = "right" }
 accepted(config, "V1 lighting side should be right")
 for _, value in ipairs({ "left", "forward", "back", "none", 1, false }) do
@@ -184,15 +199,13 @@ config.lighting = false
 rejected(config, "lighting section must be a table when supplied")
 for _, value in ipairs({ 0, 16, 2.5 }) do
     config = activeConfig()
-    config.inventory.pressureThreshold = value
+    config.inventory.returnThreshold = value
     rejected(config, "threshold should reject " .. value)
 end
-for _, key in ipairs({ "returnThreshold", "pressureThreshold" }) do
-    for _, value in ipairs({ 1, 15 }) do
-        config = activeConfig()
-        config.inventory[key] = value
-        accepted(config, key .. " should accept boundary " .. value)
-    end
+for _, value in ipairs({ 1, 15 }) do
+    config = activeConfig()
+    config.inventory.returnThreshold = value
+    accepted(config, "returnThreshold should accept boundary " .. value)
 end
 for _, value in ipairs({ -1, 1.5 }) do
     config = activeConfig()

@@ -1,7 +1,8 @@
 -- Item-ID classifications retained from the phase-one reference miner.
 return {
     inventory = {
-        pressureThreshold = 14,
+        returnThreshold = 14,
+        autoConsolidate = true,
         fuelRetainedCount = 64,
         torchRetainedCount = 64,
         retainedItems = {
@@ -34,9 +35,24 @@ return {
         },
     },
     base = {
+        supply = "left",
+        primaryOutput = "right",
+        bulkOutput = "back",
+        separateBulk = false,
         acceptedChestBlockIds = {
             "minecraft:chest",
             "minecraft:trapped_chest",
+        },
+    },
+    supplies = {
+        torchTarget = 64,
+        minimumTorchesToDepart = 8,
+        bulkNames = {
+            "minecraft:cobblestone",
+            "minecraft:cobbled_deepslate",
+            "minecraft:gravel",
+            "minecraft:dirt",
+            "minecraft:netherrack",
         },
     },
     ore = {

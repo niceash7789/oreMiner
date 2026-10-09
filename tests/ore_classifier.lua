@@ -62,4 +62,14 @@ assert(not ore({ tags = { ["c:ores"] = true } }, defaults.ore), "missing block n
 assert(not ore({ name = "example:unknown", tags = "c:ores" }, defaults.ore), "invalid tags must be rejected")
 assert(not ore({ name = "example:unknown" }, nil), "missing config must be rejected")
 
+local missing = OreClassifier.missingConfiguredTags({
+    tags = { "c:ores", "mod:missing" },
+    ignoreTags = { "mod:ignored", "mod:missing" },
+    availableTagKeys = { "c:ores", "mod:ignored" },
+})
+assert(#missing == 1 and missing[1] == "mod:missing",
+    "authoritative tag registry should produce deduplicated warnings")
+assert(#OreClassifier.missingConfiguredTags(defaults.ore) == 0,
+    "absence of a registry must not produce speculative missing-tag warnings")
+
 print("ore classifier tests passed")

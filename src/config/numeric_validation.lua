@@ -59,7 +59,8 @@ function NumericValidation.validate(config)
     local supplies = tableAt(config, "supplies")
     local base = tableAt(config, "base")
     local lighting = tableAt(config, "lighting")
-    if not mining or not inventory or not fuel or not supplies or not base or not lighting then
+    local ore = tableAt(config, "ore")
+    if not mining or not inventory or not fuel or not supplies or not base or not lighting or not ore then
         return false, "configuration sections must be tables"
     end
 
@@ -76,6 +77,29 @@ function NumericValidation.validate(config)
         local value = base[item[1]]
         if value ~= nil and value ~= item[2] then
             return false, "base." .. item[1] .. " must be " .. item[2] .. " in V1"
+        end
+    end
+    if base.separateBulk ~= nil and type(base.separateBulk) ~= "boolean" then
+        return false, "base.separateBulk must be a boolean"
+    end
+    if supplies.bulkNames ~= nil then
+        if type(supplies.bulkNames) ~= "table" then
+            return false, "supplies.bulkNames must be a table"
+        end
+        for _, itemId in ipairs(supplies.bulkNames) do
+            if type(itemId) ~= "string" or itemId == "" then
+                return false, "supplies.bulkNames must contain non-empty item IDs"
+            end
+        end
+    end
+    if ore.availableTagKeys ~= nil then
+        if type(ore.availableTagKeys) ~= "table" then
+            return false, "ore.availableTagKeys must be a table"
+        end
+        for _, tag in ipairs(ore.availableTagKeys) do
+            if type(tag) ~= "string" or tag == "" then
+                return false, "ore.availableTagKeys must contain non-empty tag keys"
+            end
         end
     end
 
@@ -134,9 +158,6 @@ function NumericValidation.validate(config)
     end
     ok, reason = checkThreshold(inventory.returnThreshold, "inventory.returnThreshold")
     if not ok then return false, reason end
-    ok, reason = checkThreshold(inventory.pressureThreshold, "inventory.pressureThreshold")
-    if not ok then return false, reason end
-
     local function checkReserve(value, name)
         if value ~= nil and not nonNegative(value) then
             return false, name .. " must be a non-negative integer"

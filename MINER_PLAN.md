@@ -124,12 +124,12 @@ Cost-control workflow:
 ### Replace outright
 
 - [ ] **MVP / P0** Replace the assumption that `(0,0,0)` is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block. — **AI-2**
-- [ ] **MVP / P0** Replace the single rear-chest service assumption with the required left supply/right primary-output layout and optional rear bulk routing. — **AI-2**
+- [x] **MVP / P0** Replace the single rear-chest service assumption with the required left supply/right primary-output layout and optional rear bulk routing. — **AI-2** The active service verifies exact chest IDs on each configured side and restores canonical facing.
 - [ ] **MVP / P0** Replace direct coordinate-axis return from arbitrary positions with hierarchical route unwinding: vein to checkpoint, shaft to junction, main shaft to the landing centre, recorded stairs to surface origin. — **AI-2**
 - [ ] **MVP / P0** Replace recursive call-stack backtracking with an explicit, persisted route stack. — **AI-2**
-- [ ] **MVP / P0** Replace “continue anyway” fuel behaviour with `RETURN_REQUIRED` or `NO_FUEL`. — **AI-2**
+- [x] **MVP / P0** Replace “continue anyway” fuel behaviour with `RETURN_REQUIRED` or `NO_FUEL`. — **AI-2** Startup now stops with `NO_FUEL` before movement when onboard permitted fuel cannot meet the estimate; per-move route admission remains enforced by the known-route fuel policy.
 - [ ] **MVP / P0** Replace ad-hoc booleans with structured results such as `{ok, code, message, retryable}`. — **AI-2**
-- [ ] **MVP / P1** Replace interactive configuration as the normal launch path with a validated config file; keep a minimal confirmation/summary only when appropriate. — **AI-1**
+- [x] **MVP / P1** Replace interactive configuration as the normal launch path with a validated config file; keep a minimal confirmation/summary only when appropriate. Root `config.lua` now supplies schema version 1, `src.config.loader` validates and copies the complete V1 schema, and the coordinator displays a read-only summary plus one start confirmation. — **AI-1**
 
 ## 4. Recommended mining strategy
 
@@ -352,7 +352,7 @@ Configuration rules:
   - `whitelist`: only explicit names/tags.
   - `blacklist`: all positively classified ores except explicit ignored names/tags.
   - `valuable`: a small user-maintained whitelist; do not ship a giant modpack database.
-- [ ] **MVP / P1** Warn, but do not fail, when configured tag keys are absent in the current modpack. — **AI-1**
+- [x] **MVP / P1** Warn, but do not fail, when configured tag keys are absent from an explicitly supplied authoritative tag registry. When no registry is available, issue no speculative warning because CC:Tweaked exposes only per-block tags. — **AI-1** `OreClassifier.missingConfiguredTags` implements the warning list and tests cover both supplied and unavailable registries.
 - [ ] **NEXT / P2** Support CLI overrides for a small stable subset such as length and pair count. — **AI-1**
 - [ ] **LATER / P3** Support named job profiles. — **AI-1**
 
@@ -445,7 +445,7 @@ State invariants:
 - [ ] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. — **AI-2**
 - [ ] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. — **AI-2**
 - [x] **MVP / P0** Save the fatal error before stopping. `markFatal` writes error status and code synchronously on a failed mining outcome; persistence test reloads and verifies the code. — **AI-2**
-- [ ] **MVP / P1** Write to a temporary file, close it, validate it, rotate the current valid file to `.bak`, and move the temporary file into place. — **AI-2**
+- [x] **MVP / P1** Write to a temporary file, close it, validate it, rotate the current valid file to `.bak`, and move the temporary file into place. — **AI-2** `src/persistence/state.lua` implements the validated temporary-file commit and backup fallback; persistence tests cover both.
 - [x] **MVP / P1** On load, validate schema, enum values, coordinate integers, route structure, and configuration compatibility. Version 1 snapshots now fail closed on invalid pose/config data, action/status enums, and malformed/non-reversible route graphs; expected configuration is validated before comparison. — **AI-1**
 - [x] **MVP / P0** If both snapshots are invalid, stop with `STATE_CORRUPT`; never initialise a new run over an unrecognised active state. `State.load` returns `STATE_MISSING` only when active and backup files are both absent; otherwise it requires a valid active or backup snapshot. Startup aborts on `STATE_CORRUPT` before prompting or creating a run. Tests cover both-invalid and both-absent cases. — **AI-2**
 
@@ -494,18 +494,18 @@ Resume performs the recorded route in reverse hierarchy: surface origin down the
 Navigation backlog:
 
 - [x] **MVP / P0** Implement and unit-test pose transforms for all facings. `src/navigation/pose.lua` computes movement deltas for forward/back/up/down in every facing, with failure-safe turn transforms; `tests/navigation_pose.lua` verifies the transforms against the fake turtle. — **AI-2**
-- [ ] **MVP / P0** Implement wrappers for six movements and two turns. — **AI-2**
-- [ ] **MVP / P0** Prohibit direct turtle movement outside navigation. — **AI-2**
-- [ ] **MVP / P0** Implement `face(targetFacing)` using the fewest checked turns. — **AI-2**
+- [x] **MVP / P0** Implement wrappers for CC:Tweaked's four movement primitives and two turns. — **AI-2** `Motion` owns forward/back/up/down and left/right checked pose transforms.
+- [x] **MVP / P0** Prohibit direct turtle movement outside navigation. — **AI-2** The coordinator invokes physical movement and turns only through `Motion`-backed wrappers.
+- [x] **MVP / P0** Implement `face(targetFacing)` using the fewest checked turns. — **AI-2** `Turn.face` uses zero, one, or two checked turns and verifies each resulting facing.
 - [x] **MVP / P0** Implement reversible action records and inverse mapping. `src/navigation/action_stack.lua` records successful local actions, maps all supported inverses, and preserves the failed record when checked LIFO unwind stops. — **AI-2**
-- [ ] **MVP / P0** Implement the four-block surface-entry route and its exact reverse. — **AI-2**
-- [ ] **MVP / P0** Implement a checked 3×3 stair-slice sweep that restores centreline pose before moving down. — **AI-2**
-- [ ] **MVP / P0** Implement the exact inverse centreline climb: move up, then back, with no new digging on a known-clear staircase. — **AI-2**
-- [ ] **MVP / P0** Treat every lateral carving move as a reversible sub-action and assert centre-bottom pose/facing at the end of each slice. — **AI-2**
+- [x] **MVP / P0** Implement the four-block surface-entry route and its exact reverse. `src.navigation.surface_entry` executes four checked forward moves and accepts only the calculated mouth pose for the four-move, non-digging reverse. — **AI-2**
+- [x] **MVP / P0** Implement a checked 3×3 stair-slice sweep that restores centreline pose before moving down. `src.navigation.stair_slice` clears the nine-cell cross-section through checked callbacks and asserts the canonical end pose. — **AI-2**
+- [x] **MVP / P0** Implement the exact inverse centreline climb: move up, then back, with no new digging on a known-clear staircase. `StairSlice.climb` performs only those two checked moves and is covered by a zero-clear assertion. — **AI-2**
+- [x] **MVP / P0** Treat every lateral carving move as a reversible sub-action and assert centre-bottom pose/facing at the end of each slice. Each left/right excursion uses a strict LIFO action stack and deterministic pose checks. — **AI-2**
 - [ ] **MVP / P0** Record and assert every floor landing pose. — **AI-2**
 - [ ] **MVP / P0** Implement branch-to-junction, junction-to-landing, and landing-to-surface route builders. — **AI-2**
 - [ ] **MVP / P0** Assert canonical pose at every phase boundary. — **AI-2**
-- [ ] **MVP / P0** On an unexpected obstruction in a known-clear return cell, retry within limits and then stop; do not tunnel around it. — **AI-2**
+- [x] **MVP / P0** On an unexpected obstruction in a known-clear return cell, retry within limits and then stop; do not tunnel around it. — **AI-2** `ReturnMove.run` rejects unknown edges and returns `RETURN_BLOCKED` after bounded movement-only retries.
 - [ ] **NEXT / P2** Add an operator-assisted `home` command that is only enabled when pose is known. — **AI-1**
 - [ ] **LATER / P3** Add constrained detours around obstacles only if a provable inverse route can be retained. — **AI-1**
 
@@ -578,13 +578,13 @@ All directions are relative to the turtle's initial forward facing. The turtle t
 
 Inventory backlog:
 
-- [ ] **MVP / P0** Implement occupied-slot count, free-slot count, and consolidation. — **AI-2**
-- [ ] **MVP / P0** Trigger service at `occupiedSlots >= returnThreshold`. — **AI-2**
-- [ ] **MVP / P0** Implement item-ID quota accounting across arbitrary slots. — **AI-2**
-- [ ] **MVP / P0** Implement classification-based routing to the right primary chest and optional rear bulk chest. — **AI-2**
-- [ ] **MVP / P0** Implement verified partial/excess unloading with no world-dropping fallback outside the explicit branch-end cobblestone rule. — **AI-2**
-- [ ] **MVP / P0** Without a rear bulk chest, eject only excess `minecraft:cobblestone` at each completed branch endpoint, after preserving up to 64 when paving is enabled; verify count deltas and fail with `EJECT_FAILED` on incomplete ejection. — **AI-2**
-- [ ] **MVP / P0** Distinguish `NO_SUPPLY_CHEST`, `NO_OUTPUT_CHEST`, `NO_BULK_CHEST`, `CHEST_FULL`, and generic `UNLOAD_FAILED`. — **AI-2**
+- [x] **MVP / P0** Implement occupied-slot count, free-slot count, and consolidation. — **AI-2** `src/inventory/pressure.lua` provides occupied/free counts and a verified best-effort compatible-stack consolidation pass; `tests/inventory_pressure.lua` covers count and transfer behavior.
+- [x] **MVP / P0** Trigger service at `occupiedSlots >= returnThreshold`. — **AI-2** `src/inventory/service.lua` consolidates before measuring and triggers its service route at the configured threshold; existing tunnel and vein checkpoints use this service. `tests/inventory_service.lua` verifies the consolidation-before-measurement order.
+- [x] **MVP / P0** Implement item-ID quota accounting across arbitrary slots. — **AI-2** `Chest.unload` allocates each configured retained-item quota across all 16 slots by item ID; `tests/chest_policy.lua` and `tests/inventory_mixed_partial_stacks.lua` cover split stacks and protected items.
+- [x] **MVP / P0** Implement classification-based routing to the right primary chest and optional rear bulk chest. — **AI-2** The service verifies the left supply chest, routes configured bulk IDs rear when enabled, and routes ores plus unknown-item fallback right.
+- [x] **MVP / P0** Implement verified partial/excess unloading with no world-dropping fallback outside the explicit branch-end cobblestone rule. — **AI-2** Exact requested count deltas are required for every output drop.
+- [x] **MVP / P0** Without a rear bulk chest, eject only excess `minecraft:cobblestone` at each completed branch endpoint after preserving the configured mandatory backfill reserve, regardless of paving state; verify total and per-slot count deltas and fail with `EJECT_FAILED` on incomplete ejection. — **AI-2**
+- [x] **MVP / P0** Distinguish `NO_SUPPLY_CHEST`, `NO_OUTPUT_CHEST`, `NO_BULK_CHEST`, `CHEST_FULL`, and generic `UNLOAD_FAILED`. — **AI-2** Focused routing tests exercise every code.
 - [ ] **MVP / P0** Persist the resume checkpoint before moving home. — **AI-2**
 - [ ] **MVP / P0** Handle threshold reached while descending stairs, in a floor main tunnel, in either branch phase, and at any vein depth. — **AI-2**
 - [ ] **MVP / P0** Ensure no new vein discovery occurs once unwind has been requested. — **AI-2**
@@ -703,8 +703,8 @@ Vein backlog:
 
 ### Falling blocks
 
-- [ ] **MVP / P0** Use a shared bounded dig-clear loop for forward/up/down. — **AI-2**
-- [ ] **MVP / P0** Stop after `digRetries` or a time limit with `BLOCKED`/`UNBREAKABLE_BLOCK`. — **AI-2**
+- [x] **MVP / P0** Use a shared bounded dig-clear loop for forward/up/down. — **AI-2** `DigClear.run` is used by the coordinator's forward, up, and down clear functions; `tests/dig_clear.lua` verifies attempt/time caps and typed failures.
+- [x] **MVP / P0** Stop after `digRetries` or a time limit with `BLOCKED`/`UNBREAKABLE_BLOCK`. — **AI-2** Attempt/time exhaustion returns `BLOCKED`; an unsuccessful dig of a detected block returns `UNBREAKABLE_BLOCK`.
 - [ ] **MVP / P1** Re-inspect between retries so logs can identify the current block. — **AI-1**
 - [ ] **MVP / P1** Reset the retry counter only when the observed block changes, allowing a bounded sequence of gravel/sand without an infinite stream. — **AI-1**
 
@@ -882,13 +882,13 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 
 ### Foundation and safety kernel
 
-- [ ] **MVP / P0 — F01** Define pose, phase, result, and error-code contracts. — **AI-2**
-- [ ] **MVP / P0 — F02** Build a deterministic mock turtle with configurable action success/failure. — **AI-2**
-- [ ] **MVP / P0 — F03** Implement navigation wrappers and prohibit raw movement elsewhere. — **AI-2**
-- [ ] **MVP / P0 — F04** Implement exact pose/facing updates and invariant assertions. — **AI-2**
+- [x] **MVP / P0 — F01** Define pose, phase, result, and error-code contracts. — **AI-2** `src/core/contracts.lua` and `tests/contracts.lua` cover the shared enums, validators, and safety codes.
+- [x] **MVP / P0 — F02** Build a deterministic mock turtle with configurable action success/failure. — **AI-2** `tests/fake_turtle.lua` supports queued outcomes and call accounting; its focused behavior test passes.
+- [x] **MVP / P0 — F03** Implement navigation wrappers and prohibit raw movement elsewhere. — **AI-2** Movement and turns are routed through `Motion`; active wiring tests exercise the boundary.
+- [x] **MVP / P0 — F04** Implement exact pose/facing updates and invariant assertions. — **AI-2** Pose and face tests cover all facings and failure-safe updates.
 - [ ] **MVP / P0 — F05** Implement bounded dig/entity retry policy. — **AI-2**
-- [ ] **MVP / P0 — F06** Implement route-cost fuel invariant and unlimited-fuel handling. — **AI-2**
-- [ ] **MVP / P0 — F07** Implement structured fatal-stop handling. — **AI-2**
+- [x] **MVP / P0 — F06** Implement route-cost fuel invariant and unlimited-fuel handling. — **AI-2** Known-route and fuel-policy tests cover projected home cost, denial, refuel, and unlimited fuel.
+- [x] **MVP / P0 — F07** Implement structured fatal-stop handling. — **AI-2** Fatal outcomes are persisted before the coordinator stops; startup low fuel now persists `NO_FUEL` with zero movement.
 - [ ] **MVP / P1 — F08** Implement config load, validation, and defaults. — **AI-1**
 
 ### Pattern miner
@@ -909,11 +909,11 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 
 ### Inventory, home, and resume
 
-- [ ] **MVP / P0 — R01** Implement consolidation and threshold-based pressure. — **AI-2**
+- [x] **MVP / P0 — R01** Implement consolidation and threshold-based pressure. — **AI-2** Verified best-effort consolidation runs before the occupied-slot threshold check.
 - [ ] **MVP / P0 — R02** Capture an exact resume checkpoint and logical cursor. — **AI-2**
 - [ ] **MVP / P0 — R03** Return branch checkpoint -> junction -> floor landing -> surface origin over known-clear geometry. — **AI-2**
-- [ ] **MVP / P0 — R04** Detect and verify the left supply, right primary output, and enabled rear bulk chest. — **AI-2**
-- [ ] **MVP / P0 — R05** Route ores/bulk output with item-ID rules and partial-drop verification; without a rear chest, perform the verified branch-end cobblestone ejection rule. — **AI-2**
+- [x] **MVP / P0 — R04** Detect and verify the left supply, right primary output, and enabled rear bulk chest. — **AI-2** Service checks exact accepted block IDs and returns side-specific errors.
+- [x] **MVP / P0 — R05** Route ores/bulk output with item-ID rules and partial-drop verification; without a rear chest, perform the verified branch-end cobblestone ejection rule. — **AI-2**
 - [ ] **MVP / P0 — R06** Navigate surface origin -> active landing -> checkpoint and restore facing/next action. — **AI-2**
 - [ ] **MVP / P0 — R07** Validate fuel for the complete resume-and-return commitment before departing base. — **AI-2**
 - [ ] **MVP / P0 — R08** Refuel and restock torches from the left chest before departure. — **AI-2**
@@ -930,9 +930,9 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 ### Persistence and recovery
 
 - [x] **MVP / P0 — P01** Implement schema-validated state load/save with temporary and backup files. `src/persistence/state.lua` validates snapshots and commits through a validated `.tmp`, preserving the prior valid snapshot as `.bak`; `tests/persistence_state.lua` verifies roundtrip and backup recovery. — **AI-2**
-- [ ] **MVP / P0 — P02** Implement action intent/commit records for every move and turn. — **AI-3**
+- [x] **MVP / P0 — P02** Implement action intent/commit records for every move and turn. — **AI-3** Active wiring verifies durable intent exists before each physical API call and successful actions commit afterward.
 - [ ] **MVP / P0 — P03** Persist floor/stair cursor, landing poses, mining cursor, resume checkpoint, service stage, and vein route/frontier. — **AI-2**
-- [ ] **MVP / P0 — P04** Detect ambiguous pending actions and enter `POSITION_UNCERTAIN`. — **AI-3**
+- [x] **MVP / P0 — P04** Detect ambiguous pending actions and enter `POSITION_UNCERTAIN`. — **AI-3** Snapshot load and startup refuse automatic movement when an action intent has no commit.
 - [ ] **MVP / P1 — P05** Implement `status` and safe `resume` commands. — **AI-2**
 - [ ] **MVP / P1 — P06** Add crash-injection tests at every persisted phase boundary. — **AI-2**
 
@@ -1192,19 +1192,19 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 This should be the first implementation milestone and the first approval boundary.
 
 - [x] Define contracts, error codes, phases, and pose invariants. `src/core/contracts.lua` exposes validated pose/result shapes, run status, work-domain, phase, certainty, and fatal-code contracts; `tests/contracts.lua` covers them. — **AI-1**
-- [ ] Build the mock turtle. — **AI-1**
-- [ ] Implement checked movement/turn wrappers. — **AI-1**
-- [ ] Implement bounded forward clearing/entity recovery. — **AI-1**
-- [ ] Implement route-cost fuel checks. — **AI-2**
-- [ ] Implement and prove one complete 3×3 stair-slice sweep, centreline restoration, and inverse climb in tests. — **AI-1**
-- [ ] Prove the four-block surface entry and return-to-origin route entirely in tests. — **AI-1**
-- [ ] Do not implement veins, unloading, or full mining loops yet. — **AI-1**
+- [x] Build the mock turtle. — **AI-1** Deterministic queued success/failure behavior and call accounting are covered by `tests/fake_turtle_behavior.lua`.
+- [x] Implement checked movement/turn wrappers. — **AI-1**
+- [x] Implement bounded forward clearing/entity recovery. `ForwardRecovery` retries only physical forward failures, uses the bounded dig-clear policy for solid blocks, and stops with `ENTITY_BLOCKED` after the entity retry budget; `tests/forward_recovery.lua` covers the bounds and denial paths. — **AI-1**
+- [x] Implement route-cost fuel checks. — **AI-2**
+- [x] Implement and prove one complete 3×3 stair-slice sweep, centreline restoration, and inverse climb in tests. `tests/navigation_stair_slice.lua` verifies all nine cells, exact forward/down displacement, lateral failure unwind, and the non-digging up/back inverse. — **AI-1**
+- [x] Prove the four-block surface entry and return-to-origin route entirely in tests. `tests/navigation_surface_entry.lua` checks exact mouth/origin poses for all facings and immediate stops on outward and return movement failures. — **AI-1**
+- [x] Do not implement veins, unloading, or full mining loops yet. Milestone 1 remains limited to navigation safety modules and deterministic tests. — **AI-1**
 
 Exit criterion: injected movement failures, low fuel, and obstructions can never update pose incorrectly or cause another blind action.
 
 ### Milestone 2 — Deterministic pattern miner (MVP)
 
-- [ ] Add validated configuration. — **AI-1**
+- [x] Add validated configuration. `tests/config_loader.lua` covers full-schema validation/normalization and `tests/config_startup.lua` proves invalid configuration stops before every turtle API. — **AI-1**
 - [ ] Add the explicit phase state machine. — **AI-1**
 - [ ] Descend eight 3×3 slices to floor 1, save the landing, and later continue to floor 2. — **AI-1**
 - [ ] Mine floor main/left/right geometry with canonical-pose assertions. — **AI-1**
@@ -1215,11 +1215,11 @@ Exit criterion: injected movement failures, low fuel, and obstructions can never
 
 ### Milestone 3 — Inventory service round trip (MVP)
 
-- [ ] Add threshold/consolidation/keep quotas. — **AI-1**
+- [x] Add threshold/consolidation/keep quotas. — **AI-1**
 - [ ] Save a resume checkpoint. — **AI-1**
 - [ ] Climb the staircase and reverse the four-block entry to base. — **AI-1**
-- [ ] Route ores right and optional bulk output behind. — **AI-1**
-- [ ] Without a rear bulk chest, eject verified excess cobblestone at each completed branch dead end while preserving one stack for paving placement when paving is enabled. — **AI-1**
+- [x] Route ores right and optional bulk output behind. — **AI-1**
+- [x] Without a rear bulk chest, eject verified excess cobblestone at each completed branch dead end while preserving the mandatory backfill reserve regardless of paving state. — **AI-1**
 - [ ] Refuel/restock torches from the left chest and resume exactly. — **AI-2**
 - [ ] Test service from every stair, floor-main, branch, and scan phase. — **AI-1**
 
@@ -1231,7 +1231,7 @@ Exit criterion: injected movement failures, low fuel, and obstructions can never
 
 ### Milestone 5 — Persistence and V1 hardening (MVP)
 
-- [ ] Add state snapshots, backup recovery, and movement intent/commit. — **AI-2**
+- [x] Add state snapshots, backup recovery, and movement intent/commit. — **AI-2**
 - [ ] Add `status`/`resume` and certainty rules. — **AI-1**
 - [ ] Add crash injection, full error matrix, and in-world release gates. — **AI-2**
 - [ ] Ship V1 only after a multi-trip, forced-reboot integration run. — **AI-1**

@@ -6,21 +6,31 @@ local Motion = require("src.navigation.motion")
 local Turn = require("src.navigation.turn")
 local SlotGuard = require("src.inventory.slot_guard")
 local ItemPolicy = require("src.config.item_policy")
-local NumericValidation = require("src.config.numeric_validation")
+local ConfigLoader = require("src.config.loader")
 local OreClassifier = require("src.mining.ore_classifier")
-local itemConfig = require("src.config.defaults")
+local configLoaded, rawConfig = pcall(require, "config")
+if not configLoaded then
+    error("CONFIG_INVALID: unable to load config.lua: " .. tostring(rawConfig))
+end
+local config, configResult = ConfigLoader.normalize(rawConfig)
+if not config then
+    error(configResult.code .. ": " .. (configResult.message or "configuration rejected"))
+end
+local itemConfig = config
 local Status = require("src.reporting.status")
 local Reporting = require("src.reporting.safe")
 local Statistics = require("src.reporting.statistics")
 local KnownRoute = require("src.fuel.known_route")
 local VeinTraversal = require("src.mining.vein_traversal")
 local DigClear = require("src.safety.dig_clear")
+local ForwardRecovery = require("src.safety.forward_recovery")
 local Result = require("src.safety.result")
 local BranchProgress = require("src.mining.branch_progress")
 local ReturnMove = require("src.navigation.return_move")
 local MainTunnelScan = require("src.mining.main_tunnel_scan")
 local MainShaftBackfill = require("src.mining.main_shaft_backfill")
 local InventoryService = require("src.inventory.service")
+local BranchEjection = require("src.inventory.branch_ejection")
 local Checkpoint = require("src.persistence.checkpoint")
 local MiningCursor = require("src.mining.cursor")
 
@@ -37,21 +47,6 @@ if not knownRoute then
     error(routeResult)
 end
 -- facing: 0=north(-z), 1=east(+x), 2=south(+z), 3=west(-x)
-
-local config = {
-    branch_length = 30,
-    num_branches = 20,
-    spacing = 3,
-    fuel_reserve = 100,
-    auto_refuel_coal = true,
-    pave = itemConfig.paving.enabled,
-    vein_mine = true,
-    fuel = itemConfig.fuel,
-    paving = itemConfig.paving,
-    inventory = itemConfig.inventory,
-    ore = itemConfig.ore,
-    base = itemConfig.base,
-}
 
 local stats = Statistics.new({
     blocks_mined = 0,
@@ -127,8 +122,6 @@ local function newRun()
     local ok = persist()
     return ok
 end
-
-itemConfig.paving.enabled = config.pave
 
 -- ============================================================================
 -- FUEL MANAGEMENT
@@ -256,6 +249,8 @@ end
 -- CORE MOVEMENT FUNCTIONS
 -- ============================================================================
 
+local lastMovementOutcome
+
 local function move(movement)
     local updated, result = Motion.moveWithPolicy(pos, knownRoute, movement, turtle, {
         reserve = config.fuel_reserve,
@@ -263,10 +258,14 @@ local function move(movement)
         refuel = refuel,
         beforeMove = function() return beginPhysicalAction("move", movement) end,
     })
+    lastMovementOutcome = result
     if not result.ok then
         if result.code == "MOVE_FAILED" then
             local ok, code = checkpoint:cancelAction(pos, knownRoute, configSnapshot())
-            if not ok then persistenceError = code end
+            if not ok then
+                persistenceError = code
+                lastMovementOutcome = { ok = false, code = code }
+            end
         end
         if result.code ~= "MOVE_FAILED" then
             print(string.format("  [Fuel] Cannot safely move %s (%s)", movement, result.code))
@@ -276,7 +275,11 @@ local function move(movement)
     pos = updated
     stats:add("fuel_used", 1)
     local saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
-    if not saved then persistenceError = saveCode return false, persistenceError end
+    if not saved then
+        persistenceError = saveCode
+        lastMovementOutcome = { ok = false, code = persistenceError }
+        return false, persistenceError
+    end
     return true
 end
 
@@ -295,7 +298,11 @@ local function turn(direction)
     return true
 end
 
-local function forward() return move("forward") end
+local function forward()
+    local moved, reason = move("forward")
+    if moved then return true end
+    return false, lastMovementOutcome or reason
+end
 local function back() return move("back") end
 local function up() return move("up") end
 local function down() return move("down") end
@@ -681,35 +688,18 @@ local function mineForward()
     local overheadDig = digUp()
     if not overheadDig.ok then return overheadDig end
 
-    local attempts = 0
-
-    while not forward() do
-        attempts =
-            attempts + 1
-
-        if attempts > 10 then
-            print(
-                "ERROR: Cannot move forward after 10 attempts"
-            )
-
-            return Result.new(false, "MOVE_FAILED", "Cannot move forward after bounded retries")
-        end
-
-        if turtle.detect() then
-
-            if not turtle.dig() then
-                print(
-                    "ERROR: Cannot dig block (bedrock?)"
-                )
-
-                return Result.new(false, "UNBREAKABLE_BLOCK", "Cannot dig the detected forward block")
-            end
-
-        elseif turtle.attack() then
-
-        else
-            sleep(0.5)
-        end
+    local recovery = ForwardRecovery.run({
+        move = forward,
+        detect = turtle.detect,
+        digClear = digForward,
+        attack = turtle.attack,
+        wait = function() sleep(itemConfig.safety.retryDelay) end,
+        maxMoveRetries = itemConfig.safety.moveRetries,
+        maxEntityRetries = itemConfig.safety.entityRetries,
+    })
+    if not recovery.ok then
+        print("ERROR: " .. recovery.code .. " - " .. tostring(recovery.message or "Forward movement recovery failed"))
+        return recovery
     end
 
     stats:add("tunnel_blocks_mined", 1)
@@ -798,6 +788,14 @@ local function mineBranch(length, branchPair, side, mainOffset)
     local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
         length, mainOffset, "prepare_branch_return")
     if not persistMiningCursor(turnaroundCursor) then return false end
+
+    if config.base.separateBulk ~= true then
+        local ejected = BranchEjection.run(turtle, itemConfig)
+        if not ejected.ok then
+            print("ERROR: " .. ejected.code .. " - " .. (ejected.message or "branch-end ejection failed"))
+            return false, ejected
+        end
+    end
 
     local clearedAbove = digUp()
     if not clearedAbove.ok then
@@ -979,9 +977,9 @@ local function executeMining()
                     "Could not get enough fuel."
                 )
 
-                print(
-                    "Continuing anyway, will try to refuel during operation."
-                )
+                print("Stopping before movement: NO_FUEL")
+                persistenceError = "NO_FUEL"
+                return false
 
             else
 
@@ -1217,90 +1215,20 @@ end
 -- USER INTERFACE
 -- ============================================================================
 
-local function getUserInput(
-    prompt,
-    default
-)
-
-    write(
-        prompt
-            .. " (default: "
-            .. tostring(default)
-            .. "): "
-    )
-
-    local input = read()
-
-    if input == ""
-        or input == nil then
-
-        return default
-    end
-
-    local value = tonumber(input)
-    while value == nil or value ~= math.floor(value) do
-        print("Enter a whole number.")
-        write(prompt .. " (default: " .. tostring(default) .. "): ")
-        input = read()
-        if input == "" or input == nil then return default end
-        value = tonumber(input)
-    end
-    return value
-end
-
-local function getConfiguration()
+local function confirmConfiguration()
 
     print(
-        "=== Branch Mining Configuration ==="
+        "=== Validated Mining Configuration ==="
     )
 
     print("")
 
-    config.branch_length =
-        getUserInput(
-            "Branch length",
-            30
-        )
-
-    config.num_branches =
-        getUserInput(
-            "Number of branches",
-            20
-        )
-
-    config.spacing =
-        getUserInput(
-            "Spacing between branches",
-            3
-        )
-
-    local validConfig, configError = NumericValidation.validate(config)
-    while not validConfig do
-        print("Invalid configuration: " .. configError)
-        config.branch_length = getUserInput("Branch length", 30)
-        config.num_branches = getUserInput("Number of branches", 20)
-        config.spacing = getUserInput("Spacing between branches", 3)
-        validConfig, configError = NumericValidation.validate(config)
+    for _, tag in ipairs(OreClassifier.missingConfiguredTags(config.ore)) do
+        print("WARNING: configured ore tag is absent from the supplied tag registry: " .. tag)
     end
 
-    write("Enable floor paving? (y/n, default: n): ")
-
-    local paveInput = read()
-
-    config.pave = paveInput == "y" or paveInput == "Y"
-
-    write(
-        "Enable ore vein mining? (y/n, default: y): "
-    )
-
-    local veinInput = read()
-
-    config.vein_mine =
-        veinInput ~= "n"
-        and veinInput ~= "N"
-
     print("")
-    print("Configuration:")
+    print("Configuration file: config.lua (schema 1)")
 
     print(
         "  Branch length: "
@@ -1339,12 +1267,11 @@ local function getConfiguration()
         "  Chest unload: enabled"
     )
 
-    print(
-        "  Chest position: directly behind start"
-    )
+    print("  Chests: supply left, output right"
+        .. (config.base.separateBulk and ", bulk behind" or ", branch-end excess cobblestone ejection"))
 
     print(
-        "  Keeps: configured item quantities, all torches and protected items"
+        "  Keeps: configured aggregate supply and backfill quotas"
     )
 
     print("")
@@ -1387,7 +1314,7 @@ local function main()
         error("CONFIG_MISMATCH: saved run configuration differs from current configuration")
     elseif existing and existing:status() ~= "complete" then
         error("ACTIVE_STATE_PRESENT: resume support is not implemented; refusing to restart mining")
-    elseif getConfiguration() then
+    elseif confirmConfiguration() then
         if not newRun() then error("STATE_WRITE_FAILED: unable to create initial snapshot") end
         local ok = executeMining()
         if ok then
@@ -1402,4 +1329,3 @@ local function main()
 end
 
 main()
-
