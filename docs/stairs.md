@@ -15,6 +15,8 @@ Carve one bounded 3-wide by 3-tall descending stairs slice, restore the turtle t
 - `require("src.navigation.stair_slice")`
 - `StairSlice.descend({ pose, clear, move, turn })` returns the final known pose and a structured outcome.
 - `StairSlice.climb({ pose, move, turn })` returns the previous centre-bottom checkpoint and a structured outcome.
+- `require("src.navigation.stair_route")` exposes `StairRoute.descend(options)` and `StairRoute.returnToSurface(options)` for checked route composition.
+- `require("src.navigation.floor_landing").prepare({ pose, clear, move, turn })` clears the flat landing and returns at its canonical centre.
 
 The `clear(direction)` callback accepts `forward`, `up`, or `down` and must return a structured outcome. The `move(movement)` and `turn(direction)` callbacks must be checked navigation boundaries returning `pose, outcome`.
 
@@ -33,8 +35,10 @@ The module uses `src/navigation/pose.lua` for expected geometry, `src/navigation
 
 ## Current limitations
 
-Only one slice and its inverse are implemented. The separate four-block surface-entry primitive is available, but the active coordinator does not yet invoke either route. Repeated eight-slice descent, landings, torch niches, persistence of stair sub-phases, and hierarchical return remain separate backlog items. No in-world verification has been performed.
+`src/navigation/stair_route.lua` composes the fixed surface entry and a configured number of checked stair slices. It reports per-slice progress to an optional persistence callback, requires a landing-preparation callback to finish at the centre one block beyond the final rear cell, and saves the origin/mouth/rear/landing poses through a required callback. `src/navigation/floor_landing.lua` clears the three rows and three-wide columns with three-block headroom, then returns to the centre row. The route's return path backs from the landing to the saved rear cell, climbs each slice without digging, reverses the first-floor surface entry or prior-floor landing crossing, and checks every expected pose.
+
+`Checkpoint.recordFloorLanding` and the state codec durably record validated landing routes, enforce fixed facing-relative geometry and contiguous floor origins, and expose defensive getters. `MiningCursor.stairs(floor, step, action)` now supplies validated next-action cursors for surface entry, stair slices, and landing preparation, but the active coordinator does not yet emit them or invoke the surface/stair route. It still uses the origin-level baseline. Torch niches, floor lifecycle, service/resume across floors, and in-world verification remain outstanding.
 
 ## Checklist status
 
-S01 is implemented and verified by `tests/navigation_stair_slice.lua`. The active coordinator does not invoke this primitive yet; repeated descent and landing orchestration remain separate checklist work.
+S01 and the landing carve/checkpoint building blocks are covered by `tests/navigation_stair_slice.lua`, `tests/floor_landing.lua`, `tests/stair_route.lua`, and landing persistence cases in `tests/persistence_state.lua`. S02 remains unchecked until the active coordinator invokes these routes with durable intent and cursor boundaries.

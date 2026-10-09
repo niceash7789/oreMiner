@@ -46,6 +46,74 @@ local function routeValid(route, pose)
     return true
 end
 
+local function floorLandingsValid(landings, route)
+    if landings == nil then return true end
+    if type(landings) ~= "table" or type(route) ~= "table"
+        or type(route.edges) ~= "table" then return false end
+    for floor, landing in pairs(landings) do
+        if not integer(floor) or floor < 1 or type(landing) ~= "table"
+            or landing.floor ~= floor or not poseValid(landing.origin)
+            or not poseValid(landing.mouth) or not poseValid(landing.rear)
+            or not poseValid(landing.landing) or not integer(landing.steps)
+            or landing.steps < 1
+            or (landing.entryMoves ~= 4 and landing.entryMoves ~= 1) then
+            return false
+        end
+
+        local origin, mouth, rear, centre = landing.origin, landing.mouth,
+            landing.rear, landing.landing
+        local directions = {
+            [0] = { x = 0, z = -1 },
+            [1] = { x = 1, z = 0 },
+            [2] = { x = 0, z = 1 },
+            [3] = { x = -1, z = 0 },
+        }
+        local direction = directions[origin.facing]
+        local dx, dz = direction.x, direction.z
+        local expectedEntry = floor == 1 and 4 or 1
+        if landing.entryMoves ~= expectedEntry
+            or (floor == 1 and (origin.x .. "," .. origin.y .. "," .. origin.z) ~= route.home)
+            or mouth.x ~= origin.x + dx * expectedEntry
+            or mouth.y ~= origin.y or mouth.z ~= origin.z + dz * expectedEntry
+            or mouth.facing ~= origin.facing
+            or rear.x ~= mouth.x + dx * landing.steps
+            or rear.y ~= mouth.y - landing.steps
+            or rear.z ~= mouth.z + dz * landing.steps
+            or rear.facing ~= origin.facing
+            or centre.x ~= rear.x + dx or centre.y ~= rear.y
+            or centre.z ~= rear.z + dz or centre.facing ~= origin.facing then
+            return false
+        end
+
+        for _, pose in ipairs({ origin, mouth, rear, centre }) do
+            local key = pose.x .. "," .. pose.y .. "," .. pose.z
+            if not route.edges[key] then return false end
+        end
+    end
+    return true
+end
+
+local function landingChainValid(landings)
+    if type(landings) ~= "table" then return false end
+    local count, maximum = 0, 0
+    for floor in pairs(landings) do
+        if not integer(floor) or floor < 1 then return false end
+        count = count + 1
+        if floor > maximum then maximum = floor end
+    end
+    if count == 0 then return true end
+    if count ~= maximum or not landings[1] then return false end
+    for floor = 2, maximum do
+        local previous, current = landings[floor - 1], landings[floor]
+        if not previous or not current then return false end
+        local a, b = previous.landing, current.origin
+        if a.x ~= b.x or a.y ~= b.y or a.z ~= b.z or a.facing ~= b.facing then
+            return false
+        end
+    end
+    return true
+end
+
 local function pendingActionValid(action)
     if action == nil then return true end
     if type(action) ~= "table" then return false end
@@ -55,12 +123,19 @@ local function pendingActionValid(action)
 end
 
 local function configSnapshotValid(config)
-    return type(config) == "table"
-        and integer(config.branch_length) and config.branch_length > 0
-        and integer(config.num_branches) and config.num_branches > 0
-        and integer(config.spacing) and config.spacing >= 2
-        and type(config.pave) == "boolean"
-        and type(config.vein_mine) == "boolean"
+    if type(config) ~= "table"
+        or not integer(config.branch_length) or config.branch_length <= 0
+        or not integer(config.num_branches) or config.num_branches <= 0
+        or not integer(config.spacing) or config.spacing < 2
+        or type(config.pave) ~= "boolean"
+        or type(config.vein_mine) ~= "boolean" then
+        return false
+    end
+    return (config.floor_count == nil or (integer(config.floor_count) and config.floor_count >= 1))
+        and (config.stair_steps_per_floor == nil
+            or (integer(config.stair_steps_per_floor) and config.stair_steps_per_floor >= 1))
+        and (config.surface_entry_length == nil
+            or (integer(config.surface_entry_length) and config.surface_entry_length == 4))
 end
 
 local function copy(value)
@@ -79,6 +154,8 @@ local function valid(state)
         and (state.poseCertainty == "known" or state.poseCertainty == "uncertain")
         and poseValid(state.pose)
         and routeValid(state.route, state.pose)
+        and floorLandingsValid(state.floorLandings, state.route)
+        and landingChainValid(state.floorLandings or {})
         and configSnapshotValid(state.configSnapshot)
         and pendingActionValid(state.pendingAction)
         and MiningCursor.validate(state.progress)
@@ -119,6 +196,14 @@ function State.validateProgress(progress)
     return MiningCursor.validate(progress)
 end
 
+function State.validateFloorLanding(landing, route, existingLandings)
+    if type(landing) ~= "table" or not integer(landing.floor) or landing.floor < 1
+        or type(existingLandings) ~= "table" then return false end
+    local candidate = copy(existingLandings)
+    candidate[landing.floor] = copy(landing)
+    return floorLandingsValid(candidate, route) and landingChainValid(candidate)
+end
+
 function State.new(configSnapshot, pose, route, runId)
     local initialProgress = MiningCursor.initial()
     local state = {
@@ -128,6 +213,7 @@ function State.new(configSnapshot, pose, route, runId)
         poseCertainty = "known",
         pose = copy(pose),
         route = copy(route),
+        floorLandings = {},
         progress = initialProgress,
         pendingAction = nil,
         configSnapshot = copy(configSnapshot),
@@ -177,9 +263,13 @@ function State.load(path, expectedConfig, fsApi, textutilsApi)
         end
         return nil, "STATE_CORRUPT"
     end
-    local fields = { "branch_length", "num_branches", "spacing", "pave", "vein_mine" }
+    local fields = {
+        "branch_length", "num_branches", "spacing", "pave", "vein_mine",
+        "floor_count", "stair_steps_per_floor", "surface_entry_length",
+    }
     for _, field in ipairs(fields) do
-        if state.configSnapshot[field] ~= expectedConfig[field] then
+        if state.configSnapshot[field] ~= nil
+            and state.configSnapshot[field] ~= expectedConfig[field] then
             return nil, "CONFIG_MISMATCH"
         end
     end

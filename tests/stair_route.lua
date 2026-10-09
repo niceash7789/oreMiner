@@ -1,4 +1,5 @@
 local StairRoute = require("src.navigation.stair_route")
+local Landing = require("src.navigation.floor_landing")
 local Pose = require("src.navigation.pose")
 local Result = require("src.safety.result")
 
@@ -42,9 +43,7 @@ local landingPose, outcome = StairRoute.descend({
     end,
     prepareLanding = function(rear)
         assert(rear.x == 0 and rear.y == -8 and rear.z == -12 and rear.facing == 0)
-        local result, moveOutcome = move("forward")
-        assert(moveOutcome.ok)
-        return result, Result.new(true, "LANDING_CARVED")
+        return Landing.prepare({ pose = rear, move = move, turn = turn, clear = clear })
     end,
     saveLanding = function(route)
         savedRoute = route
@@ -68,5 +67,37 @@ local returned, returnOutcome = StairRoute.returnToSurface({
 assert(returnOutcome.ok and returnOutcome.code == "SURFACE_ORIGIN_RESTORED")
 assert(returned.x == 0 and returned.y == 0 and returned.z == 0 and returned.facing == 0)
 assert(pose.x == 0 and pose.y == 0 and pose.z == 0 and pose.facing == 0)
+
+-- Later floors start at the prior landing centre, cross its front cell, and
+-- return to that same landing after climbing the new recorded segment.
+pose = { x = 0, y = -8, z = -13, facing = 0 }
+local secondLanding, secondOutcome = StairRoute.descend({
+    pose = pose,
+    floor = 2,
+    steps = 8,
+    alreadyAtFrontLanding = true,
+    move = move,
+    turn = turn,
+    clear = clear,
+    prepareLanding = function(rear)
+        assert(rear.x == 0 and rear.y == -16 and rear.z == -22 and rear.facing == 0)
+        return Landing.prepare({ pose = rear, move = move, turn = turn, clear = clear })
+    end,
+    saveLanding = function(route)
+        savedRoute = route
+        return true, Result.new(true, "LANDING_SAVED")
+    end,
+})
+assert(secondOutcome.ok and secondLanding.y == -16 and secondLanding.z == -23)
+assert(savedRoute.origin.y == -8 and savedRoute.origin.z == -13)
+
+local previousLanding, previousOutcome = StairRoute.returnToSurface({
+    pose = secondLanding,
+    route = savedRoute,
+    move = move,
+    turn = turn,
+})
+assert(previousOutcome.ok and previousLanding.y == -8 and previousLanding.z == -13)
+assert(pose.x == 0 and pose.y == -8 and pose.z == -13 and pose.facing == 0)
 
 print("stair route checks passed")

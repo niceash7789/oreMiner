@@ -28,6 +28,8 @@ local Result = require("src.safety.result")
 local BranchProgress = require("src.mining.branch_progress")
 local ReturnMove = require("src.navigation.return_move")
 local RouteHome = require("src.navigation.route_home")
+local StairRoute = require("src.navigation.stair_route")
+local FloorLanding = require("src.navigation.floor_landing")
 local MainTunnelScan = require("src.mining.main_tunnel_scan")
 local MainShaftBackfill = require("src.mining.main_shaft_backfill")
 local InventoryService = require("src.inventory.service")
@@ -70,6 +72,7 @@ end
 local statePath = "oreMiner/state.json"
 local checkpoint
 local persistenceError
+local activeFloor = 0
 local fsApi = fs
 local textutilsApi = textutils
 
@@ -80,6 +83,9 @@ local function configSnapshot()
         spacing = config.spacing,
         pave = config.pave,
         vein_mine = config.vein_mine,
+        floor_count = config.mining.floorCount,
+        stair_steps_per_floor = config.mining.stairStepsPerFloor,
+        surface_entry_length = config.mining.surfaceEntryLength,
     }
 end
 
@@ -753,7 +759,7 @@ end
 local function mineBranch(length, branchPair, side, mainOffset)
     local outboundResult = BranchProgress.run(length, function(i)
         local cursor = MiningCursor.branch(branchPair, side, "branch_outbound_lower",
-            i - 1, mainOffset, "mine_branch_cell")
+            i - 1, mainOffset, "mine_branch_cell", activeFloor)
         if not persistMiningCursor(cursor) then
             return { ok = false, code = persistenceError or "STATE_WRITE_FAILED",
                 message = "Unable to save branch outbound cursor" }
@@ -796,7 +802,7 @@ local function mineBranch(length, branchPair, side, mainOffset)
     end
 
     local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
-        length, mainOffset, "prepare_branch_return")
+        length, mainOffset, "prepare_branch_return", activeFloor)
     if not persistMiningCursor(turnaroundCursor) then return false end
 
     if config.base.separateBulk ~= true then
@@ -825,7 +831,7 @@ local function mineBranch(length, branchPair, side, mainOffset)
         for i = 1, length do
 
             local returnCursor = MiningCursor.branch(branchPair, side, "branch_upper_return",
-                length - i + 1, mainOffset, "scan_and_return_branch_cell")
+                length - i + 1, mainOffset, "scan_and_return_branch_cell", activeFloor)
             if not persistMiningCursor(returnCursor) then return false end
 
             if not serviceInventoryIfFull() then
@@ -853,7 +859,7 @@ local function mineBranch(length, branchPair, side, mainOffset)
         end
 
         local junctionCursor = MiningCursor.branch(branchPair, side,
-            "branch_return_to_junction", 0, mainOffset, "descend_to_junction")
+            "branch_return_to_junction", 0, mainOffset, "descend_to_junction", activeFloor)
         if not persistMiningCursor(junctionCursor) then return false end
 
         if down() ~= true then
@@ -869,7 +875,7 @@ local function mineBranch(length, branchPair, side, mainOffset)
         for i = 1, length do
 
             local returnCursor = MiningCursor.branch(branchPair, side, "branch_lower_return",
-                length - i + 1, mainOffset, "return_branch_cell")
+                length - i + 1, mainOffset, "return_branch_cell", activeFloor)
             if not persistMiningCursor(returnCursor) then return false end
 
             if not safeForward() then
@@ -936,11 +942,12 @@ local function printFuelStatus(branch_num)
     )
 end
 
-local function returnToKnownHome()
+local function returnToKnownHome(returnTarget)
     local homePose, outcome = RouteHome.run({
         pose = pos,
         route = knownRoute,
-        homeFacing = 0,
+        targetPose = returnTarget,
+        homeFacing = returnTarget and returnTarget.facing or 0,
         move = function(direction)
             local moved, reason = move(direction)
             if moved then return pos, Result.new(true, "MOVE_COMMITTED") end
@@ -962,11 +969,78 @@ local function returnToKnownHome()
     return true, outcome
 end
 
+local function checkedMoveForRoute(direction)
+    local moved, reason = move(direction)
+    if moved then return pos, Result.new(true, "MOVE_COMMITTED") end
+    if type(reason) == "table" and reason.ok == false then return pos, reason end
+    return pos, lastMovementOutcome or Result.new(false, "MOVE_FAILED", tostring(reason))
+end
+
+local function checkedTurnForRoute(direction)
+    local turned, reason = turn(direction)
+    if turned then return pos, Result.new(true, "TURN_COMMITTED") end
+    if type(reason) == "table" and reason.ok == false then return pos, reason end
+    return pos, Result.new(false, "TURN_FAILED", tostring(reason))
+end
+
+local function clearForStair(direction)
+    if direction == "forward" then return digForward() end
+    if direction == "up" then return digUp() end
+    if direction == "down" then return digDown() end
+    return Result.new(false, "INVALID_CLEAR_DIRECTION")
+end
+
+local function saveStairCursor(context)
+    local cursor = MiningCursor.stairs(context.floor, context.stairStep, context.action)
+    local saved, code = persistMiningCursor(cursor)
+    if not saved then return false, Result.new(false, code or "STATE_WRITE_FAILED") end
+    return true, Result.new(true, "STAIR_CURSOR_SAVED")
+end
+
+local function descendToLanding(floor)
+    local landingPose, outcome = StairRoute.descend({
+        pose = pos,
+        floor = floor,
+        steps = config.mining.stairStepsPerFloor,
+        alreadyAtFrontLanding = floor > 1,
+        move = checkedMoveForRoute,
+        turn = checkedTurnForRoute,
+        clear = clearForStair,
+        beforeEntry = saveStairCursor,
+        beforeStep = saveStairCursor,
+        beforeLanding = saveStairCursor,
+        saveProgress = function(progress)
+            stats:add("stair_slices_completed", 1)
+            return true, Result.new(true, "STAIR_PROGRESS_RECORDED", nil, progress)
+        end,
+        prepareLanding = function(rearPose)
+            return FloorLanding.prepare({
+                pose = rearPose,
+                clear = clearForStair,
+                move = checkedMoveForRoute,
+                turn = checkedTurnForRoute,
+            })
+        end,
+        saveLanding = function(route)
+            local saved, code = checkpoint:recordFloorLanding(
+                route, pos, knownRoute, configSnapshot())
+            if not saved then return false, Result.new(false, code or "STATE_WRITE_FAILED") end
+            return true, Result.new(true, "LANDING_SAVED")
+        end,
+    })
+    if outcome.ok ~= true then return landingPose, outcome end
+    if pos.x ~= landingPose.x or pos.y ~= landingPose.y
+        or pos.z ~= landingPose.z or pos.facing ~= landingPose.facing then
+        return pos, Result.new(false, "POSITION_ERROR", "Stair route and committed coordinator pose diverged.")
+    end
+    return landingPose, outcome
+end
+
 -- ============================================================================
 -- MAIN MINING PATTERN
 -- ============================================================================
 
-local function executeMining()
+local function executeMining(returnTarget, deferSummary)
 
     local startedAt = os.epoch("utc") / 1000
 
@@ -1053,7 +1127,7 @@ local function executeMining()
 
         for step = 1, config.spacing do
 
-            local mainCursor = MiningCursor.mainShaft(branch, step, branch - 1)
+            local mainCursor = MiningCursor.mainShaft(branch, step, branch - 1, activeFloor)
             if not persistMiningCursor(mainCursor) then return false end
 
             if not serviceInventoryIfFull() then
@@ -1088,7 +1162,7 @@ local function executeMining()
 
         print(Status.phase("BRANCH", branch, config.num_branches, "L out"))
 
-        local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch")
+        local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch", activeFloor)
         if not persistMiningCursor(leftJunctionCursor) then return false end
 
         turnLeft()
@@ -1135,7 +1209,7 @@ local function executeMining()
             return false
         end
 
-        local mainFacingCursor = MiningCursor.junction(branch, branch, "restore_main_facing")
+        local mainFacingCursor = MiningCursor.junction(branch, branch, "restore_main_facing", activeFloor)
         if not persistMiningCursor(mainFacingCursor) then return false end
 
         turnRight()
@@ -1157,10 +1231,15 @@ local function executeMining()
         print("")
     end
 
-    local homeReached, homeOutcome = returnToKnownHome()
+    local homeReached, homeOutcome = returnToKnownHome(returnTarget)
     if not homeReached then
         persistenceError = homeOutcome.code or "RETURN_FAILED"
         return false
+    end
+
+    if deferSummary then
+        print("Floor mining pass complete; returned to its recorded landing.")
+        return true
     end
 
     print("")
@@ -1329,6 +1408,64 @@ local function confirmConfiguration()
         or confirm == ""
 end
 
+local function executeFloors()
+    local startedAt = os.epoch("utc") / 1000
+    for floor = 1, config.mining.floorCount do
+        activeFloor = floor
+        print(string.format("=== Floor %d/%d: stairs descent ===", floor, config.mining.floorCount))
+        local landingPose, stairOutcome = descendToLanding(floor)
+        if stairOutcome.ok ~= true then
+            persistenceError = stairOutcome.code or "STAIR_DESCENT_FAILED"
+            print("ERROR: " .. tostring(persistenceError))
+            return false
+        end
+        if turnRight() ~= true then
+            persistenceError = "FLOOR_MAIN_TURN_FAILED"
+            return false
+        end
+        if not executeMining(landingPose, true) then return false end
+        stats:add("floors_completed", 1)
+    end
+
+    for floor = config.mining.floorCount, 1, -1 do
+        local route = checkpoint:floorLanding(floor)
+        if not route then
+            persistenceError = "LANDING_NOT_RECORDED"
+            return false
+        end
+        local returned, outcome = StairRoute.returnToSurface({
+            pose = pos,
+            route = route,
+            move = checkedMoveForRoute,
+            turn = checkedTurnForRoute,
+        })
+        if outcome.ok ~= true then
+            persistenceError = outcome.code or "STAIR_RETURN_FAILED"
+            print("ERROR: " .. tostring(persistenceError))
+            return false
+        end
+        if pos.x ~= returned.x or pos.y ~= returned.y
+            or pos.z ~= returned.z or pos.facing ~= returned.facing then
+            persistenceError = "POSITION_ERROR"
+            return false
+        end
+    end
+
+    if pos.x ~= 0 or pos.y ~= 0 or pos.z ~= 0 or pos.facing ~= 0 then
+        persistenceError = "POSITION_ERROR"
+        return false
+    end
+
+    print("=== Mining Complete: returned to surface origin ===")
+    print(string.format("Final position: x=%d, y=%d, z=%d", pos.x, pos.y, pos.z))
+    local summary = Statistics.jobSummary(stats, {
+        startedAt = startedAt,
+        endedAt = os.epoch("utc") / 1000,
+    })
+    for _, line in ipairs(Statistics.formatJobSummary(summary)) do print(line) end
+    return true
+end
+
 -- ============================================================================
 -- MAIN
 -- ============================================================================
@@ -1358,7 +1495,7 @@ local function main()
         error("ACTIVE_STATE_PRESENT: resume support is not implemented; refusing to restart mining")
     elseif confirmConfiguration() then
         if not newRun() then error("STATE_WRITE_FAILED: unable to create initial snapshot") end
-        local ok = executeMining()
+        local ok = executeFloors()
         if ok then
             local saved, saveCode = checkpoint:markComplete(pos, knownRoute, configSnapshot())
             if not saved then persistenceError = saveCode end

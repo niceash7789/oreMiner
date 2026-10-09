@@ -31,6 +31,8 @@ Contracts.RUN_STATUSES = {
 -- Later route implementations can extend this set alongside their plan entry.
 Contracts.PHASES = {
     active_baseline = true,
+    surface_entry = true,
+    stairs = true,
     main_shaft = true,
     junction = true,
     branch_outbound_lower = true,

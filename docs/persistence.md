@@ -10,7 +10,9 @@ Keep the active single-turtle run's committed pose and traversed route durable, 
 
 The active movement/turn wrappers in `src/branch_miner.lua` persist a typed `pendingAction` before invoking the turtle API. On literal success they install the returned pose (and movement route edge) and immediately save it with the pending action cleared. On API failure they retain the old pose and cancel the intent; a failed post-action save stops execution and leaves the previous durable pending intent to force `POSITION_UNCERTAIN` on reboot.
 
-`src/mining/cursor.lua` defines the active baseline's validated logical cursor. It records a stable work-unit ID, surface baseline floor `0`, branch pair, side, phase, local offset, main offset, and the next action. The coordinator saves that cursor through `Checkpoint.setProgress` before each bounded main-shaft cell, junction turn, branch outbound cell, turnaround, and lower or upper return cell. A rejected or failed cursor save stops the coordinator before that unit begins and retains the previous in-memory cursor. Physical-action intent snapshots therefore carry the cursor for the logical unit that issued the move or turn.
+`src/mining/cursor.lua` defines validated logical cursors for the active baseline and route preparation. Baseline cursors record a stable work-unit ID, floor `0`, branch pair, side, phase, local offset, main offset, and next action. `Cursor.stairs(floor, step, action)` describes surface entry, a bounded stair slice, or landing preparation with a stable floor/stair segment identity. The active baseline coordinator saves its cursor through `Checkpoint.setProgress` before each bounded main-shaft cell, junction turn, branch outbound cell, turnaround, and lower or upper return cell. Stair cursors are a validated contract for the pending S02 coordinator integration; they are not yet emitted by the active coordinator. A rejected or failed cursor save stops the coordinator before that unit begins and retains the previous in-memory cursor. Physical-action intent snapshots therefore carry the logical unit that issued the move or turn once route wiring is complete.
+
+Snapshots optionally contain `floorLandings`, keyed by floor number. Each record stores the segment origin, mouth, rear-centre, landing-centre, step count, and entry length. Validation checks the geometric displacement, contiguous floor-to-floor origins, and that route landmarks exist in the recorded known-route graph. `Session.recordFloorLanding` persists a validated record with the current pose/graph; `floorLanding(floor)` and `floorLandings()` return defensive copies. Older snapshots without this optional field remain valid.
 
 This satisfies persistence checklist item P01: the serializer output is written and closed at `.tmp`, decoded and schema-validated from disk, then installed after rotating the validated active file to `.bak`. P01 does not cover promotion of a leftover `.tmp` after a crash; that recovery remains separate work.
 
@@ -18,14 +20,14 @@ Only the current coordinator's minimal persistent data is stored: run ID/status,
 
 ## Public entry points
 
-- `require("src.mining.cursor")` provides `initial`, `mainShaft`, `junction`, `branch`, and `validate`.
+- `require("src.mining.cursor")` provides `initial`, `mainShaft`, `junction`, `branch`, `stairs`, and `validate`.
 - `State.new(configSnapshot, pose, route, runId)`
 - `State.validate(state)`
 - `State.save(state, path, fsApi, textutilsApi)`
 - `State.load(path, expectedConfig, fsApi, textutilsApi)`
 - `Checkpoint.create(configSnapshot, pose, route, runId, path, fsApi, textutilsApi)`
 - `Checkpoint.load(path, expectedConfig, fsApi, textutilsApi)`
-- Session methods: `save`, `setProgress`, `beginAction`, `commitAction`, `cancelAction`, `markFatal`, `markComplete`, and `status`.
+- Session methods: `save`, `setProgress`, `recordFloorLanding`, `floorLanding`, `floorLandings`, `beginAction`, `commitAction`, `cancelAction`, `markFatal`, `markComplete`, and `status`.
 
 ## Invariants and assumptions
 
@@ -39,8 +41,8 @@ Only the current coordinator's minimal persistent data is stored: run ID/status,
 
 ## Dependencies and limitations
 
-The module depends on injected CC:Tweaked-compatible filesystem and text serialization APIs. The implemented cursor covers only the current surface-level baseline (`floor = 0`); staircase/floor phases, service state, vein frontier state, cursor-driven execution, and automatic restart remain future work. Startup therefore still refuses to resume an incomplete run. Snapshots from an earlier development version that contain only the old generic `active_baseline / continue` marker fail validation rather than being treated as resumable. Unexpected Lua exceptions escaping the coordinator are not intercepted. Manual in-world power-loss testing has not been performed.
+The module depends on injected CC:Tweaked-compatible filesystem and text serialization APIs. Stair route records are now durable building blocks, but the logical cursor still covers only the current surface-level baseline (`floor = 0`); stair/floor phase resume, service state, vein frontier state, cursor-driven execution, and automatic restart remain incomplete. Startup therefore still refuses to resume an incomplete run. Snapshots from an earlier development version that contain only the old generic `active_baseline / continue` marker fail validation rather than being treated as resumable. Unexpected Lua exceptions escaping the coordinator are not intercepted. Manual in-world power-loss testing has not been performed.
 
 ## Verification
 
-`tests/mining_cursor.lua` covers cursor construction, phase/action agreement, and rejection of incomplete or invalid cursors. `tests/persistence_state.lua` covers codec roundtrip, backup fallback after corruption, `STATE_CORRUPT` when both existing snapshots are invalid, `STATE_MISSING` only when both are absent, schema/enum/coordinate/route rejection, invalid and mismatched config, durable cursor updates, pending-action uncertainty, checkpoint intent/commit/status operations, and reload of the persisted fatal error code. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` verifies that physical actions observe both their durable intent and a durable logical cursor.
+`tests/mining_cursor.lua` covers cursor construction, phase/action agreement, and rejection of incomplete or invalid cursors. `tests/persistence_state.lua` also verifies two geometrically consistent saved floor routes, reload, and rejection of inconsistent landing geometry. Existing codec, backup, pending-action, cursor, and fatal-state checks remain covered. It does not yet test recovery from a leftover `.tmp` snapshot. `tests/active_baseline_wiring.lua` verifies that physical actions observe both their durable intent and a durable logical cursor.

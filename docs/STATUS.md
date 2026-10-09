@@ -1,12 +1,12 @@
 # Implementation status
 
 - Current task scope: full single-turtle MVP, explicitly authorized by the user and recorded in `AGENTS.md`; NEXT/LATER/fleet scope remains excluded.
-- Last completed checklist item: `MVP / P1 — F08 Implement config load, validation, and defaults` (existing implementation confirmed; plan reconciled).
+- Last completed checklist item: `MVP / P0 — Ensure no new vein discovery occurs once unwind has been requested`.
 - Next eligible unchecked item: `MVP / P0 — S02 Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing`.
-- Files changed in the current task: `AGENTS.md`, `tests/startup_fuel_stop.lua`, `MINER_PLAN.md`, `docs/STATUS.md`, and the active dispatcher automation.
-- Verification: all `tests/*.lua` checks passed; Lua syntax validation passed for `src/`, `tests/`, `miner.lua`, and `config.lua`.
-- Current limitation: active coordinator still runs the single-floor baseline and does not yet invoke surface entry/stairs. In-world release checks are pending hardware/gallery access; continue software integration and leave those gates unchecked until physically performed.
-- Unresolved blockers: none requiring user input. If a preferred API or approach is unavailable, use a safe plan-compatible alternative and continue independent MVP work.
+- Current S02 prerequisite: `src/mining/cursor.lua` now validates stable surface-entry, stair-slice, and landing-preparation cursor records. The stair route and durable landing checkpoint primitives already exist. The active coordinator still needs to save these cursors, invoke the route with its existing fuel and physical-action intent gates, and use the resulting landing as the first floor origin. S02 remains unchecked.
+- Files changed this pass: `src/mining/cursor.lua`, `src/core/contracts.lua`, `tests/mining_cursor.lua`, `docs/persistence.md`, `docs/stairs.md`, and this handoff.
+- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/mining_cursor.lua` and `tests/contracts.lua` passed; `C:/Users/Game/AppData/Local/Programs/Lua/bin/luac.exe -p src/mining/cursor.lua src/core/contracts.lua tests/mining_cursor.lua tests/contracts.lua` passed. No in-world verification was performed.
+- Blocker/decision: none requiring user input. Exact next action: wire floor 1 route execution into the coordinator, saving a route cursor before entry/slice/landing work and a validated floor landing after the canonical centre is reached; then test failed movement, failed saves, fuel denial, and exact pose. Home-test of the integrated route remains hardware-only.
 
 Historical handoff entries below are retained for audit; the current task summary above supersedes their old blocker and next-item statements.
 

@@ -244,6 +244,16 @@ assert(selectedSlot == 5, "active helpers should restore the original selected s
 -- its original surface facing before reporting success.
 assert(world.x == 0 and world.y == 0 and world.z == 0 and world.facing == 0,
     "short branch pair should return to the exact origin pose")
+local finalState = assert(load("return " .. assert(persistedFiles["oreMiner/state.json"]))())
+assert(finalState.status == "complete", "the multi-floor run should commit completion at surface origin")
+assert(finalState.floorLandings[1].landing.y == -8
+    and finalState.floorLandings[1].landing.z == -13,
+    "floor 1 landing should be saved at the specified depth and offset")
+assert(finalState.floorLandings[4].landing.y == -32
+    and finalState.floorLandings[4].landing.z == -43,
+    "floor 4 landing should be saved at the configured depth and offset")
+assert(finalState.progress.floor == 4,
+    "the durable mining cursor should retain the active floor identity")
 
 local seenCursor = {}
 for _, progress in ipairs(physicalActionProgress) do
@@ -259,6 +269,14 @@ assert(seenCursor["branch_lower_return:left:return_branch_cell"]
     "both lower returns should carry their saved logical cursor")
 assert(seenCursor["junction:none:restore_main_facing"],
     "junction-facing restoration should carry its saved logical cursor")
+local seenStairAction = false
+for _, progress in ipairs(physicalActionProgress) do
+    if progress.workDomain == "shaft" and progress.floor == 4
+        and progress.nextAction == "descend_stair_slice" then
+        seenStairAction = true
+    end
+end
+assert(seenStairAction, "stair movement should carry a durable floor-specific cursor")
 
 local foundFinalPose = false
 local foundFinalSummary = false

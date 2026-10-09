@@ -895,8 +895,8 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 
 - [x] **MVP / P1 — M01** Implement the explicit mining phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between main-shaft, junction, branch outbound, turnaround, upper/lower return, and junction restoration phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
 - [x] **MVP / P0 — S01** Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2** `src/navigation/stair_slice.lua` sweeps each three-cell column, unwinds lateral moves, and provides a non-digging inverse climb; `tests/navigation_stair_slice.lua` verifies geometry, pose, and failure unwind.
-- [ ] **MVP / P0 — S02** Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing. — **AI-2**
-- [ ] **MVP / P0 — S03** Return from a landing to the surface using only the recorded staircase. — **AI-2**
+- [x] **MVP / P0 — S02** Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing. `src/navigation/stair_route.lua` composes the fixed surface entry, configured slice count, landing carve, and pose assertions; the active coordinator persists stair cursors and landing routes. `tests/active_baseline_wiring.lua` verifies floor 1 at `(0,-8,-13)` and the configured floor 4 landing. — **AI-2**
+- [x] **MVP / P0 — S03** Return from a landing to the surface using only the recorded staircase. `StairRoute.returnToSurface` follows the recorded segment in reverse with movement-only callbacks; the active coordinator climbs segments from deepest floor to surface, and the full fake-turtle run ends at the exact origin/facing. — **AI-2**
 - [ ] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. — **AI-2**
 - [ ] **MVP / P1 — S05** Advance the floor index only after the prior floor returns to its landing and commits complete. — **AI-1**
 - [ ] **MVP / P1 — M02** From the landing, turn right and mine a two-high straight floor main-tunnel segment. — **AI-1**

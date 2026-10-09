@@ -28,6 +28,14 @@ local function fail(pose, code, message, extra)
     return pose, Result.new(false, code, message, extra)
 end
 
+local function checkpoint(callback, context)
+    if not callback then return nil end
+    local saved, outcome = callback(context)
+    if saved == true then return nil end
+    if Contracts.isResult(outcome) then return outcome end
+    return Result.new(false, "STATE_WRITE_FAILED", "Could not save the next stair action.", context)
+end
+
 local function validate(options)
     return type(options) == "table"
         and Contracts.isPose(options.pose)
@@ -55,6 +63,10 @@ function StairRoute.descend(options)
     local start = copyPose(options.pose)
     local current = start
     if options.floor == 1 then
+        local saveFailure = checkpoint(options.beforeEntry, {
+            floor = options.floor, stairStep = 0, action = "enter_surface", pose = copyPose(current),
+        })
+        if saveFailure then return current, saveFailure end
         local outcome
         current, outcome = SurfaceEntry.enter({ pose = current, move = options.move })
         if outcome.ok ~= true then return current, outcome end
@@ -62,6 +74,10 @@ function StairRoute.descend(options)
 
     local mouth = copyPose(current)
     if options.floor > 1 then
+        local saveFailure = checkpoint(options.beforeEntry, {
+            floor = options.floor, stairStep = 0, action = "cross_landing", pose = copyPose(current),
+        })
+        if saveFailure then return current, saveFailure end
         local moved, moveOutcome = options.move("forward")
         local expected = forwardPose(current, 1)
         if not Contracts.isResult(moveOutcome) or moveOutcome.ok ~= true
@@ -77,6 +93,11 @@ function StairRoute.descend(options)
     end
 
     for step = 1, options.steps do
+        local saveFailure = checkpoint(options.beforeStep, {
+            floor = options.floor, stairStep = step,
+            action = "descend_stair_slice", pose = copyPose(current),
+        })
+        if saveFailure then return current, saveFailure end
         local outcome
         current, outcome = StairSlice.descend({
             pose = current,
@@ -103,6 +124,11 @@ function StairRoute.descend(options)
     end
 
     local rear = copyPose(current)
+    local saveFailure = checkpoint(options.beforeLanding, {
+        floor = options.floor, stairStep = options.steps,
+        action = "prepare_landing", pose = copyPose(rear),
+    })
+    if saveFailure then return rear, saveFailure end
     local landingPose, landingOutcome = options.prepareLanding(copyPose(rear), options.floor)
     local expectedLanding = forwardPose(rear, 1)
     if not Contracts.isResult(landingOutcome) or landingOutcome.ok ~= true

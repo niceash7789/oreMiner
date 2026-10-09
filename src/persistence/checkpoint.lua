@@ -55,6 +55,40 @@ function Session.setProgress(self, progress, pose, route, configSnapshot)
     return ok, code
 end
 
+function Session.recordFloorLanding(self, landing, pose, route, configSnapshot)
+    local landings = self.state.floorLandings or {}
+    if not self.stateApi.validateFloorLanding(landing, route, landings) then
+        return false, "INVALID_FLOOR_LANDING"
+    end
+    local previous = landings[landing.floor]
+    if previous ~= nil then
+        local same = previous.origin.x == landing.origin.x
+            and previous.origin.y == landing.origin.y
+            and previous.origin.z == landing.origin.z
+            and previous.origin.facing == landing.origin.facing
+            and previous.landing.x == landing.landing.x
+            and previous.landing.y == landing.landing.y
+            and previous.landing.z == landing.landing.z
+            and previous.landing.facing == landing.landing.facing
+        if not same then return false, "LANDING_CONFLICT" end
+    end
+    self.state.floorLandings = copy(landings)
+    self.state.floorLandings[landing.floor] = copy(landing)
+    local ok, code = self:save(pose, route, configSnapshot)
+    if not ok then self.state.floorLandings[landing.floor] = previous end
+    return ok, code
+end
+
+function Session.floorLanding(self, floor)
+    if type(floor) ~= "number" or floor ~= math.floor(floor) or floor < 1 then return nil end
+    local landing = self.state.floorLandings and self.state.floorLandings[floor]
+    return landing and copy(landing) or nil
+end
+
+function Session.floorLandings(self)
+    return copy(self.state.floorLandings or {})
+end
+
 function Session.beginAction(self, kind, direction, pose, route, configSnapshot)
     self.state.pendingAction = { kind = kind, direction = direction }
     local ok, code = self:save(pose, route, configSnapshot)

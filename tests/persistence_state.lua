@@ -93,6 +93,53 @@ assert(mismatched == nil and mismatchCode == "CONFIG_MISMATCH", "config mismatch
 
 local session = assert(Checkpoint.create(config, pose, route, "run-2", "checkpoint.json", fs, textutils))
 assert(session:save(pose, route, config), "checkpoint session should save initial durable state")
+local landingRoute = {
+    floor = 1,
+    origin = { x = 0, y = 0, z = 0, facing = 0 },
+    mouth = { x = 0, y = 0, z = -4, facing = 0 },
+    rear = { x = 0, y = -8, z = -12, facing = 0 },
+    landing = { x = 0, y = -8, z = -13, facing = 0 },
+    steps = 8,
+    entryMoves = 4,
+}
+local landingGraph = { home = "0,0,0", edges = {} }
+for _, point in ipairs({ landingRoute.origin, landingRoute.mouth,
+    landingRoute.rear, landingRoute.landing }) do
+    landingGraph.edges[point.x .. "," .. point.y .. "," .. point.z] = {}
+end
+assert(State.validateFloorLanding(landingRoute, landingGraph, {}),
+    "a geometrically consistent floor landing route should validate")
+assert(not State.validateFloorLanding({
+    floor = 1, origin = landingRoute.origin, mouth = landingRoute.mouth,
+    rear = landingRoute.rear, landing = { x = 0, y = -8, z = -14, facing = 0 },
+    steps = 8, entryMoves = 4,
+}, landingGraph, {}), "a landing pose beyond the recorded rear cell must fail")
+local landingSession = assert(Checkpoint.create(config, landingRoute.landing, landingGraph,
+    "run-landing", "landing-checkpoint.json", fs, textutils))
+assert(landingSession:recordFloorLanding(landingRoute, landingRoute.landing, landingGraph, config),
+    "landing route should be durably recorded")
+local savedLanding = assert(State.load("landing-checkpoint.json", config, fs, textutils))
+assert(savedLanding.floorLandings[1].landing.z == -13,
+    "roundtrip should retain the canonical floor landing pose")
+local conflictingLanding = {
+    floor = 1,
+    origin = { x = 0, y = 0, z = 0, facing = 1 },
+    mouth = { x = 4, y = 0, z = 0, facing = 1 },
+    rear = { x = 12, y = -8, z = 0, facing = 1 },
+    landing = { x = 13, y = -8, z = 0, facing = 1 },
+    steps = 8, entryMoves = 4,
+}
+for _, point in ipairs({ conflictingLanding.origin, conflictingLanding.mouth,
+    conflictingLanding.rear, conflictingLanding.landing }) do
+    landingGraph.edges[point.x .. "," .. point.y .. "," .. point.z] = {}
+end
+local conflictOk, conflictCode = landingSession:recordFloorLanding(conflictingLanding,
+    landingRoute.landing, landingGraph, config)
+assert(not conflictOk and conflictCode == "LANDING_CONFLICT",
+    "a different landing pose must not overwrite the saved floor route")
+assert(landingSession:floorLanding(1).landing.z == -13,
+    "rejected route replacement must preserve the saved landing")
+
 local nextProgress = {
     workDomain = "floor",
     workUnitId = "surface-pair-2-left-branch_outbound_lower-3",
@@ -106,7 +153,8 @@ local nextProgress = {
     mainOffset = 2,
     nextAction = "mine_branch_cell",
 }
-assert(session:setProgress(nextProgress, pose, route, config), "logical cursor update should be durable")
+local nextProgressOk, nextProgressCode = session:setProgress(nextProgress, pose, route, config)
+assert(nextProgressOk, "logical cursor update should be durable: " .. tostring(nextProgressCode))
 local progressed, progressedCode = State.load("checkpoint.json", config, fs, textutils)
 assert(progressedCode == "STATE_LOADED" and progressed.progress.workUnitId == nextProgress.workUnitId
     and progressed.progress.offset == 3, "saved cursor should describe the next bounded work unit")
@@ -151,4 +199,71 @@ assert(session:status() == "error", "checkpoint session should expose status wit
 local fatalCheckpoint, fatalCode = State.load("checkpoint.json", config, fs, textutils)
 assert(fatalCode == "STATE_LOADED" and fatalCheckpoint.status == "error"
     and fatalCheckpoint.error == "TEST_STOP", "fatal error code must persist before the run stops")
+
+local function coordinateKey(value)
+    return value.x .. "," .. value.y .. "," .. value.z
+end
+local stairGraph = { home = "0,0,0", edges = { ["0,0,0"] = {} } }
+local function edge(from, to)
+    local fromKey, toKey = coordinateKey(from), coordinateKey(to)
+    stairGraph.edges[fromKey] = stairGraph.edges[fromKey] or {}
+    stairGraph.edges[toKey] = stairGraph.edges[toKey] or {}
+    stairGraph.edges[fromKey][toKey] = true
+    stairGraph.edges[toKey][fromKey] = true
+end
+local function segment(floor, origin, entryMoves, steps)
+    local current = { x = origin.x, y = origin.y, z = origin.z, facing = origin.facing }
+    for _ = 1, entryMoves do
+        local nextPose = { x = current.x, y = current.y, z = current.z - 1, facing = current.facing }
+        edge(current, nextPose)
+        current = nextPose
+    end
+    local mouth = { x = current.x, y = current.y, z = current.z, facing = current.facing }
+    for _ = 1, steps do
+        local nextPose = { x = current.x, y = current.y, z = current.z - 1, facing = current.facing }
+        edge(current, nextPose)
+        current = nextPose
+        nextPose = { x = current.x, y = current.y - 1, z = current.z, facing = current.facing }
+        edge(current, nextPose)
+        current = nextPose
+    end
+    local rear = { x = current.x, y = current.y, z = current.z, facing = current.facing }
+    local landing = { x = current.x, y = current.y, z = current.z - 1, facing = current.facing }
+    edge(current, landing)
+    return { floor = floor, origin = origin, mouth = mouth, rear = rear,
+        landing = landing, steps = steps, entryMoves = entryMoves }
+end
+
+local routeOne = segment(1, pose, 4, 8)
+local stairSession = assert(Checkpoint.create(config, routeOne.landing, stairGraph,
+    "stair-run", "stair-checkpoint.json", fs, textutils))
+assert(stairSession:recordFloorLanding(routeOne, routeOne.landing, stairGraph, config),
+    "first landing route should persist")
+local routeTwo = segment(2, routeOne.landing, 1, 8)
+local orphanSession = assert(Checkpoint.create(config, routeTwo.landing, stairGraph,
+    "orphan-stair-run", "orphan-stair-checkpoint.json", fs, textutils))
+local orphanOk, orphanCode = orphanSession:recordFloorLanding(routeTwo,
+    routeTwo.landing, stairGraph, config)
+assert(not orphanOk and orphanCode == "INVALID_FLOOR_LANDING",
+    "a later floor landing must not be recorded without its preceding floor")
+assert(stairSession:recordFloorLanding(routeTwo, routeTwo.landing, stairGraph, config),
+    "second landing route should persist after the first")
+assert(stairSession:floorLanding(2).landing.z == -23
+    and stairSession:floorLandings()[1].landing.z == -13,
+    "checkpoint getters should return saved landing routes")
+local loadedStairs = assert(State.load("stair-checkpoint.json", config, fs, textutils))
+assert(loadedStairs.floorLandings[2].landing.y == -16,
+    "landing routes should survive snapshot reload")
+local skippedLanding = {}
+for key, value in pairs(loadedStairs) do skippedLanding[key] = value end
+skippedLanding.floorLandings = { [2] = loadedStairs.floorLandings[2] }
+assert(not State.validate(skippedLanding), "floor landing records must not skip earlier floors")
+local invalidRoute = {}
+for key, value in pairs(routeTwo) do invalidRoute[key] = value end
+invalidRoute.landing = { x = 0, y = -16, z = -24, facing = 0 }
+local invalidRouteOk, invalidRouteCode = stairSession:recordFloorLanding(invalidRoute,
+    routeTwo.landing, stairGraph, config)
+assert(not invalidRouteOk and invalidRouteCode == "INVALID_FLOOR_LANDING",
+    "inconsistent landing geometry must not replace saved routes")
+
 print("persistence state checks passed")
