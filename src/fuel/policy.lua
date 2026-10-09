@@ -1,8 +1,9 @@
 -- Fuel gate for a single proposed move, using the caller's current route estimate.
 local FuelPolicy = {}
+local FuelLevel = require("src.fuel.level")
 
 function FuelPolicy.canMove(level, requiredFuel, refuel, readFuel)
-    if level == "unlimited" then
+    if FuelLevel.isUnlimited(level) then
         return true, "UNLIMITED_FUEL"
     end
 
@@ -21,7 +22,7 @@ function FuelPolicy.canMove(level, requiredFuel, refuel, readFuel)
     if type(readFuel) == "function" then
         available = readFuel()
     end
-    if available == "unlimited" then
+    if FuelLevel.isUnlimited(available) then
         return true, "UNLIMITED_FUEL"
     end
     if type(available) ~= "number" or available < requiredFuel then

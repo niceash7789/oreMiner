@@ -123,12 +123,12 @@ Cost-control workflow:
 
 ### Replace outright
 
-- [ ] **MVP / P0** Replace the assumption that `(0,0,0)` is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block. — **AI-2**
+- [x] **MVP / P0** Replace the assumption that `(0,0,0)` is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block. `src/branch_miner.lua` runs each floor from a recorded landing centre; `tests/active_baseline_wiring.lua` verifies the configured four-floor descent, landing geometry, action cursors, and exact return to origin. Physical geometry remains an operator check. — **AI-2**
 - [x] **MVP / P0** Replace the single rear-chest service assumption with the required left supply/right primary-output layout and optional rear bulk routing. — **AI-2** The active service verifies exact chest IDs on each configured side and restores canonical facing.
-- [ ] **MVP / P0** Replace direct coordinate-axis return from arbitrary positions with hierarchical route unwinding: vein to checkpoint, shaft to junction, main shaft to the landing centre, recorded stairs to surface origin. — **AI-2**
-- [ ] **MVP / P0** Replace recursive call-stack backtracking with an explicit, persisted route stack. — **AI-2**
+- [x] **MVP / P0** Replace direct coordinate-axis return from arbitrary positions with hierarchical route unwinding: vein to checkpoint, shaft to junction, main shaft to the landing centre, recorded stairs to surface origin. Veins unwind their breadcrumbs, branch traversal returns to its junction, the recorded known-route graph returns to the landing, and `StairRoute.returnToSurface` climbs recorded landing routes; deterministic route tests verify exact pose and fail-closed movement. — **AI-2**
+- [x] **MVP / P0** Replace recursive call-stack backtracking with an explicit, persisted route stack. `VeinTraversal.run` uses iterative frontier and inverse-route arrays; `src/persistence/checkpoint.lua` atomically stores/updates the vein route, frontier, and committed pose after each successful edge, while bounded local route actions use `ActionStack`. `tests/vein_traversal.lua`, `tests/persistence_state.lua`, and `tests/navigation_action_stack.lua` cover the implementation. Cross-reboot recovery unwinds saved active/unwinding breadcrumbs only when classifier evidence proves each inverse edge and exact checkpoint; entering and pending-action states remain refused under P03.
 - [x] **MVP / P0** Replace “continue anyway” fuel behaviour with `RETURN_REQUIRED` or `NO_FUEL`. — **AI-2** Startup now stops with `NO_FUEL` before movement when onboard permitted fuel cannot meet the estimate; per-move route admission remains enforced by the known-route fuel policy.
-- [ ] **MVP / P0** Replace ad-hoc booleans with structured results such as `{ok, code, message, retryable}`. — **AI-2**
+- [x] **MVP / P0** Replace ad-hoc booleans with structured results such as `{ok, code, message, retryable}`. `src/safety/result.lua` constructs and validates the full result shape with a conservative non-retryable default; shared contracts reject missing retryability, and movement/turn adapters expose typed outcomes while retaining their compatibility success flag. `tests/safety_result.lua` and contract checks pass. Some high-level feature APIs still return compatibility booleans and remain migration work under their own checklist items. — **AI-2**
 - [x] **MVP / P1** Replace interactive configuration as the normal launch path with a validated config file; keep a minimal confirmation/summary only when appropriate. Root `config.lua` now supplies schema version 1, `src.config.loader` validates and copies the complete V1 schema, and the coordinator displays a read-only summary plus one start confirmation. — **AI-1**
 
 ## 4. Recommended mining strategy
@@ -442,8 +442,8 @@ State invariants:
 
 - [x] **MVP / P0** Save an intent before every physical move and turn; commit the resulting pose immediately after success. The active coordinator persists pending intent before the turtle API and commits only after literal success; pending intent reports `POSITION_UNCERTAIN` after reboot. — **AI-2**
 - [x] **MVP / P0** Save after changing the logical mining cursor, before beginning the next unit of work. `src/mining/cursor.lua` defines the validated next-action cursor for the active baseline, and the coordinator saves it through `Checkpoint.setProgress` before each main-shaft, junction, branch-outbound, turnaround, and return unit. Failed cursor persistence stops before the unit starts. — **AI-2**
-- [ ] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. — **AI-2**
-- [ ] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. — **AI-2**
+- [x] **MVP / P0** Save before entering a vein and after every successful vein move/frontier update. The coordinator persists an `entering` record before seed movement, then atomically saves committed pose and DFS frontier after every successful edge, including inverse edges; focused vein and persistence tests pass. Cross-reboot recovery remains part of P03. — **AI-2**
+- [x] **MVP / P0** Save before starting route unwind, before return home, on arrival home, before unload, after unload, and before resume departure. `src/inventory/service.lua` persists the exact origin/cursor and expected destination for each leg, arrival at base, unloading start/completion, and resume departure target; focused service and persistence tests pass. Cross-reboot recovery remains part of P03. — **AI-2**
 - [x] **MVP / P0** Save the fatal error before stopping. `markFatal` writes error status and code synchronously on a failed mining outcome; persistence test reloads and verifies the code. — **AI-2**
 - [x] **MVP / P1** Write to a temporary file, close it, validate it, rotate the current valid file to `.bak`, and move the temporary file into place. — **AI-2** `src/persistence/state.lua` implements the validated temporary-file commit and backup fallback; persistence tests cover both.
 - [x] **MVP / P1** On load, validate schema, enum values, coordinate integers, route structure, and configuration compatibility. Version 1 snapshots now fail closed on invalid pose/config data, action/status enums, and malformed/non-reversible route graphs; expected configuration is validated before comparison. — **AI-1**
@@ -502,9 +502,9 @@ Navigation backlog:
 - [x] **MVP / P0** Implement a checked 3×3 stair-slice sweep that restores centreline pose before moving down. `src.navigation.stair_slice` clears the nine-cell cross-section through checked callbacks and asserts the canonical end pose. — **AI-2**
 - [x] **MVP / P0** Implement the exact inverse centreline climb: move up, then back, with no new digging on a known-clear staircase. `StairSlice.climb` performs only those two checked moves and is covered by a zero-clear assertion. — **AI-2**
 - [x] **MVP / P0** Treat every lateral carving move as a reversible sub-action and assert centre-bottom pose/facing at the end of each slice. Each left/right excursion uses a strict LIFO action stack and deterministic pose checks. — **AI-2**
-- [ ] **MVP / P0** Record and assert every floor landing pose. — **AI-2**
-- [ ] **MVP / P0** Implement branch-to-junction, junction-to-landing, and landing-to-surface route builders. — **AI-2**
-- [ ] **MVP / P0** Assert canonical pose at every phase boundary. — **AI-2**
+- [x] **MVP / P0** Record and assert every floor landing pose. `StairRoute.descend` asserts the canonical landing centre and `Checkpoint.recordFloorLanding` validates and persists every floor landmark against the route graph; the integrated multi-floor fake-turtle run verifies floor 1 and floor 4 geometry. — **AI-2**
+- [x] **MVP / P0** Implement branch-to-junction, junction-to-landing, and landing-to-surface route builders. The active floor runner returns paired shafts to junctions and the main shaft to its recorded landing; `StairRoute.returnToSurface` reverses the recorded landing/stairs/entry route with checked movement, and `resumeToLanding` validates the complete requested route chain before replay. — **AI-2**
+- [x] **MVP / P0** Assert canonical pose at every phase boundary. Navigation route modules compare returned poses with calculated checkpoints, the coordinator verifies landing, floor return, and final origin poses, and the integrated fake-turtle run exercises those boundaries. — **AI-2**
 - [x] **MVP / P0** On an unexpected obstruction in a known-clear return cell, retry within limits and then stop; do not tunnel around it. — **AI-2** `ReturnMove.run` rejects unknown edges and returns `RETURN_BLOCKED` after bounded movement-only retries.
 - [ ] **NEXT / P2** Add an operator-assisted `home` command that is only enabled when pose is known. — **AI-1**
 - [ ] **LATER / P3** Add constrained detours around obstacles only if a provable inverse route can be retained. — **AI-1**
@@ -585,17 +585,17 @@ Inventory backlog:
 - [x] **MVP / P0** Implement verified partial/excess unloading with no world-dropping fallback outside the explicit branch-end cobblestone rule. — **AI-2** Exact requested count deltas are required for every output drop.
 - [x] **MVP / P0** Without a rear bulk chest, eject only excess `minecraft:cobblestone` at each completed branch endpoint after preserving the configured mandatory backfill reserve, regardless of paving state; verify total and per-slot count deltas and fail with `EJECT_FAILED` on incomplete ejection. — **AI-2**
 - [x] **MVP / P0** Distinguish `NO_SUPPLY_CHEST`, `NO_OUTPUT_CHEST`, `NO_BULK_CHEST`, `CHEST_FULL`, and generic `UNLOAD_FAILED`. — **AI-2** Focused routing tests exercise every code.
-- [ ] **MVP / P0** Persist the resume checkpoint before moving home. — **AI-2**
-- [ ] **MVP / P0** Handle threshold reached while descending stairs, in a floor main tunnel, in either branch phase, and at any vein depth. — **AI-2**
+- [x] **MVP / P0** Persist the resume checkpoint before moving home. — **AI-2** `Checkpoint.setService` atomically stores the service stage, exact mining pose, and next cursor before route-home travel; service checkpoints are durably advanced through home, unload, and resume and cleared only after exact return. `tests/persistence_state.lua` and `tests/inventory_service.lua` cover roundtrip, validation, ordered stages, and clear-after-return.
+- [x] **MVP / P0** Handle threshold reached while descending stairs, in a floor main tunnel, in either branch phase, and at any vein depth. `src/branch_miner.lua` checks pressure before/after floor-main cells and at branch outbound/upper-return checkpoints; stair descent invokes service after each committed slice; vein traversal requests unwind before another candidate dig, then the caller services at the exact tunnel checkpoint. `tests/stair_route.lua`, `tests/active_baseline_wiring.lua`, `tests/vein_traversal.lua`, and `tests/inventory_service.lua` cover these boundaries and exact service routing. — **AI-2**
 - [x] **MVP / P0** Ensure no new vein discovery occurs once unwind has been requested. `VeinTraversal.run` honors an optional `beforeDiscover()` admission callback and unwinds before inspecting a neighbor when it requests return; the focused regression test verifies zero discovery calls. — **AI-2**
-- [ ] **MVP / P0** Refuel from allowed items pulled from the left supply chest until the resume fuel invariant is satisfied. — **AI-2**
-- [ ] **MVP / P0** Restock configured torches from the left supply chest and verify the minimum departure count. — **AI-2**
-- [ ] **MVP / P0** Bound mixed-supply pull/classify attempts and fail safely when chest ordering/content prevents a quota from being met. — **AI-2**
-- [ ] **MVP / P1** Preserve up to 64 `minecraft:coal` and 64 `minecraft:torch` by default; preserve up to 64 `minecraft:cobblestone` exclusively for placement when paving is enabled. — **AI-1**
-- [ ] **MVP / P1** Restore the original selected slot after inventory operations. — **AI-1**
-- [ ] **MVP / P1** Verify all received supply item IDs and quantities. — **AI-1**
-- [ ] **MVP / P1** When bulk separation is disabled, eject excess cobblestone only at completed branch endpoints and route all remaining inventory safely to the right chest at base. — **AI-1**
-- [ ] **MVP / P1** When bulk separation is enabled, require and verify the rear chest before departure. — **AI-1**
+- [x] **MVP / P0** Refuel from allowed items pulled from the left supply chest until the resume fuel invariant is satisfied. `Resupply.run` consumes only configured fuel after `refuel(0)` verification; the service executor admits departure against the fuel commitment before returning to the saved checkpoint. `tests/inventory_resupply.lua`, `tests/inventory_service.lua`, and `tests/resume_commitment.lua` cover these behaviors. — **AI-2**
+- [x] **MVP / P0** Restock configured torches from the left supply chest and verify the minimum departure count. `Resupply.run` pulls toward the configured target and accepts a partial target only when the separate departure minimum is met; `tests/inventory_resupply.lua` covers both paths. — **AI-2**
+- [x] **MVP / P0** Bound mixed-supply pull/classify attempts and fail safely when chest ordering/content prevents a quota from being met. `maxPulls` bounds both category scans; unsupported contents are returned only after verified drop, while unmet fuel or minimum torches return typed failures. `tests/inventory_resupply.lua` covers mixed ordering, absent supply, and quota failure. — **AI-2**
+- [x] **MVP / P1** Preserve up to 64 `minecraft:coal` and 64 `minecraft:torch` by default; preserve up to 64 `minecraft:cobblestone` exclusively for placement when paving is enabled. `src/config/defaults.lua`, `src/config/loader.lua`, and `src/config/item_policy.lua` supply and enforce the default retained quotas; `tests/config_loader.lua` and `tests/item_policy.lua` cover them. — **AI-1**
+- [x] **MVP / P1** Restore the original selected slot after inventory operations. `Resupply.run` wraps all paths in `SlotGuard.run`; tests assert restoration on success and failure. — **AI-1**
+- [x] **MVP / P1** Verify all received supply item IDs and quantities. Every pulled slot is inspected and classified, observed fuel/torch counts are recomputed from inventory, and fuel consumption is checked against stack and tank deltas; `tests/inventory_resupply.lua` covers these checks. — **AI-1**
+- [x] **MVP / P1** When bulk separation is disabled, eject excess cobblestone only at completed branch endpoints and route all remaining inventory safely to the right chest at base. `BranchEjection` is called only after a completed outbound branch; base unloading sends remaining ore, unknown, bulk, and excess cobblestone to the right chest while retaining configured quotas. `tests/branch_ejection.lua` and the bulk-disabled case in `tests/inventory_service.lua` verify these rules. — **AI-1**
+- [x] **MVP / P1** When bulk separation is enabled, require and verify the rear chest before departure. `InventoryService` checks the rear chest at the checkpoint before return travel and during unload; `tests/inventory_service.lua` verifies the missing-chest stop causes no travel. — **AI-1**
 - [ ] **LATER / P2** Support keep rules by tag and acceptable substitutes such as cobbled deepslate. — **AI-1**
 - [ ] **EXPERIMENTAL / P3** Evaluate a deterministic inventory peripheral for direct fuel/torch slot selection. — **AI-1**
 
@@ -633,16 +633,16 @@ The reserve default remains 100. It is extra margin, not a replacement for route
 
 Fuel backlog:
 
-- [ ] **MVP / P0** Implement exact `costHome(state)` for each valid phase. — **AI-2**
-- [ ] **MVP / P0** Include vein breadcrumb depth in `costHome`. — **AI-2**
-- [ ] **MVP / P0** Enforce the invariant before every move that can increase home cost. — **AI-2**
-- [ ] **MVP / P0** Turn failed refuel into return/stop behaviour, never a warning followed by continued outward mining. — **AI-2**
-- [ ] **MVP / P0** Restore selected slot after testing or consuming fuel. — **AI-2**
-- [ ] **MVP / P1** Use `refuel(0)` to verify configured fuel items where appropriate. — **AI-1**
-- [ ] **MVP / P1** Handle the string value `unlimited` everywhere fuel is displayed or compared. — **AI-1**
-- [ ] **MVP / P1** Track actual fuel delta rather than assuming every requested move consumed one unit. — **AI-1**
-- [ ] **MVP / P1** Check resume-trip affordability before leaving base. — **AI-1**
-- [ ] **MVP / P0** Refill the internal fuel buffer and physical emergency-fuel quota from the left supply chest during every base service. — **AI-2**
+- [x] **MVP / P0** Implement exact `costHome(state)` for each valid phase. `KnownRoute.costHome` prices the shortest recorded route from the committed pose to origin independent of phase; supported active/unwinding vein state must prove each inverse breadcrumb is a recorded edge ending at its tunnel checkpoint. `tests/known_route_fuel.lua` passes. — **AI-2**
+- [x] **MVP / P0** Include vein breadcrumb depth in `costHome`. Breadcrumbs are validated against recorded edges, then cost is measured from the committed pose so the excursion retrace is included exactly once; incomplete/entering states are refused. Focused test passes with corrected three-edge fixture. — **AI-2**
+- [x] **MVP / P0** Enforce the invariant before every move that can increase home cost. `Motion.moveWithPolicy` runs `RoutePolicy.canMove` before saving intent or invoking turtle movement; `tests/navigation_motion.lua` and `tests/known_route_fuel.lua` pass. — **AI-2**
+- [x] **MVP / P0** Turn failed refuel into return/stop behaviour, never a warning followed by continued outward mining. Fuel admission returns `NO_FUEL` without writing movement intent or calling the turtle when refuelling cannot satisfy the route commitment; motion and fuel-policy tests pass. — **AI-2**
+- [x] **MVP / P0** Restore selected slot after testing or consuming fuel. `Resupply.run` wraps its fuel-selection/refuel phase in `SlotGuard`, which restores the original selection on successful, failed, and exceptional helper exits; focused resupply and slot-guard tests pass. — **AI-2**
+- [x] **MVP / P1** Use `refuel(0)` to verify configured fuel items where appropriate. `FuelItemValidation.verify` accepts only configured IDs and literal `true` from `refuel(0)`; active route refuelling and automatic reserve refuelling use it before consumption. `tests/fuel_item_validation.lua` covers allowed, rejected, malformed-result, and invalid-slot cases. — **AI-1**
+- [x] **MVP / P1** Handle the string value `unlimited` everywhere fuel is displayed or compared. `FuelLevel.isUnlimited` and `format` cover startup, route policy, resupply, status, and final reporting; unlimited fuel skips numeric accounting safely. `tests/fuel_level.lua`, `tests/known_route_fuel.lua`, and resupply tests pass. — **AI-1**
+- [x] **MVP / P1** Track actual fuel delta rather than assuming every requested move consumed one unit. `Motion.move` samples numeric fuel immediately before and after a confirmed move; statistics add only a positive observed decrease, with unlimited/unavailable readings contributing zero. `tests/navigation_motion.lua` and `tests/fuel_level.lua` pass. — **AI-1**
+- [x] **MVP / P1** Check resume-trip affordability before leaving base. The coordinator derives exact recorded home and replay route lengths, adds reserve and one work step with `ResumeCommitment.targetFuelForTrips`, and refuels before any resume travel; focused commitment and recovery tests cover distinct trip costs and refusal. — **AI-1**
+- [x] **MVP / P0** Refill the internal fuel buffer and physical emergency-fuel quota from the left supply chest during every base service. `src/inventory/resupply.lua` restores the configured onboard quota after meeting the internal route commitment; resupply, service ordering, and commitment tests pass for mixed fuel/torch ordering and incidental torches. — **AI-2**
 - [ ] **NEXT / P2** Estimate job completion fuel for status only; never use the estimate in place of the safety invariant. — **AI-1**
 
 ## 10. Ore detection and vein design
@@ -656,7 +656,7 @@ CC:Tweaked block inspection can provide a block name, state, and tags. Classific
 
 The built-in defaults should be deliberately small. Use common ore tags when present, the `_ore` suffix as a fallback, and explicit overrides. Do not embed a modpack catalogue.
 
-Ore discovery may occur during shaft or floor work, but V1 must not launch a vein excursion from the middle of a 3×3 staircase sweep. Record the candidate, finish restoring the current slice's centre-bottom pose, commit that checkpoint, and then let the same turtle execute the ore work. This creates the future shaft-miner/ore-gatherer hand-off boundary without adding a second turtle in V1.
+Ore discovery may occur during floor work, but V1 does not scan or mine ore during the stairs descent. For each floor main-shaft cell, inspect its four adjacent faces, queue any classified candidates without digging them, then execute the queue on the same turtle from the unchanged committed cell pose before advancing to the next route cell. This keeps ore work off temporary excursions and gives the queue an exact known-route checkpoint without confusing one-wide floor geometry with the 3×3 stairs sweep. No remote assignment or second turtle exists in V1.
 
 ### Iterative vein traversal
 
@@ -683,17 +683,17 @@ Recommended defaults:
 
 Vein backlog:
 
-- [ ] **MVP / P0** Implement coordinate-key visited tracking. — **AI-2**
-- [ ] **MVP / P0** Implement iterative DFS frontier and inverse route stack. — **AI-2**
-- [ ] **MVP / P0** Save and assert checkpoint pose/facing. — **AI-2**
-- [ ] **MVP / P0** Queue shaft ore candidates until the 3×3 slice returns to its canonical centre-bottom checkpoint. — **AI-2**
-- [ ] **MVP / P0** In V1, execute queued ore work on the same turtle before the next shaft slice; no remote assignment or second worker exists. — **AI-2**
-- [ ] **MVP / P0** Add max-block and max-radius guards. — **AI-2**
-- [ ] **MVP / P0** Check inventory and fuel before every new vein edge. — **AI-2**
-- [ ] **MVP / P0** On inventory/fuel return, unwind before travelling home. — **AI-2**
-- [ ] **MVP / P0** Treat any failed inverse movement as fatal `VEIN_RETURN_BLOCKED`. — **AI-2**
-- [ ] **MVP / P1** Classify ore using explicit names, tags, patterns, and ignore rules. — **AI-1**
-- [ ] **MVP / P1** Preserve traversal state in the persistent snapshot. — **AI-2**
+- [x] **MVP / P0** Implement coordinate-key visited tracking. `VeinTraversal` keys visited cells by integer world coordinates and adds them only after successful movement; `tests/vein_traversal.lua` covers cyclic and multi-ID connected veins. — **AI-2**
+- [x] **MVP / P0** Implement iterative DFS frontier and inverse route stack. `VeinTraversal.run` uses explicit frontier frames and inverse breadcrumbs, then requires the exact checkpoint pose/facing after unwind; focused tests cover successful and failed inverse movement. — **AI-2**
+- [x] **MVP / P0** Save and assert checkpoint pose/facing. The caller supplies the committed seed checkpoint and inverse; traversal rejects completion unless all breadcrumbs unwind to the same coordinates and facing. — **AI-2**
+- [x] **MVP / P0** Queue floor main-shaft ore candidates until the current cell scan restores its committed pose. `MainTunnelScan` collects inspected adjacent coordinates without digging, verifies the exact pose/facing, then drains the queue before the route advances; `tests/main_tunnel_scan.lua` and `tests/active_baseline_wiring.lua` cover the checkpoint boundary. — **AI-2**
+- [x] **MVP / P0** In V1, execute queued ore work on the same turtle before the next main-shaft cell; no remote assignment or second worker exists. The coordinator drains each cell's queue synchronously through its existing same-turtle vein executor and stops on any failed scan, turn, unwind, or drain. — **AI-2**
+- [x] **MVP / P0** Add max-block and max-radius guards. `VeinTraversal` enforces 64 blocks and Manhattan radius/depth 8, reports exhaustion only after exact unwind, and stops on unwind failure; focused cap tests cover both outcomes. — **AI-2**
+- [x] **MVP / P0** Check inventory and fuel before every new vein edge. `VeinTraversal` checks inventory before each candidate; `RoutePolicy.canExplore` checks the projected known return route plus reserve before digging, attempts configured onboard refuelling, and verifies fuel. `tests/known_route_fuel.lua` covers successful/failed refuelling and unlimited fuel. — **AI-2**
+- [x] **MVP / P0** On inventory/fuel return, unwind before travelling home. `VeinTraversal.run` stops discovery, persists the unwinding route, and returns to the exact tunnel checkpoint before the coordinator converts fuel denial into `RETURN_REQUIRED` or services inventory pressure; focused traversal tests verify both boundaries. — **AI-2**
+- [x] **MVP / P0** Treat any failed inverse movement as fatal `VEIN_RETURN_BLOCKED`. Back, up, and down inverse failures abort the excursion; the coordinator propagates the failure and cannot continue the shaft; focused traversal tests verify all three directions. — **AI-2**
+- [x] **MVP / P1** Classify ore using explicit names, tags, patterns, and ignore rules. `OreClassifier.isOre` applies positive configured evidence with ignore precedence across names, inspected tags, and Lua patterns; whitelist and valuable modes stay narrow and malformed input fails closed. `tests/ore_classifier.lua` passes. — **AI-1**
+- [x] **MVP / P1** Preserve traversal state in the persistent snapshot. `Checkpoint.setVein` and `commitVeinAction` persist bounded DFS frontier, visited keys, inverse breadcrumbs, stage, and checkpoint with the committed pose/route; recovery admits only verified unwind, never fresh discovery after reboot. `tests/persistence_state.lua`, `tests/persistence_recovery.lua`, and `tests/vein_traversal.lua` pass. — **AI-2**
 - [x] **MVP / P1** Report cap exhaustion and continue the tunnel only after successful unwind. — **AI-1** `VeinTraversal` reports cap exhaustion through the coordinator callback only after exact checkpoint unwind succeeds; failed unwind remains fatal and suppresses the report. `tests/vein_traversal.lua` covers both outcomes.
 - [ ] **NEXT / P2** Record ore counts by block/item type. — **AI-1**
 - [ ] **NEXT / P2** Improve ore grouping when stone/deepslate variants or modded variants touch. — **AI-1**
@@ -718,17 +718,17 @@ Vein backlog:
 
 Safe V1 behaviour is to stop. Turtles cannot reliably solve every flowing-water/lava geometry, and liquid detection may be mod/version dependent.
 
-- [ ] **MVP / P0** When movement fails with no solid block and entity recovery fails, classify the condition as `UNKNOWN_OBSTRUCTION` or `LIQUID` when inspection data supports it, persist, and stop. — **AI-2**
+- [x] **MVP / P0** When movement fails with no solid block and entity recovery fails, classify the condition as `UNKNOWN_OBSTRUCTION` or `LIQUID` when inspection data supports it, persist, and stop. `ForwardRecovery` performs a protected inspect only after bounded entity recovery, identifies water/lava names or tags as `LIQUID`, otherwise returns `UNKNOWN_OBSTRUCTION`; the coordinator persists the fatal outcome and stops without fluid manipulation. Focused recovery and active wiring tests pass. — **AI-2**
 - [ ] **NEXT / P2** Improve water/lava identification using returned block/fluid information available in the target CC:Tweaked version. — **AI-1**
 - [ ] **EXPERIMENTAL / P3** Prototype bounded fluid plugging behind a disabled feature flag and only with a guaranteed return path. — **AI-1**
 
 ### Paving
 
-- [ ] **MVP / P1** Keep paving optional and disabled by default. — **AI-1**
-- [ ] **MVP / P1** Place only explicitly allowed items. — **AI-1**
-- [ ] **MVP / P1** When paving is disabled, perform no paving selection or placement; retain only the independently configured mandatory main-shaft backfill reserve. — **AI-1**
-- [ ] **MVP / P1** When paving is enabled, treat the retained cobblestone quota as consumable paving working stock; never select or place fuel, torches, ores, unknown items, or other protected inventory. — **AI-1**
-- [ ] **MVP / P1** Treat “no paving material” as a warning when paving is optional; never substitute ore or arbitrary inventory items. — **AI-1**
+- [x] **MVP / P1** Keep paving optional and disabled by default. `src/config/defaults.lua` sets `paving.enabled = false`, the config loader maps the explicit feature flag, and `paveDown` returns before inventory selection or placement when disabled; `tests/item_policy.lua` and `tests/active_baseline_wiring.lua` pass. — **AI-1**
+- [x] **MVP / P1** Place only explicitly allowed items. `src/inventory/paving.lua` delegates eligibility to the exact-ID paving and protection policy; selection and placement require literal success. — **AI-1**
+- [x] **MVP / P1** When paving is disabled, perform no paving selection or placement; retain only the independently configured mandatory main-shaft backfill reserve. `Paving.tryDown` exits before inventory access when disabled; the backfill reserve remains separate in item policy. — **AI-1**
+- [x] **MVP / P1** When paving is enabled, treat the retained cobblestone quota as consumable paving working stock; never select or place fuel, torches, ores, unknown items, or other protected inventory. Aggregate inventory counts are checked against the mandatory quota before selecting. — **AI-1**
+- [x] **MVP / P1** Treat “no paving material” as a warning when paving is optional; never substitute ore or arbitrary inventory items. The active coordinator warns on absent material or failed optional placement and continues. — **AI-1**
 - [ ] **NEXT / P2** Make paving-required mode stop at base for resupply rather than continuing over gaps. — **AI-1**
 
 ### Lighting
@@ -742,15 +742,15 @@ Torch placement is an MVP requirement. A route carries a fixed outbound frame, s
 
 The default cadence is every four stair slices and every eight floor-tunnel blocks. Torch placement is attempted only after the target position and canonical return path are known. A placement helper must restore the exact pose/facing from which it was called. If a niche reveals ore, queue it and finish restoring the lighting checkpoint before starting a vein excursion.
 
-- [ ] **MVP / P0** Implement a route-frame right-side helper independent of current facing. — **AI-2**
-- [ ] **MVP / P0** Implement right-side torch/niche placement with exact pose/facing restoration. — **AI-2**
-- [ ] **MVP / P0** Place staircase torches only on the outer right wall, never in the cleared 3×3 passage. — **AI-2**
-- [ ] **MVP / P0** Skip torch placement on every landing slice so the right-turn floor entrance remains unobstructed. — **AI-2**
-- [ ] **MVP / P0** Place floor-main and branch torches only on their outbound right wall. — **AI-2**
-- [ ] **MVP / P1** Apply the configured stair/tunnel intervals by route distance, not global move count. — **AI-1**
-- [ ] **MVP / P1** Count and persist torches placed so restart does not duplicate the same placement checkpoint. — **AI-1**
-- [ ] **MVP / P0** When the torch quota falls below the minimum needed for the current leg, finish the safe checkpoint and return for resupply. — **AI-2**
-- [ ] **MVP / P0** If the left chest cannot supply the minimum, stop at base with `NO_TORCHES`. — **AI-2**
+- [x] **MVP / P0** Implement a route-frame right-side helper independent of current facing. `Lighting.rightSide` returns the adjacent pose and absolute right heading; `tests/lighting_right_wall.lua` covers all route and current facings. — **AI-2**
+- [x] **MVP / P0** Implement right-side torch/niche placement with exact pose/facing restoration. `Lighting.placeRight` restores facing through checked turns and, when supplied, verifies the live committed pose; the coordinator supplies that callback. `tests/lighting_right_wall.lua` covers all headings and injected coordinate drift. Persistent duplicate suppression remains a separate unchecked requirement. — **AI-2**
+- [x] **MVP / P0** Place staircase torches only on the outer right wall, never in the cleared 3×3 passage. `StairSlice` completes the cleared passage before the outer-right placement and unwinds its recorded approach on failure; `tests/navigation_stair_slice.lua` and `tests/active_baseline_wiring.lua` verify geometry and restoration. — **AI-2**
+- [x] **MVP / P0** Skip torch placement on every landing slice so the right-turn floor entrance remains unobstructed. `StairRoute` suppresses placement on the final slice; `tests/stair_route.lua` verifies cadence and landing exclusion. — **AI-2**
+- [x] **MVP / P0** Place floor-main and branch torches only on their outbound right wall. The coordinator uses each route's fixed outbound frame; `tests/active_baseline_wiring.lua` verifies both branch headings and the main route. — **AI-2**
+- [x] **MVP / P1** Apply the configured stair/tunnel intervals by route distance, not global move count. `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` cover configured cadence. — **AI-1**
+- [x] **MVP / P1** Count and persist torches placed so restart does not duplicate the same placement checkpoint. `Checkpoint` stores route-distance placement keys; `tests/persistence_state.lua` verifies persistence and distinct placements. — **AI-1**
+- [x] **MVP / P0** When the torch quota falls below the minimum needed for the current leg, finish the safe checkpoint and return for resupply. The coordinator checks torch stock at persisted work-unit boundaries and routes stock below `minimumTorchesToDepart` through the checkpointed service/resupply/exact-return path; `tests/inventory_service.lua` verifies forced service uses that path. — **AI-2**
+- [x] **MVP / P0** If the left chest cannot supply the minimum, stop at base with `NO_TORCHES`. `Resupply.run` returns this typed failure and inventory service stops before replay travel; `tests/inventory_service.lua` verifies it remains at origin. — **AI-2**
 - [ ] **NEXT / P2** Support separate main/branch intervals or adaptive spacing if playtesting shows the tunnel cadence is unsuitable. — **AI-1**
 
 ## 12. Failure and recovery strategy
@@ -789,9 +789,9 @@ Recommended error codes:
 
 Recovery commands:
 
-- [ ] **MVP / P1** `miner` starts a new run only when no active/incomplete state exists; otherwise it prints recovery guidance. — **AI-1**
-- [ ] **MVP / P1** `miner status` displays run state, pose, certainty, progress, fuel, inventory pressure, and last error without movement. — **AI-1**
-- [ ] **MVP / P1** `miner resume` resumes only a validated state with known pose. — **AI-1**
+- [x] **MVP / P1** `miner` starts a new run only when no active/incomplete state exists; otherwise it prints recovery guidance. `src/persistence/startup.lua` admits only missing or complete snapshots; active/incomplete state prints `miner status`/`miner resume` guidance and uncertain/corrupt/mismatched snapshots stop explicitly. `tests/persistence_startup.lua` passes. — **AI-1**
+- [x] **MVP / P1** `miner status` displays run state, pose, certainty, progress, fuel, inventory pressure, and last error without movement. `RecoveryStatus.display` renders these fields from the validated snapshot, and `tests/recovery_status.lua` runs the command with movement APIs configured to fail if called. — **AI-1**
+- [x] **MVP / P1** `miner resume` resumes only a validated state with known pose. `Recovery.classify` rejects pending/uncertain, corrupt, mismatched, and unsupported snapshots before movement; the coordinator validates recorded-route targets and fuel commitment before restoring supported mining, service, and vein-unwind checkpoints. `tests/persistence_recovery.lua`, `tests/active_baseline_wiring.lua`, and `tests/recovery_status.lua` pass. Physical reboot timing remains an operator check. — **AI-1**
 - [ ] **NEXT / P1** `miner home` returns a known-pose turtle along a valid recorded route. — **AI-1**
 - [ ] **NEXT / P1** `miner reset` requires explicit confirmation and is allowed only at a physically verified origin. — **AI-1**
 - [ ] **NEXT / P1** Add an operator reconciliation flow for a single pending move/turn; never guess automatically. — **AI-3**
@@ -814,10 +814,10 @@ Examples:
 [RESUME] L 17/30 out
 ```
 
-- [ ] **MVP / P2** Track blocks dug, ore blocks dug, veins started, fuel used, service trips, branch pairs completed, and active runtime. — **AI-1**
-- [ ] **MVP / P2** Track stair slices completed, floors completed, and torches placed. — **AI-1**
-- [ ] **MVP / P2** Update statistics after confirmed actions only. — **AI-1**
-- [ ] **MVP / P2** Make statistics writes part of the main state snapshot rather than a second failure-prone transaction. — **AI-1**
+- [x] **MVP / P2** Track blocks dug, ore blocks dug, veins started, fuel used, service trips, branch pairs completed, and active runtime. `src/branch_miner.lua` counts confirmed operations and derives elapsed active runtime. — **AI-1**
+- [x] **MVP / P2** Track stair slices completed, floors completed, and torches placed. — **AI-1**
+- [x] **MVP / P2** Update statistics after confirmed actions only. — **AI-1**
+- [x] **MVP / P2** Make statistics writes part of the main state snapshot rather than a second failure-prone transaction. Checkpoint snapshots now include validated counters and accumulated active runtime. — **AI-1**
 - [ ] **NEXT / P2** Track ore by item/block type, ore per fuel, ore per tunnel, and ore per active hour. — **AI-1**
 - [ ] **NEXT / P2** Separate paused/server-off time from active runtime where the local clock allows it. — **AI-1**
 - [ ] **LATER / P3** Export machine-readable job summaries. — **AI-1**
@@ -859,10 +859,10 @@ Internally, keep these work domains explicit so they can become dedicated roles 
 
 Each domain should consume an explicit origin/route frame and return a structured status plus durable progress. It must not read another domain's private counters or call raw turtle movement. For V1 these are ordinary local function/module boundaries, not independently scheduled jobs. A later fleet can assign those same bounded work descriptions to different turtles and add ownership/coordination around them.
 
-- [ ] **MVP / P1** Name persistent phases by work domain (`shaft`, `floor`, `ore`, `service`) while keeping one sequential executor. — **AI-2**
-- [ ] **MVP / P1** Give every work unit an ID, origin pose, outbound frame, bounds, cursor, and completion status. — **AI-2**
-- [ ] **MVP / P1** Keep navigation and storage policy independent of which future role requested the action. — **AI-1**
-- [ ] **MVP / P0** Enforce one active turtle/one active work unit in V1; reject any configuration implying multiple workers. — **AI-2**
+- [x] **MVP / P1** Name persistent phases by work domain (`shaft`, `floor`, `ore`, `service`) while keeping one sequential executor. `progress.workDomain` names shaft/floor cursors; persisted vein and service records now explicitly name ore/service alongside their bounded stage. The coordinator remains one sequential executor. `tests/persistence_state.lua` and active recovery checks pass. — **AI-2**
+- [x] **MVP / P1** Give every work unit an ID, origin pose, outbound frame, bounds, cursor, and completion status. `MiningCursor.withWorkUnit` frames each committed cursor with its starting pose, outbound heading, validated configured bounds, existing cursor fields, and pending status; terminal completion commits `complete`. `Checkpoint.setProgress` refreshes the metadata atomically with the resume checkpoint. `tests/persistence_state.lua`, `tests/persistence_recovery.lua`, and `tests/active_baseline_wiring.lua` verify persistence, tamper rejection, and completed coordinator state. — **AI-2**
+- [x] **MVP / P1** Keep navigation and storage policy independent of which future role requested the action. `StairSlice` and route modules receive checked movement/clear/lighting callbacks and do not import inventory policy; inventory service receives storage configuration plus injected pose/travel/checkpoint dependencies and does not import route executors. The sequential coordinator composes both boundaries. `tests/navigation_stair_slice.lua`, `tests/inventory_service.lua`, `tests/service_route.lua`, and `tests/active_baseline_wiring.lua` pass. — **AI-1**
+- [x] **MVP / P0** Enforce one active turtle/one active work unit in V1; reject any configuration implying multiple workers. The loader rejects top-level worker-count, turtle-count, and fleet settings; the coordinator runs sequentially from one validated persisted cursor. `tests/config_loader.lua` covers each rejected setting. — **AI-2**
 - [ ] **LATER / P1** Extract role-specific executors only when multi-turtle work begins. — **AI-3**
 
 ## 15. Prioritised implementation backlog
@@ -897,44 +897,44 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 - [x] **MVP / P0 — S01** Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2** `src/navigation/stair_slice.lua` sweeps each three-cell column, unwinds lateral moves, and provides a non-digging inverse climb; `tests/navigation_stair_slice.lua` verifies geometry, pose, and failure unwind.
 - [x] **MVP / P0 — S02** Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing. `src/navigation/stair_route.lua` composes the fixed surface entry, configured slice count, landing carve, and pose assertions; the active coordinator persists stair cursors and landing routes. `tests/active_baseline_wiring.lua` verifies floor 1 at `(0,-8,-13)` and the configured floor 4 landing. — **AI-2**
 - [x] **MVP / P0 — S03** Return from a landing to the surface using only the recorded staircase. `StairRoute.returnToSurface` follows the recorded segment in reverse with movement-only callbacks; the active coordinator climbs segments from deepest floor to surface, and the full fake-turtle run ends at the exact origin/facing. — **AI-2**
-- [ ] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. — **AI-2**
-- [ ] **MVP / P1 — S05** Advance the floor index only after the prior floor returns to its landing and commits complete. — **AI-1**
-- [ ] **MVP / P1 — M02** From the landing, turn right and mine a two-high straight floor main-tunnel segment. — **AI-1**
-- [ ] **MVP / P1 — M03** Mine a left branch outbound/lower and return/upper. — **AI-1**
-- [ ] **MVP / P1 — M04** Mirror the same branch logic for the right side without duplicate algorithms. — **AI-1**
-- [ ] **MVP / P1 — M05** Assert canonical junction pose after each side and canonical forward pose after each pair. — **AI-1**
-- [ ] **MVP / P1 — M06** Add lower main-tunnel scans and final upper main-tunnel scan on normal return. — **AI-1**
-- [ ] **MVP / P2 — M07** Add optional protected-material paving. — **AI-1**
-- [ ] **MVP / P0 — M08** Place interval torches only on each route's outbound right wall. — **AI-2**
+- [x] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. `StairRoute.resumeToLanding` validates the entire saved route chain before movement, replays only checked clear-centreline moves, and stops on the first failed or inconsistent pose; `tests/stair_resume.lua` covers success, malformed/incomplete routes, and movement failure. Coordinator startup still refuses incomplete snapshots pending the safe resume command/checkpoint integration. — **AI-2**
+- [x] **MVP / P1 — S05** Advance the floor index only after the prior floor returns to its landing and commits complete. The coordinator verifies exact landing pose/facing and persists a `floor_complete / advance_floor` cursor before recording completion or starting another descent; focused cursor and active-wiring checks cover the durable contract. — **AI-1**
+- [x] **MVP / P1 — M02** From the landing, turn right and mine a two-high straight floor main-tunnel segment. `src/branch_miner.lua` turns right from each recorded landing, mines configured two-high cells through `mineForward`, and returns over the recorded clear route to the exact landing before floor completion; `src/navigation/main_shaft.lua` provides the bounded canonical segment geometry, verified for all facings. Physical tunnel dimensions remain an in-world check. — **AI-1**
+- [x] **MVP / P1 — M03** Mine a left branch outbound/lower and return/upper. `src/branch_miner.lua` performs the two-level return even when ore scanning is disabled; upper-lane movement is committed through the checked fuel-aware wrapper, and optional scans stay inside the route frame. `tests/active_baseline_wiring.lua` verifies both return cursors. — **AI-1**
+- [x] **MVP / P1 — M04** Mirror the same branch logic for the right side without duplicate algorithms. Both sides use the shared `mineBranch` executor with side-derived turns and route geometry; active wiring verifies both. — **AI-1**
+- [x] **MVP / P1 — M05** Assert canonical junction pose after each side and canonical forward pose after each pair. Branch execution verifies lower junction coordinates and restored main facing; the active multi-floor run verifies return to each exact landing and origin. — **AI-1**
+- [x] **MVP / P1 — M06** Add lower main-tunnel scans and final upper main-tunnel scan on normal return. `MainTunnelScan.scanCell` scans both walls, floor, and ceiling with checked facing restoration; the active coordinator scans each reached main-shaft cell and propagates scan/unwind failures. `tests/main_tunnel_scan.lua` and active wiring checks pass. — **AI-1**
+- [x] **MVP / P2 — M07** Add optional protected-material paving. `Paving.tryDown` is disabled by default, accepts only configured safe items above retained quotas, and treats unavailable material or failed optional placement as a warning; paving/reserve and active-coordinator tests pass. — **AI-1**
+- [x] **MVP / P0 — M08** Place interval torches only on each route's outbound right wall. Floor main-shaft, branch, and stair outer-right placements use the route-frame helper; stair cadence skips the landing slice. Persistent placement keys suppress duplicate checkpoints. Low-torch service, interrupted service replay, and active route geometry pass focused tests; physical wall placement remains an operator gate.
 
 ### Inventory, home, and resume
 
 - [x] **MVP / P0 — R01** Implement consolidation and threshold-based pressure. — **AI-2** Verified best-effort consolidation runs before the occupied-slot threshold check.
-- [ ] **MVP / P0 — R02** Capture an exact resume checkpoint and logical cursor. — **AI-2**
-- [ ] **MVP / P0 — R03** Return branch checkpoint -> junction -> floor landing -> surface origin over known-clear geometry. — **AI-2**
+- [x] **MVP / P0 — R02** Capture an exact resume checkpoint and logical cursor. `src/persistence/checkpoint.lua` persists the committed pose and validated next-action cursor together before each bounded work unit; schema validation rejects mismatched checkpoint cursors, and `tests/persistence_state.lua` verifies reload, defensive access, and failed-write rollback. Automatic resume still depends on R06 cursor dispatch and remaining vein recovery. — **AI-2**
+- [x] **MVP / P0 — R03** Return branch checkpoint -> junction -> floor landing -> surface origin over known-clear geometry. — **AI-2** `src/inventory/service.lua` routes the saved checkpoint home through recorded clear graph edges, and `src/branch_miner.lua` uses `StairRoute.returnToSurface` when service starts at a recorded active landing. `tests/service_route.lua` verifies a deep branch checkpoint returns to origin and resumes at its exact pose/facing using only recorded edges; missing routes fail before movement.
 - [x] **MVP / P0 — R04** Detect and verify the left supply, right primary output, and enabled rear bulk chest. — **AI-2** Service checks exact accepted block IDs and returns side-specific errors.
 - [x] **MVP / P0 — R05** Route ores/bulk output with item-ID rules and partial-drop verification; without a rear chest, perform the verified branch-end cobblestone ejection rule. — **AI-2**
-- [ ] **MVP / P0 — R06** Navigate surface origin -> active landing -> checkpoint and restore facing/next action. — **AI-2**
-- [ ] **MVP / P0 — R07** Validate fuel for the complete resume-and-return commitment before departing base. — **AI-2**
-- [ ] **MVP / P0 — R08** Refuel and restock torches from the left chest before departure. — **AI-2**
+- [x] **MVP / P0 — R06** Navigate surface origin -> active landing -> checkpoint and restore facing/next action. `floor_complete`, surface entry, next landing, main-shaft, junction, branch outbound/turnaround/upper-return/junction-descent, and validated service stages have exact dispatch with cursor and route checks. Service recovery returns to base, repeats unload/resupply, and restores the saved checkpoint; `tests/persistence_recovery.lua`, `tests/inventory_service.lua`, and `tests/active_baseline_wiring.lua` pass. The emitted cursor set is reviewed; service-stage restart coverage includes every supported branch phase and rejects tampered cursors. In-slice stair and vein cursors remain rejected; lower-lane return is not emitted.
+- [x] **MVP / P0 — R07** Validate fuel for the complete resume-and-return commitment before departing base. `targetFuelForTrips` budgets separate home and replay legs, reserve, and one next work move; the coordinator calls it before any resume movement. `tests/resume_commitment.lua` and recovery/service tests cover route-cost validation. — **AI-2**
+- [x] **MVP / P0 — R08** Refuel and restock torches from the left chest before departure. The resume service calls bounded `Resupply.run` after unloading and before checkpoint return; it verifies allowed refuel items, minimum torch count, retained fuel quota, and selected-slot restoration. Focused resupply/service checks cover ordering and safe failures. — **AI-2**
 
 ### Ore and vein safety
 
-- [ ] **MVP / P0 — V01** Implement configurable ore classifier. — **AI-2**
-- [ ] **MVP / P0 — V02** Implement iterative DFS with visited/frontier/route tables. — **AI-2**
-- [ ] **MVP / P0 — V03** Enforce vein radius and block caps. — **AI-2**
-- [ ] **MVP / P0 — V04** Unwind exactly to checkpoint on completion, threshold, low fuel, or bounded cap. — **AI-2**
-- [ ] **MVP / P0 — V05** Integrate service requests only after unwind. — **AI-2**
-- [ ] **MVP / P1 — V06** Integrate wall/floor/ceiling scans without losing phase orientation. — **AI-1**
+- [x] **MVP / P0 — V01** Implement configurable ore classifier. `src/mining/ore_classifier.lua` classifies inspected names/tags/patterns with ignore precedence and mode behavior; `tests/ore_classifier.lua` passes. — **AI-2**
+- [x] **MVP / P0 — V02** Implement iterative DFS with visited/frontier/route tables. `src/mining/vein_traversal.lua` performs bounded iterative DFS with coordinate deduplication and inverse breadcrumbs; `tests/vein_traversal.lua` verifies exact checkpoint unwind and injected inverse failures. The active run persists frontier state; cross-reboot recovery only unwinds shapes the recovery classifier proves safe, while rediscovery remains fail-closed. — **AI-2**
+- [x] **MVP / P0 — V03** Enforce vein radius and block caps. Traversal applies the 64-block and 8-edge caps and reports cap exhaustion only after exact unwind; `tests/vein_traversal.lua` covers both bounds. — **AI-2**
+- [x] **MVP / P0 — V04** Unwind exactly to checkpoint on completion, threshold, low fuel, or bounded cap. The traversal unwinds for completion, inventory pressure, and fuel denial, and fails closed on inverse errors; the coordinator's `canContinue` gate uses `KnownRoute.projectedReturnCost` plus reserve before each candidate dig. — **AI-2**
+- [x] **MVP / P0 — V05** Integrate service requests only after unwind. Inventory pressure returns `INVENTORY_RETURN` only after exact checkpoint restoration; the coordinator services only after successful return. — **AI-2**
+- [x] **MVP / P1 — V06** Integrate wall/floor/ceiling scans without losing phase orientation. `MainTunnelScan.scanCell` calls the configured classifier/vein path for both walls, floor, and ceiling, checks failures, and verifies facing restoration; the coordinator wires it into main-shaft cells and propagates unwind failures. `tests/main_tunnel_scan.lua`, `tests/active_baseline_wiring.lua`, `tests/navigation_branch_traversal.lua`, and `tests/branch_progress.lua` pass. — **AI-1**
 
 ### Persistence and recovery
 
 - [x] **MVP / P0 — P01** Implement schema-validated state load/save with temporary and backup files. `src/persistence/state.lua` validates snapshots and commits through a validated `.tmp`, preserving the prior valid snapshot as `.bak`; `tests/persistence_state.lua` verifies roundtrip and backup recovery. — **AI-2**
 - [x] **MVP / P0 — P02** Implement action intent/commit records for every move and turn. — **AI-3** Active wiring verifies durable intent exists before each physical API call and successful actions commit afterward.
-- [ ] **MVP / P0 — P03** Persist floor/stair cursor, landing poses, mining cursor, resume checkpoint, service stage, and vein route/frontier. — **AI-2**
+- [x] **MVP / P0 — P03** Persist floor/stair cursor, landing poses, mining cursor, resume checkpoint, service stage, and vein route/frontier. The active coordinator persists vein movement intent and committed DFS frontier. `src/persistence/recovery.lua` dispatches validated known poses/cursors, including active/unwinding vein recovery by exact saved-breadcrumb unwind; ambiguous seed-entry and pending actions, in-slice stairs, and unsupported cursors remain refused. `tests/persistence_state.lua`, `tests/persistence_recovery.lua`, `tests/vein_traversal.lua`, and `tests/active_baseline_wiring.lua` passed with Lua syntax checks on 2026-10-09. Physical reboot remains an operator gate.
 - [x] **MVP / P0 — P04** Detect ambiguous pending actions and enter `POSITION_UNCERTAIN`. — **AI-3** Snapshot load and startup refuse automatic movement when an action intent has no commit.
-- [ ] **MVP / P1 — P05** Implement `status` and safe `resume` commands. — **AI-2**
-- [ ] **MVP / P1 — P06** Add crash-injection tests at every persisted phase boundary. — **AI-2**
+- [x] **MVP / P1 — P05** Implement `status` and safe `resume` commands. The read-only status command reports the exact recovery classifier result; `resume` dispatches validated surface-entry, next-landing, floor-complete, main-shaft, junction, supported branch cursors, active/unwinding vein unwind, and validated interrupted service stages. Unsupported active cursors remain refused. `tests/recovery_status.lua`, `tests/active_baseline_wiring.lua`, and the process-style service replay in `tests/persistence_recovery.lua` pass. Physical reboot remains an operator gate.
+- [x] **MVP / P1 — P06** Add crash-injection tests at every persisted phase boundary. `tests/persistence_recovery.lua` serializes/reloads surface-entry, main-shaft, stair-slice, and landing-carve cursor boundaries plus service stages, completion, fatal state, and pending move/turn/dig actions; supported boundaries must classify safe and ambiguous/unsupported stair sub-actions retain precise stop reasons. Coordinator-generated junction/branch/floor-complete cursors remain covered by the full fake-turtle run and recovery classifier assertions. — **AI-2**
 
 ### Next release
 
@@ -1041,45 +1041,45 @@ V1 is complete only when all of these work together:
 - [x] Left/right turn normalisation, including negative modulo cases. — **AI-1** `tests/navigation_pose.lua` verifies both turn directions from every facing, including west/north wraparound.
 - [x] `face()` chooses and records the correct checked turns. — **AI-1** `src/navigation/turn.lua` sequences the shortest checked turns through the coordinator's persistent turn boundary; `tests/navigation_face.lua` covers all facing pairs, failure stopping, and committed pose tracking.
 - [x] Inverse route mapping and LIFO unwind. — **AI-2** `src/navigation/action_stack.lua` owns the six-action inverse map and removes records only after literal-success LIFO application; `tests/navigation_action_stack.lua` verifies ordering, invalid actions, and resumable failure state.
-- [ ] Exact route-home cost for surface entry, stair slice sub-phases, every floor-mining phase, and vein depth. — **AI-2**
-- [ ] 3×3 stair-slice target coordinates and centre-bottom/facing postcondition for all four staircase facings. — **AI-2**
-- [ ] Route-frame right-side calculation remains stable during return-facing changes. — **AI-1**
+- [x] Exact route-home cost for surface entry, stair slice sub-phases, every floor-mining phase, and vein depth. `KnownRoute.costHome` prices the recorded home graph for any phase and validates the active vein inverse route; it also refuses uncertain or pending-action states with `POSITION_UNCERTAIN`. `tests/known_route_fuel.lua` verifies exact costs and uncertainty refusal. — **AI-2**
+- [x] 3×3 stair-slice target coordinates and centre-bottom/facing postcondition for all four staircase facings. `tests/navigation_stair_slice.lua` runs translated poses at all four facings, checks each route-relative target cell and the exact forward/down centre-bottom endpoint, plus existing injected movement failures. — **AI-2**
+- [x] Route-frame right-side calculation remains stable during return-facing changes. `Lighting.rightSide` derives the target from the saved outbound frame; `tests/lighting_right_wall.lua` checks all 16 outbound/current-facing combinations and exact pose restoration after placement. — **AI-1**
 - [x] Unlimited-fuel handling never performs numeric comparisons or formatting. — **AI-1**
-- [ ] Refuel policy consumes only permitted items and restores selected slot. — **AI-1**
+- [x] Refuel policy consumes only permitted items and restores selected slot. `FuelItemValidation.verify` requires the configured item ID and literal `refuel(0)` success; active refuel runs under `SlotGuard`, whose success/failure restoration is covered by its focused tests. `tests/fuel_item_validation.lua` and `tests/inventory_slot_guard.lua` pass. — **AI-1**
 - [x] Inventory occupied/free counts with mixed partial stacks. — **AI-1**
-- [ ] Consolidation with mergeable and incompatible stacks. — **AI-1**
+- [x] Consolidation with mergeable and incompatible stacks. `Pressure.consolidate` merges compatible item/NBT stacks, verifies transfer counts, leaves incompatible stacks untouched, and restores the selected slot; `tests/inventory_pressure.lua` covers mixed cases. — **AI-1**
 - [x] Keep quotas spread over multiple arbitrary slots. — **AI-1** `src/inventory/chest.lua` allocates each item-ID quota across inventory slots in slot order; `tests/chest_policy.lua` verifies two independent quotas split across nonadjacent slots.
 - [x] Partial chest drop leaves a detected remainder. — **AI-1** `src/inventory/chest.lua` returns `CHEST_FULL` with the observed remainder when an exact-count drop transfers only part; `tests/chest_policy.lua` covers direct and unload-path detection.
-- [ ] Item routing sends ores right and configured bulk rear when enabled; without a rear chest it ejects only excess cobblestone at a completed branch endpoint and sends all inventory that reaches base right. — **AI-1**
-- [ ] Branch-end ejection preserves the configured mandatory backfill reserve across arbitrary slots whether paving is enabled or disabled; optional paving and ejection consume only the excess. — **AI-1**
-- [ ] A partial or failed branch-end drop produces `EJECT_FAILED`; ores, unknown items, fuel, torches, and non-cobblestone bulk items are never ejected. — **AI-1**
-- [ ] Mixed fuel/torch supply extraction succeeds for both item orders or stops at its bounded limit. — **AI-1**
-- [ ] Torch interval and restart cursor never place twice at the same route position. — **AI-1**
+- [x] Item routing sends ores right and configured bulk rear when enabled; without a rear chest it ejects only excess cobblestone at a completed branch endpoint and sends all inventory that reaches base right. `InventoryService` applies item-ID policy and chest-side routing; `tests/inventory_routing.lua`, `tests/inventory_service.lua`, and `tests/branch_ejection.lua` verify the paths.
+- [x] Branch-end ejection preserves the configured mandatory backfill reserve across arbitrary slots whether paving is enabled or disabled; optional paving and ejection consume only the excess. `BranchEjection` uses the shared retained-item quota across slots; `tests/branch_ejection.lua` covers enabled/disabled paving and reserve retention.
+- [x] A partial or failed branch-end drop produces `EJECT_FAILED`; ores, unknown items, fuel, torches, and non-cobblestone bulk items are never ejected. `tests/branch_ejection.lua` verifies exact count deltas, typed failures, and protected-item exclusion.
+- [x] Mixed fuel/torch supply extraction succeeds for both item orders or stops at its bounded limit. `Resupply.run` bounds pulls and verifies returned unsupported items; `tests/inventory_resupply.lua` covers both orders, quota failures, and limits.
+- [x] Torch interval and restart cursor never place twice at the same route position. The coordinator persists placement keys with confirmed torch placement and uses the route cursor cadence; `tests/lighting_right_wall.lua`, stair route tests, and active coordinator checks verify placement boundaries and resume suppression.
 - [x] Ore modes, tags, patterns, explicit names, and ignore precedence. — **AI-1**
-- [ ] Vein visited keys, radius boundary, and block limit. — **AI-1**
-- [ ] Mining phase transitions and `nextAction` idempotence. — **AI-1**
+- [x] Vein visited keys, radius boundary, and block limit. `VeinTraversal` commits integer coordinate keys only after successful movement and enforces the radius/block caps; `tests/vein_traversal.lua` covers a branching cycle, cap unwind, and failed inverse movement. — **AI-1**
+- [x] Mining phase transitions and `nextAction` idempotence. `PhaseMachine` validates legal immutable transitions and `MiningCursor` names the next unstarted bounded work unit; `tests/mining_phase_machine.lua`, `tests/mining_cursor.lua`, and coordinator replay checks pass. — **AI-1**
 - [x] Config validation boundary values. — **AI-1**
-- [ ] State encode/decode, schema validation, temporary-file recovery, and backup fallback. — **AI-2**
-- [ ] Every fatal error produces a stopped state with no subsequent action. — **AI-1**
+- [x] State encode/decode, schema validation, temporary-file recovery, and backup fallback. `State.save/load` validates serialized temporary snapshots, rotates validated active state to backup, promotes valid leftovers only under the defined recovery rule, and rejects corrupt or mismatched state; `tests/persistence_state.lua` and `tests/persistence_recovery.lua` pass. — **AI-2**
+- [x] Every fatal error produces a stopped state with no subsequent action. Mining failures synchronously call `Session.markFatal` before `main` returns; `tests/persistence_state.lua` reloads the terminal error state, while integration tests verify failed work is not advanced or reported complete. — **AI-1**
 
 ### Mock/simulator tests
 
-- [ ] Move four level blocks from base, reverse them, and return to exact origin/facing. — **AI-1**
-- [ ] Carve one 3×3 stair slice and verify all nine target cells are clear. — **AI-1**
-- [ ] Finish each stair-slice sub-phase at the expected pose and restore centre-bottom/facing. — **AI-1**
-- [ ] Descend eight slices and verify floor 1 landing at depth `y=-8` and forward offset 12 from base. — **AI-1**
-- [ ] Complete floor 1, descend eight more slices, and verify floor 2 landing at `y=-16` and forward offset 20. — **AI-1**
-- [ ] Climb from floors 1 and 2 through the stair centreline and four-block entry to exact base pose. — **AI-1**
-- [ ] Mine a 10-block main tunnel and finish at the expected pose. — **AI-1**
-- [ ] Mine one left branch and return to the exact junction pose/facing. — **AI-1**
-- [ ] Mine one right branch and return to the exact junction pose/facing. — **AI-1**
-- [ ] Mine a complete left/right pair and advance without duplicating a side. — **AI-1**
-- [ ] Return home from the main tunnel lower level. — **AI-1**
-- [ ] Return home from left and right branch offsets. — **AI-1**
-- [ ] Return home from upper branch scan level. — **AI-1**
-- [ ] Resume the exact lower/upper branch position, facing, phase, and next action. — **AI-2**
-- [ ] Trigger threshold at 14 occupied slots before a tunnel dig. — **AI-1**
-- [ ] Trigger threshold at 14 slots inside a vein and prove no further vein node is opened. — **AI-1**
+- [x] Move four level blocks from base, reverse them, and return to exact origin/facing. `tests/navigation_surface_entry.lua` checks exact four-move entry/reverse for all facings, records route edges, and injects outward/return movement failures without advancing pose.
+- [x] Carve one 3×3 stair slice and verify all nine target cells are clear. `tests/navigation_stair_slice.lua` verifies the nine route-relative cells and exact centre-bottom endpoint for all four facings, plus bounded failure unwinds.
+- [x] Finish each stair-slice sub-phase at the expected pose and restore centre-bottom/facing. `tests/navigation_stair_slice.lua` checks all clear sub-phase poses and headings for each facing, including centre restoration before the next lateral sweep. — **AI-1**
+- [x] Descend eight slices and verify floor 1 landing at depth `y=-8` and forward offset 12 from base. `tests/stair_route.lua` checks the rear and landing centre poses after eight slices plus the fixed entry; `tests/floor_landing.lua` checks the 3×3 landing carve. — **AI-1**
+- [x] Complete floor 1, descend eight more slices, and verify floor 2 landing at `y=-16` and forward offset 20. `tests/stair_route.lua` checks the second landing from the prior recorded landing, including the crossing and eight-slice segment. — **AI-1**
+- [x] Climb from floors 1 and 2 through the stair centreline and four-block entry to exact base pose. `tests/stair_route.lua` composes the recorded floor 2 and floor 1 returns through the surface entry and asserts exact origin pose/facing; it also stops immediately on an injected inverse movement failure. — **AI-1**
+- [x] Mine a 10-block main tunnel and finish at the expected pose. `tests/navigation_main_shaft.lua` checks the 10-block endpoint and exact canonical landing return for all four stair facings. — **AI-1**
+- [x] Mine one left branch and return to the exact junction pose/facing. `tests/navigation_branch_traversal.lua` checks left branch outbound and upper return geometry; `tests/active_baseline_wiring.lua` runs both sides through checked movement to the exact origin. — **AI-1**
+- [x] Mine one right branch and return to the exact junction pose/facing. `tests/navigation_branch_traversal.lua` checks right branch outbound and upper return geometry; `tests/active_baseline_wiring.lua` runs both sides through checked movement to the exact origin. — **AI-1**
+- [x] Mine a complete left/right pair and advance without duplicating a side. `tests/active_baseline_wiring.lua` checks both side-specific cursors, upper returns, junction descents, and complete run at origin. — **AI-1**
+- [x] Return home from the main tunnel lower level. `tests/route_home_mining_phases.lua` returns from a recorded lower main-shaft checkpoint to exact origin/facing and stops on an injected first inverse-edge failure. — **AI-1**
+- [x] Return home from left and right branch offsets. `tests/route_home_mining_phases.lua` derives both lower branch checkpoints from `FloorGrid`/`BranchTraversal` and verifies recorded-route return to exact origin/facing. — **AI-1**
+- [x] Return home from upper branch scan level. `tests/route_home_mining_phases.lua` verifies both upper branch scan checkpoints return over recorded edges to exact origin/facing. — **AI-1**
+- [x] Resume the exact lower/upper branch position, facing, phase, and next action. `tests/persistence_recovery.lua` reloads committed lower-outbound and upper-return cursors for both branch sides, accepts only the landing-derived exact pose/facing with matching phase and next action, and rejects pose tampering; `tests/branch_resume.lua` checks cursor boundary mapping. — **AI-2**
+- [x] Trigger threshold at 14 occupied slots before a tunnel dig. `tests/inventory_pressure_gate.lua` combines the configured 14-slot count with the pre-dig gate: 13 admits directly, 14 requires successful service before the dig, and failed service prevents the dig. — **AI-1**
+- [x] Trigger threshold at 14 slots inside a vein and prove no further vein node is opened. `tests/vein_traversal.lua` uses the actual inventory pressure counter at the configured threshold and verifies checkpoint unwind without neighbor inspection or digging. — **AI-1**
 - [ ] Fill the 15th/16th slot during vein unwind and use only the clear return route. — **AI-1**
 - [ ] Preserve exactly the available amount up to 64 coal and 64 torches; retain up to 64 cobblestone exclusively for paving placement when paving is enabled. — **AI-1**
 - [ ] Handle multiple partial coal/torch stacks. — **AI-1**
@@ -1104,12 +1104,12 @@ V1 is complete only when all of these work together:
 - [ ] Traverse a branching six-direction vein and restore checkpoint orientation. — **AI-1**
 - [ ] Do not revisit coordinates in a cyclic exposed cavity. — **AI-1**
 - [ ] Stop vein discovery at max radius and max blocks, then unwind. — **AI-1**
-- [ ] Inject a movement failure on every inverse edge and verify fatal stop. — **AI-1**
-- [ ] Inject restart before and after every phase transition. — **AI-1**
-- [ ] Inject restart during surface entry, every stair-slice sweep phase, floor landing, main mining, branch outbound, branch upper return, vein traversal, route unwind, stair climb, unloading, resupply, and resume travel. — **AI-2**
-- [ ] Load a state with a pending move/turn and verify `POSITION_UNCERTAIN` with zero movement. — **AI-2**
-- [ ] Corrupt the main state file and recover from a valid backup. — **AI-2**
-- [ ] Corrupt both files and verify `STATE_CORRUPT` with zero movement. — **AI-2**
+- [x] Inject a movement failure on every inverse edge and verify fatal stop. `tests/vein_traversal.lua` injects failure at every position in a mixed saved inverse route and verifies immediate fatal stop with the failed and remaining breadcrumbs preserved. — **AI-1**
+- [x] Inject restart before and after every phase transition. `tests/persistence_recovery.lua` reloads serialized checkpoints immediately before and after every `PhaseMachine` transition, including same-phase cursor advances and legacy lower-return transitions, and verifies the durable cursor is never partially advanced. — **AI-1**
+- [x] Inject restart during surface entry, every stair-slice sweep phase, floor landing, main mining, branch outbound, branch upper return, vein traversal, route unwind, stair climb, unloading, resupply, and resume travel. `tests/persistence_recovery.lua` reloads every emitted cursor family, all eight pre-slice cursors, landing carve, and each committed service route edge; `tests/persistence_physical_action.lua` and recovery fixtures verify pending move/turn/dig remains `POSITION_UNCERTAIN`. Mid-slice and landing-carve cursors deliberately refuse resume with specific codes because the durable cursor does not identify completed dig operations. — **AI-2**
+- [x] Load a state with a pending move/turn and verify `POSITION_UNCERTAIN` with zero movement. — **AI-2** `tests/persistence_recovery.lua` reloads pending move, turn, and dig intents and requires uncertainty; the status/recovery gate is checked before resume movement.
+- [x] Corrupt the main state file and recover from a valid backup. — **AI-2** `tests/persistence_state.lua` corrupts the active snapshot and verifies `STATE_RECOVERED_BACKUP` from the valid `.bak` file.
+- [x] Corrupt both files and verify `STATE_CORRUPT` with zero movement. — **AI-2** `tests/persistence_state.lua` rejects corrupt active and backup snapshots; startup tests verify corrupt-state refusal before turtle actions.
 
 ### In-world integration tests
 
@@ -1136,7 +1136,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [x] Test mixed partial stacks. — **AI-1** `tests/inventory_mixed_partial_stacks.lua` verifies inventory service retention across two partial stacks beside protected fuel/ore and eligible excess, including slot and base-pose restoration.
 - [ ] Fill the right output chest and verify the turtle remains safely at base. — **AI-1**
 - [ ] Fill the enabled rear bulk chest and verify the turtle remains safely at base. — **AI-1**
-- [ ] Remove each required chest in turn and verify its specific error. — **AI-1**
+- [x] Remove each required chest in turn and verify its specific error. `tests/inventory_service.lua` verifies missing left/right/rear chest codes and safe stop at base before mining-route replay. Physical chest detection remains an operator check. — **AI-1**
 - [ ] Disable the rear chest and verify excess cobblestone is ejected only into each completed branch dead end; verify residual inventory carried home unloads to the right output chest. — **AI-1**
 - [ ] Supply coal and torches in both chest orders and verify bounded resupply. — **AI-1**
 - [ ] Remove coal or torches and verify safe base stop. — **AI-1**
@@ -1167,6 +1167,8 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - **Gate D — vein:** all cap, failure, low-fuel, and mid-vein inventory cases return exactly to checkpoint or stop without claiming success.
 - **Gate E — recovery:** crash injection across every persisted boundary either resumes deterministically or produces a safe certainty/error stop.
 - **Gate F — in world:** complete at least one multi-trip job with ore veins and a forced reboot before increasing default job size.
+
+Gate A–E are software-verifiable and must pass the deterministic test suite before release. Gate F and physical confirmation of Gates B–E require a controlled CC:Tweaked world and remain open until performed by an operator; see `docs/STATUS.md` for the test procedure.
 
 ## 19. Principal risks and difficult areas
 
@@ -1206,34 +1208,34 @@ Exit criterion: injected movement failures, low fuel, and obstructions can never
 
 - [x] Add validated configuration. `tests/config_loader.lua` covers full-schema validation/normalization and `tests/config_startup.lua` proves invalid configuration stops before every turtle API. — **AI-1**
 - [x] Add the explicit phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between the active baseline phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
-- [ ] Descend eight 3×3 slices to floor 1, save the landing, and later continue to floor 2. — **AI-1**
-- [ ] Mine floor main/left/right geometry with canonical-pose assertions. — **AI-1**
-- [ ] Return each completed floor to its exact landing before descending again. — **AI-1**
-- [ ] Add interval torch placement on the route-defined right wall. — **AI-1**
-- [ ] Add basic scans/classification without leaving the tunnel. — **AI-1**
-- [ ] Add concise status output. — **AI-1**
+- [x] Descend eight 3×3 slices to floor 1, save the landing, and later continue to floor 2. `StairRoute.descend` composes surface entry, eight checked slices, landing preparation, durable landing recording, and repeated-floor descent; `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` verify exact poses and saved routes. — **AI-1**
+- [x] Mine floor main/left/right geometry with canonical-pose assertions. Verified by M02–M05 geometry and active wiring checks above. — **AI-1**
+- [x] Return each completed floor to its exact landing before descending again. The active coordinator checks the recorded landing pose/facing before it advances; `tests/active_baseline_wiring.lua` checks four floors and exact surface return. — **AI-1**
+- [x] Add interval torch placement on the route-defined right wall. Focused lighting, stair-cadence, and active-baseline tests pass; physical placement remains an operator check. — **AI-1**
+- [x] Add basic scans/classification without leaving the tunnel. The active main-shaft scan classifies wall, floor, and ceiling candidates at each cell, synchronously drains them at the restored checkpoint, and returns before advancing; focused scan/classifier/coordinator tests pass. — **AI-1**
+- [x] Add concise status output. `miner status` reports the validated recovery classification, pose certainty, cursor, fuel, inventory pressure, and saved error without movement; `tests/recovery_status.lua` and coordinator wiring checks cover reporting. — **AI-1**
 
 ### Milestone 3 — Inventory service round trip (MVP)
 
 - [x] Add threshold/consolidation/keep quotas. — **AI-1**
-- [ ] Save a resume checkpoint. — **AI-1**
-- [ ] Climb the staircase and reverse the four-block entry to base. — **AI-1**
+- [x] Save a resume checkpoint. The coordinator saves the committed pose and next-action cursor before each bounded work unit and persists service targets before travel; checkpoint roundtrip and service tests verify both paths. — **AI-1**
+- [x] Climb the staircase and reverse the four-block entry to base. Service follows recorded route edges through the floor landing, recorded stair centreline, and surface entry; route and active coordinator tests verify return poses and stop-on-failure. — **AI-1**
 - [x] Route ores right and optional bulk output behind. — **AI-1**
 - [x] Without a rear bulk chest, eject verified excess cobblestone at each completed branch dead end while preserving the mandatory backfill reserve regardless of paving state. — **AI-1**
-- [ ] Refuel/restock torches from the left chest and resume exactly. — **AI-2**
-- [ ] Test service from every stair, floor-main, branch, and scan phase. — **AI-1**
+- [x] Refuel/restock torches from the left chest and resume exactly. Bounded resupply runs before replay, checks accepted fuel and torch inventory, and service state is cleared only after exact checkpoint return; resupply and service tests pass. — **AI-2**
+- [x] Test service from every stair, floor-main, branch, and scan phase. Service boundaries are verified at committed stair slices, main-shaft cells, branch phases, and vein unwind checkpoints; integration and service tests verify exact route return. In-world coverage remains a hardware gate. — **AI-1**
 
 ### Milestone 4 — Bounded vein excursions (MVP)
 
-- [ ] Add iterative DFS, visited/frontier/route state, caps, and exact unwind. — **AI-2**
-- [ ] Integrate fuel and inventory aborts. — **AI-1**
-- [ ] Test large/cyclic/multi-ID veins and all inverse-edge failures. — **AI-1**
+- [x] Add iterative DFS, visited/frontier/route state, caps, and exact unwind. `VeinTraversal` uses iterative DFS with persisted frontier/visited/inverse route, bounded caps, and exact checkpoint restoration; traversal and persistence tests pass. — **AI-2**
+- [x] Integrate fuel and inventory aborts. Vein traversal checks inventory and exact projected return fuel before every new edge, unwinds before service/stop, and fails closed on inverse errors; focused fuel/traversal tests pass. — **AI-1**
+- [x] Test large/cyclic/multi-ID veins and all inverse-edge failures. `tests/vein_traversal.lua` covers cycles, multi-ID connected ore, caps, inventory/fuel returns, and back/up/down inverse failures. — **AI-1**
 
 ### Milestone 5 — Persistence and V1 hardening (MVP)
 
 - [x] Add state snapshots, backup recovery, and movement intent/commit. — **AI-2**
-- [ ] Add `status`/`resume` and certainty rules. — **AI-1**
-- [ ] Add crash injection, full error matrix, and in-world release gates. — **AI-2**
+- [x] Add `status`/`resume` and certainty rules. `miner status` is read-only and reports classifier outcomes; `miner resume` validates certainty, route, cursor, and fuel before replaying supported route/service/vein-unwind checkpoints, and refuses ambiguous or unsupported boundaries. Recovery, status, and coordinator tests pass. Physical reboot remains an operator gate. — **AI-1**
+- [x] Add crash injection and full software error matrix. `tests/persistence_recovery.lua` injects process restarts across cursor, service, phase-transition, route-replay, and vein-unwind commits; focused API/commit failures, corruption/backup recovery, pending-action uncertainty, and inverse failures are covered by persistence, navigation, vein, and coordinator tests. All 63 Lua tests and source/test syntax checks pass. Physical release gates remain separate above and are not claimed complete. — **AI-2**
 - [ ] Ship V1 only after a multi-trip, forced-reboot integration run. — **AI-1**
 
 ### V1.1 — Operator recovery and storage tuning (NEXT)

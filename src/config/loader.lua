@@ -69,6 +69,11 @@ end
 local function validate(raw)
     if type(raw) ~= "table" then return false, "configuration must return a table" end
     if raw.schemaVersion ~= 1 then return false, "schemaVersion must be 1" end
+    for _, field in ipairs({ "workers", "workerCount", "turtleCount", "fleet" }) do
+        if raw[field] ~= nil then
+            return false, field .. " is not supported; V1 runs one turtle and one sequential work unit"
+        end
+    end
 
     local sectionNames = {
         "mining", "inventory", "fuel", "ore", "base", "supplies",

@@ -19,8 +19,12 @@ local originalPavingIsPaving = defaults.paving.isPaving
 local originalBranchLength = fileConfig.mining.branchLength
 local originalBranchPairs = fileConfig.mining.branchPairs
 local originalBranchSpacing = fileConfig.mining.branchSpacing
+local originalFloorCount = fileConfig.mining.floorCount
 local originalFeaturePaving = fileConfig.features.paving
 local originalOreEnabled = fileConfig.ore.enabled
+local originalTunnelInterval = fileConfig.lighting.tunnelInterval
+local originalFeaturesTorches = fileConfig.features.torches
+local originalLightingEnabled = fileConfig.lighting.enabled
 
 Pose.afterMove = function(...)
     poseMoves = poseMoves + 1
@@ -45,6 +49,10 @@ defaults.paving.isPaving = true
 fileConfig.mining.branchLength = 1
 fileConfig.mining.branchPairs = 1
 fileConfig.mining.branchSpacing = 2
+fileConfig.mining.floorCount = 4
+fileConfig.lighting.tunnelInterval = 1
+fileConfig.features.torches = true
+fileConfig.lighting.enabled = true
 fileConfig.features.paving = false
 fileConfig.ore.enabled = false
 local activeConfig = require("src.config.item_policy")
@@ -54,6 +62,7 @@ local originalPolicyIsPaving = activeConfig.isPaving
 local selectedSlot = 5
 local pavingCount = 16
 local placements = 0
+local torchPlacementFrames = {}
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
@@ -87,11 +96,16 @@ local turtleApi = {
     getFuelLevel = function() return "unlimited" end,
     getSelectedSlot = function() return selectedSlot end,
     select = function(slot) selectedSlot = slot return true end,
-    getItemCount = function(slot) return slot == 2 and pavingCount or 0 end,
+    getItemCount = function(slot)
+        if slot == 2 then return pavingCount end
+        if slot == 3 then return 64 end
+        return 0
+    end,
     getItemDetail = function(slot)
         if slot == 2 and pavingCount > 0 then
             return { name = "test:paver" }
         end
+        if slot == 3 then return { name = "minecraft:torch" } end
         return nil
     end,
     refuel = function() return false end,
@@ -144,6 +158,15 @@ local turtleApi = {
         placements = placements + 1
         return true
     end,
+    place = function()
+        if selectedSlot == 3 then
+            torchPlacementFrames[#torchPlacementFrames + 1] = {
+                x = world.x, y = world.y, z = world.z, facing = world.facing,
+            }
+            return true
+        end
+        return false
+    end,
     transferTo = function() return true end,
     drop = function() return true end,
 }
@@ -157,6 +180,10 @@ for key, value in pairs(_G) do
     environment[key] = value
 end
 environment.turtle = turtleApi
+environment.require = function(name)
+    if name == "config" then return fileConfig end
+    return require(name)
+end
 environment.fs = {
     exists = function(path) return persistedFiles[path] ~= nil end,
     makeDir = function() end,
@@ -188,9 +215,12 @@ local function serialize(value)
     if type(value) == "string" then return string.format("%q", value) end
     return tostring(value)
 end
+
 environment.textutils = {
     serialize = serialize,
+    serializeJSON = serialize,
     unserialize = function(value) return load("return " .. value)() end,
+    unserializeJSON = function(value) return load("return " .. value)() end,
 }
 environment.sleep = function() end
 environment.os = {}
@@ -228,6 +258,10 @@ defaults.paving.isPaving = originalPavingIsPaving
 fileConfig.mining.branchLength = originalBranchLength
 fileConfig.mining.branchPairs = originalBranchPairs
 fileConfig.mining.branchSpacing = originalBranchSpacing
+fileConfig.mining.floorCount = originalFloorCount
+fileConfig.lighting.tunnelInterval = originalTunnelInterval
+fileConfig.features.torches = originalFeaturesTorches
+fileConfig.lighting.enabled = originalLightingEnabled
 fileConfig.features.paving = originalFeaturePaving
 fileConfig.ore.enabled = originalOreEnabled
 activeConfig.mayConsumeForPaving = originalMayConsume
@@ -239,6 +273,13 @@ assert(ok, runtimeError)
 assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard")
 assert(pavingChecks == 0, "disabled default paving should not classify items")
 assert(placements == 0, "disabled default paving should not place blocks")
+local leftShaftTorch, rightShaftTorch = false, false
+for _, torchPose in ipairs(torchPlacementFrames) do
+    if torchPose.y == -8 and torchPose.facing == 1 then leftShaftTorch = true end
+    if torchPose.y == -8 and torchPose.facing == 3 then rightShaftTorch = true end
+end
+assert(leftShaftTorch and rightShaftTorch,
+    "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
 assert(selectedSlot == 5, "active helpers should restore the original selected slot")
 -- A completed baseline job now follows recorded cleared edges home and restores
 -- its original surface facing before reporting success.
@@ -254,6 +295,11 @@ assert(finalState.floorLandings[4].landing.y == -32
     "floor 4 landing should be saved at the configured depth and offset")
 assert(finalState.progress.floor == 4,
     "the durable mining cursor should retain the active floor identity")
+assert(finalState.progress.phase == "floor_complete"
+    and finalState.progress.nextAction == "advance_floor",
+    "the last floor must commit completion only after restoring its landing")
+assert(finalState.progress.completionStatus == "complete",
+    "the terminal work unit must persist its completion status")
 
 local seenCursor = {}
 for _, progress in ipairs(physicalActionProgress) do
@@ -264,9 +310,19 @@ assert(seenCursor["main_shaft:none:mine_main_cell"],
 assert(seenCursor["branch_outbound_lower:left:mine_branch_cell"]
     and seenCursor["branch_outbound_lower:right:mine_branch_cell"],
     "both outbound branches should carry their saved logical cursor")
-assert(seenCursor["branch_lower_return:left:return_branch_cell"]
-    and seenCursor["branch_lower_return:right:return_branch_cell"],
-    "both lower returns should carry their saved logical cursor")
+assert(seenCursor["branch_upper_return:left:scan_and_return_branch_cell"]
+    and seenCursor["branch_upper_return:right:scan_and_return_branch_cell"],
+    "both upper returns should carry their saved logical cursor")
+local leftJunctionCursor = false
+local rightJunctionCursor = false
+for _, progress in ipairs(physicalActionProgress) do
+    if progress.phase == "branch_return_to_junction" and progress.side == "left"
+        and progress.nextAction == "descend_to_junction" then leftJunctionCursor = true end
+    if progress.phase == "branch_return_to_junction" and progress.side == "right"
+        and progress.nextAction == "descend_to_junction" then rightJunctionCursor = true end
+end
+assert(leftJunctionCursor and rightJunctionCursor,
+    "each side should persist junction descent before its inverse movement")
 assert(seenCursor["junction:none:restore_main_facing"],
     "junction-facing restoration should carry its saved logical cursor")
 local seenStairAction = false
@@ -290,13 +346,3 @@ assert(foundFinalPose, "active run should report its exact home pose")
 assert(foundFinalSummary, "successful active run should report its final job summary")
 
 print("active baseline wiring checks passed")
-
-
-
-
-
-
-
-
-
-

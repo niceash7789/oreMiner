@@ -8,6 +8,21 @@ local function validLimit(value)
         and value == math.floor(value) and value <= 64
 end
 
+local function classifyObstruction(options)
+    if type(options.inspect) == "function" then
+        local ok, found, block = pcall(options.inspect)
+        if ok and found == true and type(block) == "table" then
+            local name = type(block.name) == "string" and block.name:lower() or ""
+            local tags = type(block.tags) == "table" and block.tags or {}
+            if name:find("water", 1, true) or name:find("lava", 1, true)
+                or tags["minecraft:water"] == true or tags["minecraft:lava"] == true then
+                return "LIQUID"
+            end
+        end
+    end
+    return "UNKNOWN_OBSTRUCTION"
+end
+
 function ForwardRecovery.run(options)
     if type(options) ~= "table" or type(options.move) ~= "function"
         or type(options.detect) ~= "function" or type(options.digClear) ~= "function"
@@ -56,7 +71,8 @@ function ForwardRecovery.run(options)
             moveRetries = moveRetries + 1
         else
             if entityRetries >= options.maxEntityRetries then
-                return Result.new(false, "ENTITY_BLOCKED", "Entity still blocks forward movement", {
+                return Result.new(false, classifyObstruction(options),
+                    "Forward movement remains blocked after bounded entity recovery", {
                     moveRetries = moveRetries,
                     entityRetries = entityRetries,
                 })

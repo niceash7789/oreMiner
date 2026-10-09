@@ -50,6 +50,7 @@ Contracts.POSE_CERTAINTIES = {
 -- Fatal codes from MINER_PLAN.md's failure/recovery contract.
 Contracts.ERROR_CODES = {
     NO_FUEL = true,
+    RETURN_REQUIRED = true,
     NO_FUEL_SUPPLY = true,
     NO_TORCHES = true,
     CHEST_FULL = true,
@@ -91,7 +92,7 @@ function Contracts.isResult(result)
         and type(result.code) == "string"
         and #result.code > 0
         and (result.message == nil or type(result.message) == "string")
-        and (result.retryable == nil or type(result.retryable) == "boolean")
+        and type(result.retryable) == "boolean"
 end
 
 function Contracts.isFatalCode(code)

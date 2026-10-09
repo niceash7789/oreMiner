@@ -74,6 +74,8 @@ function StairRoute.descend(options)
 
     local mouth = copyPose(current)
     if options.floor > 1 then
+        -- The persisted cursor names this atomic crossing plus descent unit.
+        -- A crash after the crossing must not replay it from the later pose.
         local saveFailure = checkpoint(options.beforeEntry, {
             floor = options.floor, stairStep = 0, action = "cross_landing", pose = copyPose(current),
         })
@@ -104,6 +106,9 @@ function StairRoute.descend(options)
             clear = options.clear,
             move = options.move,
             turn = options.turn,
+            placeOuterRightTorch = options.placeStairTorch and step < options.steps
+                and step % options.stairTorchInterval == 0
+                and function(slicePose) return options.placeStairTorch(slicePose, step) end or nil,
         })
         if outcome.ok ~= true then
             return current, Result.new(false, outcome.code or "STAIR_DESCENT_FAILED",
@@ -114,11 +119,29 @@ function StairRoute.descend(options)
                 floor = options.floor,
                 stairStep = step,
                 pose = copyPose(current),
+                nextStep = step + 1,
+                nextAction = step < options.steps and "descend_stair_slice" or "prepare_landing",
             })
             if saved ~= true then
                 return current, Contracts.isResult(saveOutcome) and saveOutcome
                     or Result.new(false, "STATE_WRITE_FAILED",
                         "Could not persist stair progress.", { floor = options.floor, step = step })
+            end
+        end
+        if options.afterStep then
+            local serviced, serviceOutcome = options.afterStep({
+                floor = options.floor,
+                stairStep = step,
+                pose = copyPose(current),
+                nextStep = step + 1,
+                nextAction = step < options.steps and "descend_stair_slice" or "prepare_landing",
+            })
+            if serviced ~= true then
+                return current, Contracts.isResult(serviceOutcome) and serviceOutcome
+                    or Result.new(false, "INVENTORY_SERVICE_FAILED",
+                        "Inventory service failed at the stairs checkpoint.", {
+                            floor = options.floor, step = step,
+                        })
             end
         end
     end
@@ -174,6 +197,24 @@ function StairRoute.returnToSurface(options)
 
     local route = options.route
     local current = copyPose(options.pose)
+    -- Validate every landmark before the first inverse action. A saved pose
+    -- is not sufficient evidence that the route is the plan-defined geometry.
+    local expectedMouth = copyPose(route.origin)
+    for _ = 1, route.entryMoves do
+        expectedMouth = assert(Pose.afterMove(expectedMouth, "forward", true))
+    end
+    local expectedRear = copyPose(expectedMouth)
+    for _ = 1, route.steps do
+        expectedRear = assert(Pose.afterMove(expectedRear, "forward", true))
+        expectedRear = assert(Pose.afterMove(expectedRear, "down", true))
+    end
+    local expectedLanding = assert(Pose.afterMove(expectedRear, "forward", true))
+    if not samePose(route.mouth, expectedMouth)
+        or not samePose(route.rear, expectedRear)
+        or not samePose(route.landing, expectedLanding) then
+        return current, Result.new(false, "LANDING_ROUTE_INVALID",
+            "Saved stair route landmarks do not match V1 geometry.")
+    end
     if not samePose(current, route.landing) then
         return current, Result.new(false, "POSITION_ERROR", "Return must start at the saved landing centre.")
     end
@@ -225,6 +266,106 @@ function StairRoute.returnToSurface(options)
         return current, Result.new(false, "POSITION_ERROR", "Recorded route did not restore its origin pose.")
     end
     return current, Result.new(true, "SURFACE_ORIGIN_RESTORED")
+end
+
+-- Resume from the recorded surface origin by replaying only centreline cells
+-- already proved clear in the saved landing records. This deliberately does
+-- not dig, turn, or infer a route from an arbitrary pose.
+function StairRoute.resumeToLanding(options)
+    if type(options) ~= "table" or not Contracts.isPose(options.pose)
+        or type(options.floor) ~= "number" or options.floor < 1
+        or options.floor ~= math.floor(options.floor)
+        or type(options.routes) ~= "table" or type(options.move) ~= "function" then
+        return type(options) == "table" and options.pose or nil,
+            Result.new(false, "LANDING_ROUTE_INVALID")
+    end
+    local current = copyPose(options.pose)
+    local expectedOrigin = { x = 0, y = 0, z = 0, facing = 0 }
+    if not samePose(current, expectedOrigin) then
+        return current, Result.new(false, "LANDING_ROUTE_INVALID",
+            "Resume requires the exact recorded surface origin pose.")
+    end
+    if #options.routes < options.floor then
+        return current, Result.new(false, "LANDING_ROUTE_INVALID",
+            "Saved stair routes do not include the requested floor.")
+    end
+
+    -- Validate the whole requested chain before moving so a bad deeper route
+    -- cannot strand the turtle after it has already descended.
+    local expectedOriginForFloor = expectedOrigin
+    for floor = 1, options.floor do
+        local route = options.routes[floor]
+        if type(route) ~= "table" or route.floor ~= floor
+            or not Contracts.isPose(route.origin) or not Contracts.isPose(route.mouth)
+            or not Contracts.isPose(route.rear) or not Contracts.isPose(route.landing)
+            or type(route.steps) ~= "number" or route.steps < 1
+            or route.steps ~= math.floor(route.steps)
+            or (route.entryMoves ~= SurfaceEntry.LENGTH and route.entryMoves ~= 1)
+            or not samePose(route.origin, expectedOriginForFloor) then
+            return current, Result.new(false, "LANDING_ROUTE_INVALID",
+                "Saved stair routes are missing, noncontiguous, or unsupported.", { floor = floor })
+        end
+        local expectedMouth = copyPose(route.origin)
+        for _ = 1, route.entryMoves do
+            expectedMouth = assert(Pose.afterMove(expectedMouth, "forward", true))
+        end
+        local expectedRear = copyPose(expectedMouth)
+        for _ = 1, route.steps do
+            expectedRear = assert(Pose.afterMove(expectedRear, "forward", true))
+            expectedRear = assert(Pose.afterMove(expectedRear, "down", true))
+        end
+        local expectedLanding = assert(Pose.afterMove(expectedRear, "forward", true))
+        if not samePose(route.mouth, expectedMouth)
+            or not samePose(route.rear, expectedRear)
+            or not samePose(route.landing, expectedLanding) then
+            return current, Result.new(false, "LANDING_ROUTE_INVALID",
+                "Saved stair route landmarks do not match V1 geometry.", { floor = floor })
+        end
+        expectedOriginForFloor = copyPose(route.landing)
+    end
+    local function advance(direction, expected)
+        local moved, outcome = options.move(direction)
+        if not Contracts.isResult(outcome) or outcome.ok ~= true
+            or not samePose(moved, expected) then
+            local code = Contracts.isResult(outcome) and outcome.code or "RETURN_MOVE_FAILED"
+            return Contracts.isPose(moved) and moved or current,
+                Result.new(false, code,
+                    "A saved clear centreline move could not be replayed.")
+        end
+        return copyPose(moved), nil
+    end
+    local function moveAndCheck(direction)
+        local expected = assert(Pose.afterMove(current, direction, true))
+        local moved, failure = advance(direction, expected)
+        if failure then current = moved; return failure end
+        current = moved
+        return nil
+    end
+    for floor = 1, options.floor do
+        local route = options.routes[floor]
+        for _ = 1, route.entryMoves do
+            local failure = moveAndCheck("forward")
+            if failure then return current, failure end
+        end
+        if not samePose(current, route.mouth) then
+            return current, Result.new(false, "LANDING_ROUTE_INVALID", "Saved stair mouth does not match.", { floor = floor })
+        end
+        for _ = 1, route.steps do
+            local failure = moveAndCheck("forward")
+            if failure then return current, failure end
+            failure = moveAndCheck("down")
+            if failure then return current, failure end
+        end
+        if not samePose(current, route.rear) then
+            return current, Result.new(false, "LANDING_ROUTE_INVALID", "Saved stair rear pose does not match.", { floor = floor })
+        end
+        local failure = moveAndCheck("forward")
+        if failure then return current, failure end
+        if not samePose(current, route.landing) then
+            return current, Result.new(false, "LANDING_ROUTE_INVALID", "Saved landing pose does not match.", { floor = floor })
+        end
+    end
+    return current, Result.new(true, "ACTIVE_LANDING_REACHED")
 end
 
 return StairRoute

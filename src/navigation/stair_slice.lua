@@ -82,9 +82,21 @@ local function runner(options)
         return outcome
     end
 
+    local function placeOuterRightTorch()
+        if type(options.placeOuterRightTorch) ~= "function" then
+            return Result.new(true, "LIGHTING_SKIPPED")
+        end
+        local outcome = options.placeOuterRightTorch(copyPose(current))
+        if not Contracts.isResult(outcome) then
+            return Result.new(false, "INVALID_LIGHTING_OUTCOME")
+        end
+        return outcome
+    end
+
     return {
         apply = apply,
         clear = clear,
+        placeOuterRightTorch = placeOuterRightTorch,
         pose = function() return copyPose(current) end,
     }
 end
@@ -153,6 +165,15 @@ function StairSlice.descend(options)
     if not samePose(navigation.pose(), middlePose) then
         return navigation.pose(), Result.new(false, "POSITION_ERROR",
             "Stairs sweep did not restore the centreline pose and facing.")
+    end
+
+    -- The right column has been cleared and the turtle is back at centre.
+    -- Place only into the niche beyond the passage's outer-right wall.
+    outcome = navigation.placeOuterRightTorch()
+    if not outcome.ok then
+        local restored = unwind(approach, navigation)
+        if not restored.ok then return navigation.pose(), restored end
+        return navigation.pose(), outcome
     end
 
     outcome = navigation.apply("down")

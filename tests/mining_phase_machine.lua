@@ -34,6 +34,9 @@ assert(main.phase == "main_shaft" and main.side == "none")
 
 local lower = transition(turnaround, "lower_return_started")
 assert(lower.phase == "branch_lower_return")
+-- The current executor never emits the legacy lower-lane return phase. Its
+-- branch path returns on the upper lane and descends at the junction, so do
+-- not treat this cursor as an active recovery boundary.
 local lowerJunction = transition(lower, "lower_return_complete")
 assert(lowerJunction.phase == "junction" and lowerJunction.nextAction == "restore_main_facing")
 

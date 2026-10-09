@@ -58,7 +58,10 @@ function FloorGrid.new(origin, staircaseFacing, landing)
 
     local expected = copyPose(origin)
     expected.y = origin.y - landing.floor * 8
-    expected = step(expected, staircaseFacing, 4 + landing.floor * 8)
+    -- Floor one has four entry moves, eight slices, and one centre move.
+    -- Each later segment crosses the prior landing, adds eight slices, then
+    -- moves from stair rear-centre to the new landing centre.
+    expected = step(expected, staircaseFacing, 3 + landing.floor * 10)
     if landing.pose.x ~= expected.x or landing.pose.y ~= expected.y
         or landing.pose.z ~= expected.z or landing.pose.facing ~= staircaseFacing then
         return nil, failure("LANDING_MISMATCH", "Recorded landing does not match the fixed V1 origin and stair geometry.")

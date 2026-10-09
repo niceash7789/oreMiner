@@ -10,6 +10,7 @@ Classify fuel and floor-paving items by exact, configurable item IDs and gate ea
 
 - `require("src.config.defaults")` returns defaults under `fuel.allowedItems`, `inventory.retainedItems["minecraft:cobblestone"]` (the configurable main-shaft backfill reserve, default 64), and `paving` (`enabled=false` and exact `allowedItems`).
 - `require("src.config.item_policy").isFuel(itemId, config)`, `.isPaving(itemId, config)`, `.retainedCount(itemId, config)`, `.isProtected(itemId, config)`, and `.mayConsumeForPaving(itemId, config, availableCount)` provide exact-ID classification and the paving stock gate.
+- `require("src.fuel.item_validation").verify(api, slot, config)` selects a configured fuel stack and requires literal success from `refuel(0)` before fuel consumption.
 - `require("src.fuel.policy").canMove(level, requiredFuel, refuel, readFuel)` returns `(allowed, reason)` and confirms fuel after an attempted refuel.
 - `require("src.fuel.route_policy").canMove(options)` accepts pose, known route, proposed movement, reserve, and fuel callbacks, returning `(allowed, reason, requiredFuel, proposedPose)`.
 - `require("src.fuel.known_route").new(homePose)` creates a route graph; `.projectedReturnCost(route, currentPose, proposedPose)` returns the exact known cost or a failure reason; `.recordMove(route, fromPose, toPose)` adds a confirmed unit edge.
@@ -18,7 +19,7 @@ Classify fuel and floor-paving items by exact, configurable item IDs and gate ea
 ## Invariants and assumptions
 
 - Namespaced item IDs are compared exactly; display names and substring matching are not used.
-- Fuel selection remains bounded to 16 inventory slots and uses only configured allowed fuel IDs.
+- Fuel selection remains bounded to 16 inventory slots and uses only configured allowed fuel IDs; active refuelling verifies each candidate with `refuel(0)` before consuming it.
 - Route policy does not update pose or route edges; the motion layer commits both only after successful physical movement.
 - Movement intent is persisted after fuel admission and before the physical API call; the coordinator persists committed pose after success.
 - A movement is allowed only when the current tank meets the projected known-route cost plus `fuel_reserve`, or fuel is unlimited.
@@ -32,6 +33,6 @@ The fuel policy uses standard Lua functions and callbacks. The known-route graph
 
 The route graph is in-memory and is not a persisted route stack. It assumes previously traversed edges remain passable; external world changes can invalidate reversibility, which requires later return-route recovery work. It does not reconcile route state after reboot. Exact cost is therefore guaranteed for the active run's recorded known graph only; unknown/disconnected routes fail closed. Iterative vein unwind and checked return movement remain separate unchecked items.
 
-Focused verification: route/fuel, motion, persistence, return, and active wiring checks are listed in `docs/STATUS.md`.
+Focused verification: route/fuel, motion, persistence, return, item validation, item policy, and active wiring checks are listed in `docs/STATUS.md`.
 
 `tests/fuel_policy.lua` covers unlimited fuel on initial admission (including callback bypass) and when the post-refuel tank reread reports unlimited.

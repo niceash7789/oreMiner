@@ -27,31 +27,41 @@ local function target(pose, direction)
     return x, pose.y, z
 end
 
-local function worldHarness(startPose)
+local function worldHarness(startPose, failAt)
     local world = FakeTurtle.new(startPose)
     local pose = copyPose(startPose)
     local cleared = { [key(startPose.x, startPose.y, startPose.z)] = true }
     local clearCalls = 0
+    local clearPoses = {}
+    local physicalCalls = 0
+
+    local function shouldFail()
+        physicalCalls = physicalCalls + 1
+        return physicalCalls == failAt
+    end
 
     local api = {
         forward = function()
+            if shouldFail() then return false end
             local x, y, z = target(pose, "forward")
             if not cleared[key(x, y, z)] then return false end
             return world:move("forward", true)
         end,
-        back = function() return world:move("back", true) end,
-        up = function() return world:move("up", true) end,
+        back = function() if shouldFail() then return false end return world:move("back", true) end,
+        up = function() if shouldFail() then return false end return world:move("up", true) end,
         down = function()
+            if shouldFail() then return false end
             local x, y, z = target(pose, "down")
             if not cleared[key(x, y, z)] then return false end
             return world:move("down", true)
         end,
-        turnLeft = function() return world:turn("left", true) end,
-        turnRight = function() return world:turn("right", true) end,
+        turnLeft = function() if shouldFail() then return false end return world:turn("left", true) end,
+        turnRight = function() if shouldFail() then return false end return world:turn("right", true) end,
     }
 
     local harness = {}
     function harness.clear(direction)
+        clearPoses[#clearPoses + 1] = { pose = copyPose(pose), direction = direction }
         local x, y, z = target(pose, direction)
         cleared[key(x, y, z)] = true
         clearCalls = clearCalls + 1
@@ -60,15 +70,17 @@ local function worldHarness(startPose)
     function harness.move(movement)
         local updated, outcome = Motion.move(pose, nil, movement, api)
         if outcome.ok then pose = updated end
-        return updated, outcome
+        return updated, Result.new(outcome.ok, outcome.code, outcome.message, outcome)
     end
     function harness.turn(direction)
         local updated, outcome = Motion.turn(pose, direction, api)
         if outcome.ok then pose = updated end
-        return updated, outcome
+        return updated, Result.new(outcome.ok, outcome.code, outcome.message, outcome)
     end
     function harness.pose() return copyPose(pose) end
     function harness.clearCount() return clearCalls end
+    function harness.clearPoseTrace() return clearPoses end
+    function harness.physicalCallCount() return physicalCalls end
     function harness.isClear(x, y, z) return cleared[key(x, y, z)] == true end
     return harness
 end
@@ -78,11 +90,18 @@ local invalidPose, invalid = StairSlice.descend(false)
 assert(invalidPose == nil and not invalid.ok and invalid.code == "INVALID_STAIR_SLICE_OPTIONS")
 
 local harness = worldHarness(start)
+local torchCalls = 0
 local descended, result = StairSlice.descend({
     pose = start,
     clear = harness.clear,
     move = harness.move,
     turn = harness.turn,
+    placeOuterRightTorch = function(torchPose)
+        torchCalls = torchCalls + 1
+        assertPose(torchPose, { x = 0, y = 0, z = -1, facing = 0 },
+            "stair torch callback runs at the cleared slice centre")
+        return Result.new(true, "TORCH_PLACED")
+    end,
 })
 assert(result.ok and result.code == "STAIR_SLICE_COMPLETE")
 assertPose(descended, { x = 0, y = -1, z = -1, facing = 0 },
@@ -94,6 +113,86 @@ for x = -1, 1 do
     end
 end
 assert(harness.clearCount() == 9, "one solid slice should issue nine bounded clears")
+assert(torchCalls == 1, "optional torch callback runs once after passage clearing")
+
+-- Each centre and lateral sweep sub-phase must issue its clears from the
+-- expected pose. The next column may start only after the prior column has
+-- unwound to centre-bottom/facing.
+local function assertClearTrace(trace, origin, forwardX, forwardZ, rightX, rightZ)
+    local middle = { x = origin.x + forwardX, y = origin.y, z = origin.z + forwardZ, facing = origin.facing }
+    local left = { x = middle.x - rightX, y = middle.y, z = middle.z - rightZ, facing = (origin.facing + 3) % 4 }
+    local right = { x = middle.x + rightX, y = middle.y, z = middle.z + rightZ, facing = (origin.facing + 1) % 4 }
+    local centreLeft = { x = middle.x, y = middle.y, z = middle.z, facing = left.facing }
+    local centreRight = { x = middle.x, y = middle.y, z = middle.z, facing = right.facing }
+    local expected = {
+        { origin, "forward" },
+        { middle, "up" }, { middle, "down" },
+        { centreLeft, "forward" }, { left, "up" }, { left, "down" },
+        { centreRight, "forward" }, { right, "up" }, { right, "down" },
+    }
+    assert(#trace == #expected, "slice clear trace must contain three complete columns")
+    for index, entry in ipairs(expected) do
+        assertPose(trace[index].pose, entry[1], "clear sub-phase pose " .. index)
+        assert(trace[index].direction == entry[2], "clear sub-phase direction " .. index)
+    end
+end
+
+assertClearTrace(harness.clearPoseTrace(), start, 0, -1, 1, 0)
+
+-- Slice geometry is route-frame relative; verify the same target cells and
+-- centre-bottom postcondition for every possible outward facing.
+for facing = 1, 3 do
+    local rotatedStart = { x = 7, y = -3, z = 11, facing = facing }
+    local rotatedHarness = worldHarness(rotatedStart)
+    local rotatedEnd, rotatedResult = StairSlice.descend({
+        pose = rotatedStart,
+        clear = rotatedHarness.clear,
+        move = rotatedHarness.move,
+        turn = rotatedHarness.turn,
+    })
+    local dx, dz = 0, 0
+    if facing == 0 then dz = -1
+    elseif facing == 1 then dx = 1
+    elseif facing == 2 then dz = 1
+    else dx = -1 end
+    assert(rotatedResult.ok and rotatedResult.code == "STAIR_SLICE_COMPLETE",
+        "slice should complete facing " .. facing)
+    assertPose(rotatedEnd, {
+        x = rotatedStart.x + dx, y = rotatedStart.y - 1,
+        z = rotatedStart.z + dz, facing = facing,
+    }, "slice must advance forward/down and preserve facing " .. facing)
+    assertPose(rotatedHarness.pose(), rotatedEnd,
+        "simulated world must match returned pose facing " .. facing)
+    local rightX, rightZ
+    if facing == 0 then rightX, rightZ = 1, 0
+    elseif facing == 1 then rightX, rightZ = 0, 1
+    elseif facing == 2 then rightX, rightZ = -1, 0
+    else rightX, rightZ = 0, -1 end
+    for lateral = -1, 1 do
+        for height = -1, 1 do
+            assert(rotatedHarness.isClear(
+                rotatedStart.x + dx + lateral * rightX,
+                rotatedStart.y + height,
+                rotatedStart.z + dz + lateral * rightZ),
+                "slice must clear the route-relative 3x3 cells facing " .. facing)
+        end
+    end
+    assert(rotatedHarness.clearCount() == 9,
+        "slice must clear exactly nine target cells facing " .. facing)
+    assertClearTrace(rotatedHarness.clearPoseTrace(), rotatedStart, dx, dz, rightX, rightZ)
+end
+
+local torchFailureHarness = worldHarness(start)
+local torchFailurePose, torchFailure = StairSlice.descend({
+    pose = start,
+    clear = torchFailureHarness.clear,
+    move = torchFailureHarness.move,
+    turn = torchFailureHarness.turn,
+    placeOuterRightTorch = function() return Result.new(false, "NO_TORCHES") end,
+})
+assert(not torchFailure.ok and torchFailure.code == "NO_TORCHES")
+assertPose(torchFailurePose, { x = 0, y = 0, z = 0, facing = 0 },
+    "torch failure unwinds to the previous committed centre before stopping")
 
 local clearCountBeforeClimb = harness.clearCount()
 local climbed, climbResult = StairSlice.climb({
@@ -128,5 +227,24 @@ assertPose(failurePose, start,
     "a lateral clear failure must unwind to the last centre-bottom checkpoint")
 assertPose(failureHarness.pose(), failurePose,
     "failure unwind must keep reported and physical pose aligned")
+
+-- Fault each physical move/turn position observed in a successful slice. A
+-- failed API result must never advance either the simulated world or pose,
+-- including when the slice is attempting its bounded local unwind.
+local baseline = worldHarness(start)
+local _, baselineOutcome = StairSlice.descend({
+    pose = start, clear = baseline.clear, move = baseline.move, turn = baseline.turn,
+})
+assert(baselineOutcome.ok)
+local physicalBoundaries = baseline.physicalCallCount()
+for failAt = 1, physicalBoundaries do
+    local faulted = worldHarness(start, failAt)
+    local failedPose, failedOutcome = StairSlice.descend({
+        pose = start, clear = faulted.clear, move = faulted.move, turn = faulted.turn,
+    })
+    assert(not failedOutcome.ok, "injected physical failure must stop the slice")
+    assertPose(failedPose, faulted.pose(),
+        "reported pose must match world after physical failure at call " .. failAt)
+end
 
 print("navigation stair slice checks passed")

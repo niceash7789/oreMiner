@@ -103,4 +103,76 @@ function KnownRoute.projectedReturnCost(route, currentPose, proposedPose)
     return projectedDistances[route.home], "KNOWN_ROUTE_COST"
 end
 
+-- Return the exact shortest cost from a committed state pose to home. The
+-- recorded route graph is authoritative for every valid phase; in particular,
+-- active vein breadcrumbs must correspond to edges on this graph.
+function KnownRoute.costHome(state)
+    if type(state) ~= "table" or type(state.pose) ~= "table"
+        or type(state.route) ~= "table" then
+        return nil, "INVALID_ROUTE_STATE"
+    end
+    if state.poseCertainty ~= nil and state.poseCertainty ~= "known" then
+        return nil, "POSITION_UNCERTAIN"
+    end
+    if state.pendingAction ~= nil then
+        return nil, "POSITION_UNCERTAIN"
+    end
+    local homeKey = key({ x = 0, y = 0, z = 0 })
+    if state.route.home ~= homeKey then return nil, "INVALID_HOME_ROUTE" end
+    local currentKey = key(state.pose)
+    if not currentKey then return nil, "INVALID_ROUTE_POSE" end
+    local vein = state.vein
+    if vein ~= nil then
+        if type(vein) ~= "table" or type(vein.checkpoint) ~= "table"
+            or type(vein.route) ~= "table" or type(vein.visited) ~= "table"
+            or vein.stage == "entering" then
+            return nil, "UNKNOWN_VEIN_RETURN_ROUTE"
+        end
+        if vein.stage ~= "active" and vein.stage ~= "unwinding" then
+            return nil, "UNKNOWN_VEIN_RETURN_ROUTE"
+        end
+        local cursor = state.pose
+        local edgeCount = 0
+        for index = #vein.route, 1, -1 do
+            local breadcrumb = vein.route[index]
+            if type(breadcrumb) ~= "table" then return nil, "UNKNOWN_VEIN_RETURN_ROUTE" end
+            local target = { x = cursor.x, y = cursor.y, z = cursor.z, facing = cursor.facing }
+            if breadcrumb.inverse == "up" then target.y = target.y + 1
+            elseif breadcrumb.inverse == "down" then target.y = target.y - 1
+            elseif breadcrumb.inverse == "back" then
+                target.facing = breadcrumb.facing
+                if breadcrumb.facing == 0 then target.z = target.z + 1
+                elseif breadcrumb.facing == 1 then target.x = target.x - 1
+                elseif breadcrumb.facing == 2 then target.z = target.z - 1
+                elseif breadcrumb.facing == 3 then target.x = target.x + 1
+                else return nil, "UNKNOWN_VEIN_RETURN_ROUTE" end
+            else
+                return nil, "UNKNOWN_VEIN_RETURN_ROUTE"
+            end
+            local cursorKey = key(cursor)
+            local targetKey = key(target)
+            if not state.route.edges[cursorKey] or not state.route.edges[cursorKey][targetKey] then
+                return nil, "UNKNOWN_VEIN_RETURN_ROUTE"
+            end
+            edgeCount = edgeCount + 1
+            cursor = target
+        end
+        if edgeCount ~= #vein.route or cursor.x ~= vein.checkpoint.x
+            or cursor.y ~= vein.checkpoint.y or cursor.z ~= vein.checkpoint.z then
+            return nil, "UNKNOWN_VEIN_RETURN_ROUTE"
+        end
+    end
+
+    -- Measure from the committed physical pose. Breadcrumb validation proves
+    -- that the active excursion can unwind, while the recorded graph already
+    -- contains those edges and therefore prices that retrace exactly once.
+    local routeKey = currentKey
+    local reachable = distances(state.route, routeKey)
+    local cost = reachable and reachable[homeKey]
+    if cost == nil then return nil, "UNKNOWN_RETURN_ROUTE" end
+    -- The route graph already includes committed vein edges; adding their
+    -- breadcrumb count again would double-charge the same retrace.
+    return cost, "KNOWN_ROUTE_COST"
+end
+
 return KnownRoute

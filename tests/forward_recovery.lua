@@ -30,9 +30,35 @@ result = ForwardRecovery.run({
     maxMoveRetries = 2,
     maxEntityRetries = 3,
 })
-assert(not result.ok and result.code == "ENTITY_BLOCKED" and result.entityRetries == 3)
+assert(not result.ok and result.code == "UNKNOWN_OBSTRUCTION" and result.entityRetries == 3)
 assert(moves == 4 and attacks == 3 and waits == 3, "persistent entities must stop at the exact retry limit")
 assert(warnings == 1, "persistent obstruction should produce one warning before its final retry")
+
+result = ForwardRecovery.run({
+    move = function() return false end,
+    detect = function() return false end,
+    inspect = function() return true, { name = "minecraft:flowing_water", tags = {} } end,
+    digClear = function() error("liquids must not be dug") end,
+    attack = function() end,
+    wait = function() end,
+    maxMoveRetries = 1,
+    maxEntityRetries = 1,
+})
+assert(not result.ok and result.code == "LIQUID",
+    "inspectable liquids should receive the specific safe-stop outcome")
+
+result = ForwardRecovery.run({
+    move = function() return false end,
+    detect = function() return false end,
+    inspect = function() error("unsupported inspect must be contained") end,
+    digClear = function() error("unknown obstruction must not be dug") end,
+    attack = function() end,
+    wait = function() end,
+    maxMoveRetries = 1,
+    maxEntityRetries = 1,
+})
+assert(not result.ok and result.code == "UNKNOWN_OBSTRUCTION",
+    "inspection failure should fail closed as an unknown obstruction")
 
 moves = 0
 local clears = 0

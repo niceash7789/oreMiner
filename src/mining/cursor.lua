@@ -15,6 +15,7 @@ local PHASE_ACTIONS = {
     branch_upper_return = { scan_and_return_branch_cell = true },
     branch_lower_return = { return_branch_cell = true },
     branch_return_to_junction = { descend_to_junction = true },
+    floor_complete = { advance_floor = true },
 }
 
 local function integer(value)
@@ -29,6 +30,60 @@ end
 local function identifier(value)
     return type(value) == "string" and #value > 0
         and value:match("^[a-z0-9_-]+$") ~= nil
+end
+
+local function copy(value)
+    if type(value) ~= "table" then return value end
+    local result = {}
+    for key, child in pairs(value) do result[key] = copy(child) end
+    return result
+end
+
+-- Attach the durable frame and configured bounds at the exact committed pose
+-- from which this next cursor will run. The logical cursor itself remains the
+-- compact route position; these fields make its work unit independently clear.
+function Cursor.withWorkUnit(progress, origin, config)
+    if not Cursor.validate(progress) or type(origin) ~= "table"
+        or not integer(origin.x) or not integer(origin.y) or not integer(origin.z)
+        or not integer(origin.facing) or origin.facing < 0 or origin.facing > 3
+        or type(config) ~= "table" or not integer(config.branch_length)
+        or not integer(config.num_branches) or not integer(config.spacing)
+        or (config.floor_count ~= nil and not integer(config.floor_count))
+        or (config.stair_steps_per_floor ~= nil and not integer(config.stair_steps_per_floor)) then
+        return nil, "INVALID_WORK_UNIT"
+    end
+    local floorCount = config.floor_count or 1
+    local stairSteps = config.stair_steps_per_floor or 8
+    local outboundFrame = origin.facing
+    if progress.phase == "branch_upper_return" or progress.phase == "branch_lower_return"
+        or progress.phase == "branch_return_to_junction" then
+        outboundFrame = (origin.facing + 2) % 4
+    end
+    local result = copy(progress)
+    result.origin = copy(origin)
+    result.outboundFrame = outboundFrame
+    result.bounds = {
+        floorFirst = progress.floor,
+        floorLast = floorCount,
+        branchPairFirst = 1,
+        branchPairLast = config.num_branches,
+        offsetFirst = 0,
+        offsetLast = progress.phase == "main_shaft" or progress.phase == "junction"
+            and config.spacing or config.branch_length,
+        mainOffsetFirst = 0,
+        -- Coordinator offsets are one-based at a junction boundary, so the
+        -- last pair may be represented by num_branches * spacing.
+        mainOffsetLast = config.num_branches * config.spacing,
+        stairStepFirst = 1,
+        stairStepLast = stairSteps + 1, -- step+1 is the durable landing-preparation cursor
+    }
+    if progress.phase == "main_shaft" or progress.phase == "junction" then
+        result.bounds.offsetLast = config.spacing
+    elseif progress.phase == "surface_entry" or progress.phase == "stairs" then
+        result.bounds.offsetLast = stairSteps + 1
+    end
+    result.completionStatus = "pending"
+    return result
 end
 
 function Cursor.validate(progress)
@@ -57,6 +112,9 @@ function Cursor.validate(progress)
     if progress.workDomain ~= "floor" then return false end
     if progress.phase == "main_shaft" or progress.phase == "junction" then
         return progress.side == "none"
+    end
+    if progress.phase == "floor_complete" then
+        return progress.side == "none" and progress.floor >= 1
     end
     return progress.side == "left" or progress.side == "right"
 end
@@ -93,6 +151,11 @@ end
 
 function Cursor.initial()
     return Cursor.mainShaft(1, 1, 0)
+end
+
+function Cursor.floorComplete(floor)
+    if not integer(floor) or floor < 1 then return nil, "INVALID_MINING_CURSOR" end
+    return create(1, "none", "floor_complete", 0, 0, "advance_floor", "complete", floor)
 end
 
 -- Route cursor used before surface entry and before each bounded stair/landing

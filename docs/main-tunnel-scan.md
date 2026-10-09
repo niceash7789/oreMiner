@@ -6,7 +6,7 @@ Discover classified ore veins exposed around floor main-tunnel cells.
 
 ## Implemented behavior
 
-When vein mining is enabled, each newly reached main-tunnel cell is scanned on both side walls, the floor, and the ceiling. The turtle remains at the cell while scanning; side headings are restored with checked turns. `MainTunnelScan.scanCell` stops on the first failed scan callback, and the active coordinator propagates vein return or inventory-service failures. Between intermediate spacing cells, the coordinator retraces the checked edge to preserve the existing branch junction pose, avoiding a changed branch-grid route and duplicate cell scans.
+When vein mining is enabled, each newly reached main-tunnel cell is scanned on both side walls, the floor, and the ceiling. The turtle remains at the cell while scanning; side headings are restored with checked turns. `MainTunnelScan.scanCell` stops on the first failed scan callback, and the active coordinator propagates vein return or inventory-service failures. Between intermediate spacing cells, the coordinator retraces the checked edge to preserve the existing branch junction pose, avoiding a changed branch-grid route and duplicate cell scans. The coordinator also performs the configured final upper main-tunnel scan during normal return before it reports job completion.
 
 ## Public module/API entry points
 
@@ -27,4 +27,4 @@ The scan helper is callback-only. It does not change staircase or branch geometr
 
 ## Verification
 
-Run `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/main_tunnel_scan.lua`. Related vein, route-fuel, branch-progress, and active-wiring checks are recorded in `docs/STATUS.md`.
+Run `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/main_tunnel_scan.lua`, `tests/active_baseline_wiring.lua`, `tests/navigation_branch_traversal.lua`, and `tests/branch_progress.lua`, then parse changed Lua files with `luac.exe -p`.

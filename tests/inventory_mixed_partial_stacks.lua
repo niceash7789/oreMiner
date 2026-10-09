@@ -53,6 +53,10 @@ local service = InventoryService.new({
     itemConfig = itemConfig,
     pose = function() return pose end,
     turnToFacing = function(facing) pose.facing = facing; return true end,
+    travel = function(target)
+        pose.x, pose.y, pose.z, pose.facing = target.x, target.y, target.z, target.facing
+        return true, "ROUTE_TARGET_REACHED"
+    end,
     safeForward = function() return true end,
     up = function() return true end,
     down = function() return true end,

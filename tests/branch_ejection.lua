@@ -34,6 +34,25 @@ assert(result.ok and result.code == "EJECT_COMPLETE" and result.ejected == 16 an
 assert(stacks[9].count == 8, "only cobblestone may be ejected")
 assert(selected() == 7, "selected slot must be restored")
 
+for _, pavingEnabled in ipairs({ false, true }) do
+    local config = {
+        inventory = { retainedItems = { ["minecraft:cobblestone"] = 64 } },
+        paving = { enabled = pavingEnabled },
+    }
+    stacks = {
+        [3] = { name = "minecraft:cobblestone", count = 40 },
+        [11] = { name = "minecraft:cobblestone", count = 40 },
+        [14] = { name = "minecraft:diamond_ore", count = 2 },
+    }
+    api, selected = fake(stacks, false)
+    result = BranchEjection.run(api, config)
+    assert(result.ok and result.ejected == 16 and result.retained == 64,
+        "branch-end ejection must preserve the reserve with paving enabled="
+            .. tostring(pavingEnabled))
+    assert(stacks[14].count == 2 and selected() == 7,
+        "ejection must leave ore and selected slot unchanged")
+end
+
 stacks = { [4] = { name = "minecraft:cobblestone", count = 70 } }
 api = fake(stacks, true)
 result = BranchEjection.run(api, defaults)

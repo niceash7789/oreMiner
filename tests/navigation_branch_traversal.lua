@@ -5,7 +5,7 @@ local BranchTraversal = require("src.navigation.branch_traversal")
 local origin = { x = 0, y = 0, z = 0, facing = 0 }
 local grid = assert(FloorGrid.new(origin, 0, {
     floor = 1,
-    pose = { x = 0, y = -8, z = -12, facing = 0 },
+    pose = { x = 0, y = -8, z = -13, facing = 0 },
 }))
 local junction = assert(grid.junction(3))
 local branch = assert(grid.branch(junction, "left"))

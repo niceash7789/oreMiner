@@ -6,7 +6,7 @@ Load one versioned V1 job configuration, reject invalid or incomplete settings b
 
 ## Implemented behavior
 
-Root `config.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
+Root `config.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It rejects top-level `workers`, `workerCount`, `turtleCount`, and `fleet` fields so unsupported multi-turtle settings cannot be silently accepted. The coordinator uses one local sequential executor and one persisted mining cursor. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
 
 The coordinator loads and normalizes this file before constructing a run, shows a read-only summary, and asks only for start confirmation. Branch dimensions, paving, and ore behavior are no longer changed interactively. Invalid configuration raises `CONFIG_INVALID` before persistence setup, movement, digging, refuelling, or inventory actions.
 
@@ -25,9 +25,10 @@ The coordinator loads and normalizes this file before constructing a run, shows 
 - The normalized table is a deep copy. Runtime compatibility aliases do not appear in or mutate `config.lua`.
 - Configuration is loaded once for a run and is not changed after confirmation.
 - Configuration validation is independent of movement, inventory, and persistence modules.
+- V1 has one turtle and one active sequential work cursor; multi-worker configuration is invalid.
 
 ## Dependencies and limitations
 
 The loader depends on the numeric validator and shared structured-result helper. It uses only CC:Tweaked-compatible Lua features and does not dynamically execute configuration text beyond normal `require` loading.
 
-`tests/config_loader.lua` verifies the shipped file, copy/normalization behavior, required fields, lists, flags, patterns, and representative invalid values. `tests/config_startup.lua` proves the active coordinator rejects an invalid schema with zero turtle calls. `tests/numeric_validation.lua` retains exhaustive numeric boundary coverage, and `tests/active_baseline_wiring.lua` exercises a short run using file-backed values. Floor/stairs execution does not consume its new configuration fields until those later phases are wired. No in-world verification has been performed.
+`tests/config_loader.lua` verifies the shipped file, copy/normalization behavior, required fields, lists, flags, patterns, representative invalid values, and rejection of worker/fleet settings. `tests/config_startup.lua` proves the active coordinator rejects an invalid schema with zero turtle calls. `tests/numeric_validation.lua` retains exhaustive numeric boundary coverage, and `tests/active_baseline_wiring.lua` exercises a short run using file-backed values. No in-world verification has been performed.

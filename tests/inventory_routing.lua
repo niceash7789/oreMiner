@@ -61,6 +61,11 @@ local function run(options)
         itemConfig = itemConfig,
         pose = function() return pose end,
         turnToFacing = function(target) facing = target; pose.facing = target; return true end,
+        travel = function(target)
+            pose.x, pose.y, pose.z, pose.facing = target.x, target.y, target.z, target.facing
+            facing = target.facing
+            return true, "ROUTE_TARGET_REACHED"
+        end,
         safeForward = function() return true end,
         up = function() return true end,
         down = function() return true end,

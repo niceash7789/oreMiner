@@ -5,6 +5,10 @@ local Pose = require("src.navigation.pose")
 local Motion = require("src.navigation.motion")
 local Turn = require("src.navigation.turn")
 local SlotGuard = require("src.inventory.slot_guard")
+local Paving = require("src.inventory.paving")
+local PressureGate = require("src.inventory.pressure_gate")
+local FuelItemValidation = require("src.fuel.item_validation")
+local FuelLevel = require("src.fuel.level")
 local ItemPolicy = require("src.config.item_policy")
 local ConfigLoader = require("src.config.loader")
 local OreClassifier = require("src.mining.ore_classifier")
@@ -21,21 +25,32 @@ local Status = require("src.reporting.status")
 local Reporting = require("src.reporting.safe")
 local Statistics = require("src.reporting.statistics")
 local KnownRoute = require("src.fuel.known_route")
+local RouteFuelPolicy = require("src.fuel.route_policy")
 local VeinTraversal = require("src.mining.vein_traversal")
 local DigClear = require("src.safety.dig_clear")
 local ForwardRecovery = require("src.safety.forward_recovery")
 local Result = require("src.safety.result")
 local BranchProgress = require("src.mining.branch_progress")
+local BranchTraversal = require("src.navigation.branch_traversal")
+local FloorGrid = require("src.navigation.floor_grid")
 local ReturnMove = require("src.navigation.return_move")
 local RouteHome = require("src.navigation.route_home")
+local ResumeCommitment = require("src.fuel.resume_commitment")
 local StairRoute = require("src.navigation.stair_route")
 local FloorLanding = require("src.navigation.floor_landing")
 local MainTunnelScan = require("src.mining.main_tunnel_scan")
+local OreCandidateQueue = require("src.mining.ore_candidate_queue")
 local MainShaftBackfill = require("src.mining.main_shaft_backfill")
+local Lighting = require("src.lighting.right_wall")
 local InventoryService = require("src.inventory.service")
+local Resupply = require("src.inventory.resupply")
 local BranchEjection = require("src.inventory.branch_ejection")
 local Checkpoint = require("src.persistence.checkpoint")
+local PhysicalAction = require("src.persistence.physical_action")
+local Recovery = require("src.persistence.recovery")
 local MiningCursor = require("src.mining.cursor")
+local RecoveryStatus = require("src.reporting.recovery_status")
+local Startup = require("src.persistence.startup")
 
 -- ============================================================================
 -- GLOBAL STATE
@@ -63,6 +78,7 @@ local stats = Statistics.new({
     torches_placed = 0,
     stair_slices_completed = 0,
     floors_completed = 0,
+    active_runtime_seconds = 0,
 })
 local terminalPrint = print
 local function print(...)
@@ -73,6 +89,7 @@ local statePath = "oreMiner/state.json"
 local checkpoint
 local persistenceError
 local activeFloor = 0
+local statisticsStartedAt = os.epoch("utc") / 1000
 local fsApi = fs
 local textutilsApi = textutils
 
@@ -126,8 +143,33 @@ local function newRun()
     checkpoint = Checkpoint.create(configSnapshot(), pos, knownRoute, runId,
         statePath, fsApi, textutilsApi)
     if not checkpoint then return false end
+    statisticsStartedAt = os.epoch("utc") / 1000
+    checkpoint:setStatisticsProvider(function()
+        local snapshot = stats:snapshot()
+        snapshot.active_runtime_seconds = stats:get("active_runtime_seconds")
+            + math.max(0, os.epoch("utc") / 1000 - statisticsStartedAt)
+        return snapshot
+    end)
     local ok = persist()
     return ok
+end
+
+local refuel
+
+-- A route may start only when the turtle can afford its first move and retain
+-- the configured emergency reserve. Per-move route admission handles growth
+-- in the known return path after the route has begun.
+local function hasStartupFuel()
+    local level = turtle.getFuelLevel()
+    if FuelLevel.isUnlimited(level) then return true end
+    if type(level) ~= "number" then
+        persistenceError = "INVALID_FUEL_LEVEL"
+        return false
+    end
+    if level >= config.fuel_reserve then return true end
+    if refuel(config.fuel_reserve) then return true end
+    persistenceError = "NO_FUEL"
+    return false
 end
 
 -- ============================================================================
@@ -144,7 +186,7 @@ local function getFuelNeeded()
     local moves_per_position =
         config.spacing + (config.branch_length * 4)
 
-    if config.vein_mine then
+    do
         moves_per_position = moves_per_position + 4
     end
 
@@ -160,10 +202,10 @@ local function getFuelNeeded()
     return total_moves + return_trip
 end
 
-local function refuel(needed)
+refuel = function(needed)
     local level = turtle.getFuelLevel()
 
-    if level == "unlimited" then
+    if FuelLevel.isUnlimited(level) then
         return true
     end
 
@@ -175,10 +217,11 @@ local function refuel(needed)
         for slot = 1, 16 do
             local detail = turtle.getItemDetail(slot)
             if detail and ItemPolicy.isFuel(detail.name, config) then
-                if turtle.select(slot) and turtle.refuel(0) then
+                local usable = FuelItemValidation.verify(turtle, slot, config)
+                if usable then
                     while turtle.getFuelLevel() < needed
                         and turtle.getItemCount(slot) > 0 do
-                        if not turtle.refuel(1) then
+                        if turtle.refuel(1) ~= true then
                             break
                         end
                     end
@@ -203,7 +246,7 @@ local function tryAutoRefuelCoal()
 
     local level = turtle.getFuelLevel()
 
-    if level == "unlimited" then
+    if FuelLevel.isUnlimited(level) then
         return
     end
 
@@ -218,10 +261,11 @@ local function tryAutoRefuelCoal()
             local detail = turtle.getItemDetail(slot)
 
             if detail and ItemPolicy.isFuel(detail.name, config) then
-                if turtle.select(slot) then
+                local usable = FuelItemValidation.verify(turtle, slot, config)
+                if usable then
                     while turtle.getFuelLevel() < config.fuel_reserve
                         and turtle.getItemCount(slot) > 0 do
-                        if not turtle.refuel(1) then
+                        if turtle.refuel(1) ~= true then
                             break
                         end
                     end
@@ -241,8 +285,8 @@ local function tryAutoRefuelCoal()
     if guarded.ok and guarded.value then
         print(
             string.format(
-                "  [Fuel] Auto-refueled to %d",
-                turtle.getFuelLevel()
+                "  [Fuel] Auto-refueled to %s",
+                FuelLevel.format(turtle.getFuelLevel())
             )
         )
     end
@@ -257,18 +301,42 @@ end
 -- ============================================================================
 
 local lastMovementOutcome
+local deferVeinMovementCommit = false
+local veinMovementCommitPending = false
+local stairRouteAction
 
 local function move(movement)
     local updated, result = Motion.moveWithPolicy(pos, knownRoute, movement, turtle, {
         reserve = config.fuel_reserve,
         getFuelLevel = turtle.getFuelLevel,
         refuel = refuel,
-        beforeMove = function() return beginPhysicalAction("move", movement) end,
+        beforeMove = function()
+            if veinMovementCommitPending then
+                local saved, code = checkpoint:beginAction("move", movement,
+                    pos, knownRoute, configSnapshot())
+                if not saved then persistenceError = code end
+                return saved, code
+            end
+            if stairRouteAction then
+                local action = movement == "forward" and "forward" or movement
+                local saved, code = checkpoint:beginRouteAction(action, "move", movement,
+                    pos, knownRoute, configSnapshot())
+                if not saved then persistenceError = code end
+                return saved, code
+            end
+            return beginPhysicalAction("move", movement)
+        end,
     })
     lastMovementOutcome = result
     if not result.ok then
         if result.code == "MOVE_FAILED" then
-            local ok, code = checkpoint:cancelAction(pos, knownRoute, configSnapshot())
+            local ok, code
+            if stairRouteAction then
+                local action = movement == "forward" and "forward" or movement
+                ok, code = checkpoint:cancelRouteAction(action, pos, knownRoute, configSnapshot())
+            else
+                ok, code = checkpoint:cancelAction(pos, knownRoute, configSnapshot())
+            end
             if not ok then
                 persistenceError = code
                 lastMovementOutcome = { ok = false, code = code }
@@ -277,38 +345,97 @@ local function move(movement)
         if result.code ~= "MOVE_FAILED" then
             print(string.format("  [Fuel] Cannot safely move %s (%s)", movement, result.code))
         end
-        return false, result.message or result.code
+        return false, Result.new(false, result.code, result.message,
+            { retryable = result.retryable == true })
     end
     pos = updated
-    stats:add("fuel_used", 1)
-    local saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
-    if not saved then
-        persistenceError = saveCode
-        lastMovementOutcome = { ok = false, code = persistenceError }
-        return false, persistenceError
+    stats:add("fuel_used", result.fuelUsed or 0)
+    if deferVeinMovementCommit then
+        veinMovementCommitPending = true
+    elseif stairRouteAction then
+        local inverse = movement == "forward" and "back"
+            or movement == "back" and "forward"
+            or movement == "up" and "down"
+            or movement == "down" and "up"
+        local saved, saveCode = checkpoint:commitRouteAction(inverse, pos, knownRoute, configSnapshot())
+        if not saved then
+            persistenceError = saveCode
+            lastMovementOutcome = { ok = false, code = persistenceError }
+            return false, persistenceError
+        end
+    elseif veinMovementCommitPending then
+        -- Vein traversal commits the matching DFS edge immediately afterward.
+    else
+        local saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
+        if not saved then
+            persistenceError = saveCode
+            lastMovementOutcome = { ok = false, code = persistenceError }
+            return false, persistenceError
+        end
     end
-    return true
+    return true, Result.new(true, "MOVE_COMMITTED", nil, { retryable = false })
 end
 
 local function turn(direction)
-    local ready, reason = beginPhysicalAction("turn", direction)
-    if not ready then return false, reason end
+    local expectedAction = direction == "left" and "turnLeft" or "turnRight"
+    local ready, reason
+    if veinMovementCommitPending then
+        ready, reason = checkpoint:beginAction("turn", direction,
+            pos, knownRoute, configSnapshot())
+        if not ready then persistenceError = reason end
+    elseif stairRouteAction then
+        ready, reason = checkpoint:beginRouteAction(expectedAction, "turn", direction,
+            pos, knownRoute, configSnapshot())
+        if not ready then persistenceError = reason end
+    else
+        ready, reason = beginPhysicalAction("turn", direction)
+    end
+    if not ready then
+        local code = type(reason) == "table" and reason.code or tostring(reason or "ACTION_INTENT_FAILED")
+        return false, Result.new(false, code, type(reason) == "table" and reason.message or nil,
+            { retryable = false })
+    end
     local updated, result = Motion.turn(pos, direction, turtle)
     if not result.ok then
-        local ok, code = checkpoint:cancelAction(pos, knownRoute, configSnapshot())
+        local ok, code
+        if stairRouteAction then
+            ok, code = checkpoint:cancelRouteAction(expectedAction, pos, knownRoute, configSnapshot())
+        else
+            ok, code = checkpoint:cancelAction(pos, knownRoute, configSnapshot())
+        end
         if not ok then persistenceError = code end
-        return false, result
+        return false, Result.new(false, result.code, result.message,
+            { retryable = result.retryable == true })
     end
     pos = updated
-    local saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
-    if not saved then persistenceError = saveCode return false, { ok = false, code = persistenceError } end
-    return true
+    local inverse = direction == "left" and "turnRight" or "turnLeft"
+    local saved, saveCode
+    if stairRouteAction then
+        saved, saveCode = checkpoint:commitRouteAction(inverse, pos, knownRoute, configSnapshot())
+    elseif veinMovementCommitPending then
+        veinMovementCommitPending = false
+        saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
+    else
+        saved, saveCode = checkpoint:commitAction(pos, knownRoute, configSnapshot())
+    end
+    if not saved then
+        persistenceError = saveCode
+        return false, Result.new(false, persistenceError, nil, { retryable = false })
+    end
+    return true, Result.new(true, "TURN_COMMITTED", nil, { retryable = false })
 end
 
 local function forward()
-    local moved, reason = move("forward")
-    if moved then return true end
-    return false, lastMovementOutcome or reason
+    local moved, outcome = move("forward")
+    if moved then return true, outcome end
+    return false, outcome
+end
+local function forwardIntoVein()
+    deferVeinMovementCommit = true
+    local moved, outcome = move("forward")
+    deferVeinMovementCommit = false
+    if moved then return true, outcome end
+    return false, outcome
 end
 local function back() return move("back") end
 local function up() return move("up") end
@@ -321,88 +448,85 @@ local function turnRight() return turn("right") end
 -- ============================================================================
 
 local function digForward()
+    local digFailure
     local result = DigClear.run({
         detect = turtle.detect,
         inspect = function() local found, data = turtle.inspect(); return found and data or nil end,
-        dig = turtle.dig,
+        dig = function()
+            local outcome = PhysicalAction.run(checkpoint, "dig", "forward", pos,
+                knownRoute, configSnapshot(), turtle.dig)
+            if outcome.ok ~= true then digFailure = outcome end
+            return outcome.ok == true
+        end,
         onBlock = function(name) print("Digging forward: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
         wait = function() sleep(0.5) end,
     })
+    if digFailure then result = digFailure end
     stats:add("blocks_mined", result.dug)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
 end
 
 local function digUp()
+    local digFailure
     local result = DigClear.run({
         detect = turtle.detectUp,
         inspect = function() local found, data = turtle.inspectUp(); return found and data or nil end,
-        dig = turtle.digUp,
+        dig = function()
+            local outcome = PhysicalAction.run(checkpoint, "dig", "up", pos,
+                knownRoute, configSnapshot(), turtle.digUp)
+            if outcome.ok ~= true then digFailure = outcome end
+            return outcome.ok == true
+        end,
         onBlock = function(name) print("Digging above: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
         wait = function() sleep(0.5) end,
     })
+    if digFailure then result = digFailure end
     stats:add("blocks_mined", result.dug)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
 end
 
 local function digDown()
+    local digFailure
     local result = DigClear.run({
         detect = turtle.detectDown,
         inspect = function() local found, data = turtle.inspectDown(); return found and data or nil end,
-        dig = turtle.digDown,
+        dig = function()
+            local outcome = PhysicalAction.run(checkpoint, "dig", "down", pos,
+                knownRoute, configSnapshot(), turtle.digDown)
+            if outcome.ok ~= true then digFailure = outcome end
+            return outcome.ok == true
+        end,
         onBlock = function(name) print("Digging below: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
         wait = function() sleep(0.5) end,
     })
+    if digFailure then result = digFailure end
     stats:add("blocks_mined", result.dug)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
 end
 
 local function paveDown()
-    if not config.pave then
-        return false
+    local result = Paving.tryDown(itemConfig, turtle, SlotGuard, ItemPolicy)
+    if result.placed then stats:add("blocks_placed", 1) end
+    if result.code == "PAVING_MATERIAL_UNAVAILABLE" then
+        print("WARNING: No allowed paving material is available; continuing without paving.")
+    elseif result.code == "PAVING_PLACE_FAILED" then
+        print("WARNING: Floor paving failed; continuing without optional paving.")
+    elseif not result.ok then
+        print("ERROR: " .. result.code)
     end
-
-    if turtle.detectDown() then
-        return false
-    end
-
-    local guarded = SlotGuard.run(turtle, function()
-        local totals = {}
-        for slot = 1, 16 do
-            local detail = turtle.getItemDetail(slot)
-            if detail then
-                totals[detail.name] = (totals[detail.name] or 0) + turtle.getItemCount(slot)
-            end
-        end
-        for slot = 1, 16 do
-            local detail = turtle.getItemDetail(slot)
-
-            local available = detail and totals[detail.name] or 0
-            if detail and ItemPolicy.mayConsumeForPaving(
-                detail.name, itemConfig, available
-            ) then
-                if turtle.select(slot) and turtle.placeDown() then
-                    stats:add("blocks_placed", 1)
-                    return true
-                end
-            end
-        end
-
-        return false
-    end)
-
-    return guarded.ok and guarded.value == true
+    return result
 end
 
 -- ============================================================================
@@ -472,12 +596,108 @@ local function turnToFacing(targetFacing)
     return result.ok, result
 end
 
+local checkedMoveForRoute, checkedTurnForRoute
+
+local function travelRecordedRoute(targetPose)
+    local arrived, outcome = RouteHome.run({
+        pose = pos,
+        route = knownRoute,
+        targetPose = targetPose,
+        homeFacing = targetPose.facing,
+        move = checkedMoveForRoute,
+        turn = checkedTurnForRoute,
+    })
+    if outcome.ok ~= true then return false, outcome.code end
+    pos = arrived
+    return true, outcome.code
+end
+
+local function travelStairRoute(targetPose)
+    local routes = checkpoint:floorLandings()
+    local serviceFloor = activeFloor
+    if type(serviceFloor) ~= "number" or serviceFloor < 1 or not routes[serviceFloor] then
+        return travelRecordedRoute(targetPose)
+    end
+    local activeLanding = routes[serviceFloor].landing
+    if targetPose.x == 0 and targetPose.y == 0 and targetPose.z == 0 then
+        if pos.x ~= activeLanding.x or pos.y ~= activeLanding.y
+            or pos.z ~= activeLanding.z or pos.facing ~= activeLanding.facing then
+            return travelRecordedRoute(targetPose)
+        end
+        for floor = serviceFloor, 1, -1 do
+            local route = routes[floor]
+            if not route then return false, "LANDING_ROUTE_INVALID" end
+            if not (pos.x == route.landing.x and pos.y == route.landing.y
+                and pos.z == route.landing.z and pos.facing == route.landing.facing) then
+                local reached, routeOutcome = travelRecordedRoute(route.landing)
+                if not reached then return false, routeOutcome end
+            end
+            local returned, outcome = StairRoute.returnToSurface({
+                pose = pos, route = route, move = checkedMoveForRoute, turn = checkedTurnForRoute,
+            })
+            if outcome.ok ~= true then return false, outcome.code end
+            pos = returned
+        end
+        return pos.x == targetPose.x and pos.y == targetPose.y and pos.z == targetPose.z
+            and pos.facing == targetPose.facing, "STAIRS_SURFACE_RESTORED"
+    end
+
+    local current = pos
+    if targetPose.x ~= activeLanding.x or targetPose.y ~= activeLanding.y
+        or targetPose.z ~= activeLanding.z or targetPose.facing ~= activeLanding.facing
+        or pos.x ~= activeLanding.x or pos.y ~= activeLanding.y
+        or pos.z ~= activeLanding.z or pos.facing ~= activeLanding.facing then
+        return travelRecordedRoute(targetPose)
+    end
+    for floor = serviceFloor, 1, -1 do
+        local route = routes[floor]
+        if not route then return false, "LANDING_ROUTE_INVALID" end
+        if not (current.x == route.landing.x and current.y == route.landing.y
+            and current.z == route.landing.z and current.facing == route.landing.facing) then
+            local reached, routeOutcome = travelRecordedRoute(route.landing)
+            if not reached then return false, routeOutcome end
+        end
+        local returned, outcome = StairRoute.returnToSurface({
+            pose = current, route = route, move = checkedMoveForRoute, turn = checkedTurnForRoute,
+        })
+        if outcome.ok ~= true then return false, outcome.code end
+        current = returned
+        pos = returned
+    end
+    local resumed, outcome = StairRoute.resumeToLanding({
+        pose = current, floor = serviceFloor, routes = routes, move = checkedMoveForRoute,
+    })
+    if outcome.ok ~= true then return false, outcome.code end
+    pos = resumed
+    return travelRecordedRoute(targetPose)
+end
+
 local inventoryService = InventoryService.new({
     turtle = turtle,
     config = config,
     itemConfig = itemConfig,
     pose = function() return pos end,
+    checkpoint = function() return checkpoint end,
+    progress = function() return checkpoint and checkpoint:resumeCheckpoint().progress end,
+    route = function() return knownRoute end,
+    configSnapshot = configSnapshot,
     turnToFacing = turnToFacing,
+    travel = travelStairRoute,
+    resupply = function(savedPose, route)
+        local origin = { x = 0, y = 0, z = 0, facing = 0 }
+        local path, pathCode = RouteHome.path(route, savedPose, nil, origin)
+        if not path then return { ok = false, code = pathCode } end
+        local requiredFuel = ResumeCommitment.targetFuelForTrips(
+            #path, #path, config.fuel_reserve, 1)
+        if not requiredFuel then return { ok = false, code = "INVALID_RESUME_COMMITMENT" } end
+        return Resupply.run({
+            turtle = turtle,
+            itemConfig = itemConfig,
+            targetFuel = requiredFuel,
+            torchTarget = config.supplies.torchTarget,
+            minimumTorches = config.supplies.minimumTorchesToDepart,
+        })
+    end,
     safeForward = safeForward,
     up = up,
     down = down,
@@ -486,10 +706,39 @@ local inventoryService = InventoryService.new({
 })
 local inventoryPressureReached = inventoryService.pressureReached
 local serviceInventoryRaw = inventoryService.serviceIfNeeded
+local function torchCount()
+    local count = 0
+    for slot = 1, 16 do
+        local detail = turtle.getItemDetail(slot)
+        if detail then
+            for _, itemName in ipairs(config.lighting.itemNames) do
+                if detail.name == itemName then
+                    count = count + turtle.getItemCount(slot)
+                    break
+                end
+            end
+        end
+    end
+    return count
+end
+
 local function serviceInventoryIfFull()
-    local serviced, code = serviceInventoryRaw()
+    -- These calls occur only at persisted logical checkpoints, before the next
+    -- bounded work unit. Refill before a scheduled wall placement can fail.
+    local lowTorchStock = config.features.torches and config.lighting.enabled
+        and torchCount() < config.supplies.minimumTorchesToDepart
+    local serviced, code = serviceInventoryRaw(lowTorchStock == true)
     if serviced and code == "SERVICE_COMPLETE" then stats:add("service_trips", 1) end
     return serviced
+end
+
+local function serviceBeforeVeinSeed()
+    local allowed, code = PressureGate.beforeDig(inventoryPressureReached, function()
+        local serviced, serviceCode = serviceInventoryRaw()
+        if serviced and serviceCode == "SERVICE_COMPLETE" then stats:add("service_trips", 1) end
+        return serviced, serviceCode
+    end)
+    return allowed, code
 end
 -- ============================================================================
 -- VEIN MINING
@@ -499,6 +748,22 @@ local veinInventoryPressureReached = false
 
 local function copyCurrentPose()
     return { x = pos.x, y = pos.y, z = pos.z, facing = pos.facing }
+end
+
+local function saveVeinState(veinState)
+    if not checkpoint then
+        persistenceError = "STATE_NOT_INITIALIZED"
+        return false
+    end
+    local saved, code
+    if veinMovementCommitPending then
+        saved, code = checkpoint:commitVeinAction(pos, knownRoute, configSnapshot(), veinState)
+        if saved then veinMovementCommitPending = false end
+    else
+        saved, code = checkpoint:setVein(veinState, pos, knownRoute, configSnapshot())
+    end
+    if not saved then persistenceError = code or "STATE_WRITE_FAILED" end
+    return saved
 end
 
 local function mineVein(checkpoint, seedInverse)
@@ -539,9 +804,23 @@ local function mineVein(checkpoint, seedInverse)
         end,
         move = function(direction)
             local moved = movements[direction]
-            return moved and moved() or false
+            if not moved then return false end
+            deferVeinMovementCommit = true
+            local result = moved()
+            deferVeinMovementCommit = false
+            return result
         end,
-        turnRight = turnRight,
+        canContinue = function(target)
+            -- The checked movement wrapper also enforces this commitment. Do
+            -- the same admission before digging so a candidate is not removed
+            -- from the world when refuelling could have made it safe.
+            return RouteFuelPolicy.canExplore({
+                pose = pos, target = target, route = knownRoute,
+                reserve = config.fuel_reserve, getFuelLevel = turtle.getFuelLevel,
+                refuel = refuel,
+            })
+        end,
+        turn = turn,
         inventoryPressure = inventoryPressureReached,
         reportCap = function(blocks, maxBlocks, maxRadius)
             print(string.format(
@@ -555,9 +834,14 @@ local function mineVein(checkpoint, seedInverse)
         return OreClassifier.isOre(block, config.ore)
     end, function(block)
         Statistics.addOreCounts(stats, block, 1)
+    end, function(veinState)
+        return saveVeinState(veinState)
     end)
     stats:add("ores_mined", result.blocks - 1)
     veinInventoryPressureReached = result.code == "INVENTORY_RETURN"
+    if result.code == "VEIN_FUEL_RETURN" then
+        return { ok = false, code = "RETURN_REQUIRED", message = "Vein exploration used the available return reserve." }
+    end
     return result
 end
 
@@ -589,23 +873,48 @@ local function sealMainShaftOpening(checkpoint, direction)
     return result
 end
 
-local function checkAndMineOre(mainShaftDirection)
+local checkAndMineOre, checkAndMineOreUp, checkAndMineOreDown
+
+checkAndMineOre = function(mainShaftDirection, deferCandidate)
     local hasBlock, data =
         turtle.inspect()
 
     if hasBlock
         and OreClassifier.isOre(data, config.ore) then
 
+        if deferCandidate then
+            local x, y, z = getForwardPosition()
+            return Result.new(true, "ORE_CANDIDATE_FOUND"),
+                { x = x, y = y, z = z, facing = pos.facing }
+        end
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
         local checkpoint = copyCurrentPose()
+        local entryX, entryY, entryZ = getForwardPosition()
+        local admitted, admissionCode = serviceBeforeVeinSeed()
+        if not admitted then
+            return Result.new(false, admissionCode or "INVENTORY_SERVICE_FAILED",
+                "Could not service inventory before entering an exposed ore vein")
+        end
+        local entryState = {
+            stage = "entering",
+            checkpoint = checkpoint,
+            entryPose = { x = entryX, y = entryY, z = entryZ, facing = checkpoint.facing },
+            visited = { [checkpoint.x .. "," .. checkpoint.y .. "," .. checkpoint.z] = true },
+            frontier = {},
+            route = {},
+            blocks = 0,
+        }
+        if not saveVeinState(entryState) then
+            return Result.new(false, persistenceError)
+        end
         local dug = digForward()
         if not dug.ok then
             return dug
         end
         stats:add("ores_mined", 1)
-        if forward() ~= true then
+        if forwardIntoVein() ~= true then
             print("ERROR: VEIN_MOVE_FAILED")
             return Result.new(false, "VEIN_MOVE_FAILED", "Could not enter the exposed ore block")
         end
@@ -623,23 +932,48 @@ local function checkAndMineOre(mainShaftDirection)
     return Result.new(true, "NO_ORE")
 end
 
-local function checkAndMineOreUp(mainShaftDirection)
+checkAndMineOreUp = function(mainShaftDirection, deferCandidate)
     local hasBlock, data =
         turtle.inspectUp()
 
     if hasBlock
         and OreClassifier.isOre(data, config.ore) then
 
+        if deferCandidate then
+            return Result.new(true, "ORE_CANDIDATE_FOUND"),
+                { x = pos.x, y = pos.y + 1, z = pos.z, facing = pos.facing }
+        end
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
         local checkpoint = copyCurrentPose()
+        local admitted, admissionCode = serviceBeforeVeinSeed()
+        if not admitted then
+            return Result.new(false, admissionCode or "INVENTORY_SERVICE_FAILED",
+                "Could not service inventory before entering an exposed ore vein")
+        end
+        local entryState = {
+            stage = "entering",
+            checkpoint = checkpoint,
+            entryPose = { x = checkpoint.x, y = checkpoint.y + 1,
+                z = checkpoint.z, facing = checkpoint.facing },
+            visited = { [checkpoint.x .. "," .. checkpoint.y .. "," .. checkpoint.z] = true },
+            frontier = {},
+            route = {},
+            blocks = 0,
+        }
+        if not saveVeinState(entryState) then
+            return Result.new(false, persistenceError)
+        end
         local dug = digUp()
         if not dug.ok then
             return dug
         end
         stats:add("ores_mined", 1)
-        if up() ~= true then
+        deferVeinMovementCommit = true
+        local entered = up()
+        deferVeinMovementCommit = false
+        if entered ~= true then
             print("ERROR: VEIN_MOVE_FAILED")
             return Result.new(false, "VEIN_MOVE_FAILED", "Could not enter the exposed ore block above")
         end
@@ -657,23 +991,48 @@ local function checkAndMineOreUp(mainShaftDirection)
     return Result.new(true, "NO_ORE")
 end
 
-local function checkAndMineOreDown(mainShaftDirection)
+checkAndMineOreDown = function(mainShaftDirection, deferCandidate)
     local hasBlock, data =
         turtle.inspectDown()
 
     if hasBlock
         and OreClassifier.isOre(data, config.ore) then
 
+        if deferCandidate then
+            return Result.new(true, "ORE_CANDIDATE_FOUND"),
+                { x = pos.x, y = pos.y - 1, z = pos.z, facing = pos.facing }
+        end
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
         local checkpoint = copyCurrentPose()
+        local admitted, admissionCode = serviceBeforeVeinSeed()
+        if not admitted then
+            return Result.new(false, admissionCode or "INVENTORY_SERVICE_FAILED",
+                "Could not service inventory before entering an exposed ore vein")
+        end
+        local entryState = {
+            stage = "entering",
+            checkpoint = checkpoint,
+            entryPose = { x = checkpoint.x, y = checkpoint.y - 1,
+                z = checkpoint.z, facing = checkpoint.facing },
+            visited = { [checkpoint.x .. "," .. checkpoint.y .. "," .. checkpoint.z] = true },
+            frontier = {},
+            route = {},
+            blocks = 0,
+        }
+        if not saveVeinState(entryState) then
+            return Result.new(false, persistenceError)
+        end
         local dug = digDown()
         if not dug.ok then
             return dug
         end
         stats:add("ores_mined", 1)
-        if down() ~= true then
+        deferVeinMovementCommit = true
+        local entered = down()
+        deferVeinMovementCommit = false
+        if entered ~= true then
             print("ERROR: VEIN_MOVE_FAILED")
             return Result.new(false, "VEIN_MOVE_FAILED", "Could not enter the exposed ore block below")
         end
@@ -704,6 +1063,7 @@ local function mineForward()
     local recovery = ForwardRecovery.run({
         move = forward,
         detect = turtle.detect,
+        inspect = turtle.inspect,
         digClear = digForward,
         attack = turtle.attack,
         warn = function()
@@ -731,23 +1091,53 @@ local function scanMainCell()
 
     local result = MainTunnelScan.scanCell({
         facing = function() return pos.facing end,
+        pose = function() return copyCurrentPose() end,
+        candidateQueue = function(anchor) return OreCandidateQueue.new(anchor) end,
+        drainCandidates = function(queue, anchor)
+            return queue.drain(pos, function(candidate)
+                local dx, dz = 0, 0
+                if anchor.facing == 0 then dz = -1
+                elseif anchor.facing == 1 then dx = 1
+                elseif anchor.facing == 2 then dz = 1
+                else dx = -1 end
+                local rx, ry, rz = candidate.x - anchor.x,
+                    candidate.y - anchor.y, candidate.z - anchor.z
+                local direction
+                if rx == 0 and ry == 1 and rz == 0 then direction = "up"
+                elseif rx == 0 and ry == -1 and rz == 0 then direction = "down"
+                elseif ry == 0 and rx == -dx and rz == -dz then direction = "left"
+                elseif ry == 0 and rx == dx and rz == dz then direction = "right" end
+                if not direction then return Result.new(false, "ORE_CANDIDATE_ROUTE_INVALID") end
+                local mined
+                if direction == "up" then mined = checkAndMineOreUp("up")
+                elseif direction == "down" then mined = checkAndMineOreDown("down")
+                else
+                    local turned = direction == "left" and turnLeft() or turnRight()
+                    if turned ~= true then return Result.new(false, "TURN_FAILED") end
+                    mined = checkAndMineOre("forward")
+                    local restored = direction == "left" and turnRight() or turnLeft()
+                    if restored ~= true then return Result.new(false, "TURN_FAILED") end
+                end
+                if mined == true or type(mined) == "table" and mined.ok == true then return true end
+                return type(mined) == "table" and mined
+                    or Result.new(false, "ORE_CANDIDATE_EXECUTION_FAILED")
+            end)
+        end,
         scan = function(direction)
             if direction == "left" then
                 if turnLeft() ~= true then return Result.new(false, "TURN_FAILED") end
-                local scanned = checkAndMineOre("forward")
-                if scanned ~= true then return scanned end
+                local scanned, candidate = checkAndMineOre("forward", true)
                 if turnRight() ~= true then return Result.new(false, "TURN_FAILED") end
-                return Result.new(true, "SCAN_COMPLETE")
+                return scanned, candidate
             elseif direction == "right" then
                 if turnRight() ~= true or turnRight() ~= true then return Result.new(false, "TURN_FAILED") end
-                local scanned = checkAndMineOre("forward")
-                if scanned ~= true then return scanned end
+                local scanned, candidate = checkAndMineOre("forward", true)
                 if turnLeft() ~= true or turnLeft() ~= true then return Result.new(false, "TURN_FAILED") end
-                return Result.new(true, "SCAN_COMPLETE")
+                return scanned, candidate
             elseif direction == "down" then
-                return checkAndMineOreDown(direction)
+                return checkAndMineOreDown(direction, true)
             elseif direction == "up" then
-                return checkAndMineOreUp(direction)
+                return checkAndMineOreUp(direction, true)
             end
             return Result.new(false, "INVALID_SCAN_DIRECTION")
         end,
@@ -756,8 +1146,201 @@ local function scanMainCell()
     return result.ok
 end
 
-local function mineBranch(length, branchPair, side, mainOffset)
-    local outboundResult = BranchProgress.run(length, function(i)
+local function placeTunnelTorch(outboundFacing, distance, force, routeId)
+    if not config.features.torches or not config.lighting.enabled
+        or (not force and distance % config.lighting.tunnelInterval ~= 0) then
+        return true
+    end
+    local key = string.format("floor-%d-%s-%d", activeFloor, routeId or "main", distance)
+    if checkpoint and checkpoint:hasTorchPlacement(key) then return true end
+    local function clearTorchNiche()
+        local dug = digForward()
+        if dug.ok == true or dug.code == "NO_BLOCK" then return Result.new(true, "NICHE_CLEAR") end
+        return dug
+    end
+    local selected = SlotGuard.run(turtle, function()
+        local slot
+        for index = 1, 16 do
+            local detail = turtle.getItemDetail(index)
+            local isTorch = false
+            if detail then
+                for _, itemName in ipairs(config.lighting.itemNames) do
+                    if detail.name == itemName then isTorch = true break end
+                end
+            end
+            if isTorch
+                and turtle.getItemCount(index) > 0 then
+                slot = index
+                break
+            end
+        end
+        if not slot or turtle.select(slot) ~= true then
+            return Result.new(false, "NO_TORCHES")
+        end
+        return Lighting.placeRight({
+            pose = copyCurrentPose(),
+            outboundFacing = outboundFacing,
+            poseNow = copyCurrentPose,
+            turn = checkedTurnForRoute,
+            dig = clearTorchNiche,
+            place = function()
+                if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
+                stats:add("torches_placed", 1)
+                return Result.new(true, "TORCH_PLACED")
+            end,
+        })
+    end)
+    if not selected.ok or type(selected.value) ~= "table" or selected.value.ok ~= true then
+        local code = selected.ok and selected.value and selected.value.code or selected.code
+        print("ERROR: " .. tostring(code or "LIGHTING_FAILED"))
+        return false
+    end
+    if checkpoint then
+        local saved, saveCode = checkpoint:recordTorchPlacement(key, pos, knownRoute, configSnapshot())
+        if not saved then
+            persistenceError = saveCode
+            markFatal(saveCode or "STATE_WRITE_FAILED")
+            return false
+        end
+    end
+    return true
+end
+
+local function placeStairTorch(slicePose)
+    if not config.features.torches or not config.lighting.enabled then return true end
+    local key = string.format("floor-%d-stair-%d", activeFloor, -slicePose.y)
+    if checkpoint and checkpoint:hasTorchPlacement(key) then return true end
+    local originalFacing = slicePose.facing
+    local sideCell = Lighting.rightSide(slicePose, originalFacing)
+    local sideHeading = sideCell and sideCell.facing
+    if not sideCell or sideHeading ~= (originalFacing + 1) % 4 then
+        print("ERROR: LIGHTING_INVALID_FRAME")
+        return false
+    end
+    local function restoreCenter()
+        local current = copyCurrentPose()
+        if current.x == sideCell.x and current.y == sideCell.y and current.z == sideCell.z
+            and current.facing == sideHeading then
+            local moved, outcome = checkedMoveForRoute("back")
+            if not moved then return false, outcome end
+            current = copyCurrentPose()
+        end
+        if current.x ~= slicePose.x or current.y ~= slicePose.y or current.z ~= slicePose.z then
+            return false, Result.new(false, "LIGHTING_POSE_MISMATCH")
+        end
+        if current.facing ~= originalFacing then
+            local restored, outcome = Turn.face(current, originalFacing, checkedTurnForRoute)
+            if not restored then return false, outcome end
+        end
+        return copyCurrentPose().facing == originalFacing, Result.new(true, "STAIR_TORCH_RESTORED")
+    end
+
+    local function clearTorchNiche()
+        local dug = digForward()
+        if dug.ok == true or dug.code == "NO_BLOCK" then return Result.new(true, "NICHE_CLEAR") end
+        return dug
+    end
+
+    if not turnRight() then return false end
+    -- Enter the already-cleared rightmost passage column before carving the
+    -- niche beyond its outer wall; the three-wide route stays unobstructed.
+    local movedIntoColumn, columnMoveResult = checkedMoveForRoute("forward")
+    if not movedIntoColumn then
+        local restored, restoreResult = restoreCenter()
+        if not restored then
+            print("ERROR: " .. tostring(restoreResult and restoreResult.code or "STAIR_TORCH_RESTORE_FAILED"))
+            return false
+        end
+        print("ERROR: " .. tostring(columnMoveResult and columnMoveResult.code or "STAIR_TORCH_MOVE_FAILED"))
+        return false
+    end
+    local selected = SlotGuard.run(turtle, function()
+        local slot
+        for index = 1, 16 do
+            local detail = turtle.getItemDetail(index)
+            if detail then
+                for _, itemName in ipairs(config.lighting.itemNames) do
+                    if detail.name == itemName and turtle.getItemCount(index) > 0 then
+                        slot = index
+                        break
+                    end
+                end
+            end
+            if slot then break end
+        end
+        if not slot or turtle.select(slot) ~= true then return Result.new(false, "NO_TORCHES") end
+        return Lighting.placeRight({
+            pose = copyCurrentPose(), outboundFacing = originalFacing,
+            poseNow = copyCurrentPose,
+            turn = checkedTurnForRoute,
+            dig = clearTorchNiche,
+            place = function()
+                if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
+                stats:add("torches_placed", 1)
+                return Result.new(true, "TORCH_PLACED")
+            end,
+        })
+    end)
+    local restored, restoreResult = restoreCenter()
+    if not restored then
+        print("ERROR: " .. tostring(restoreResult and restoreResult.code or "STAIR_TORCH_RESTORE_FAILED"))
+        return false
+    end
+    local placed = selected.ok and type(selected.value) == "table" and selected.value.ok == true
+    if not placed then return false end
+    if checkpoint then
+        local saved, saveCode = checkpoint:recordTorchPlacement(key, pos, knownRoute, configSnapshot())
+        if not saved then
+            persistenceError = saveCode
+            markFatal(saveCode or "STATE_WRITE_FAILED")
+            return false
+        end
+    end
+    return true
+end
+
+local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, resumePhase)
+    local savedLanding = checkpoint:floorLanding(activeFloor)
+    local gridLanding = savedLanding and {
+        floor = savedLanding.floor,
+        pose = savedLanding.landing,
+    } or nil
+    local grid, gridStatus = FloorGrid.new({ x = 0, y = 0, z = 0, facing = 0 }, 0,
+        gridLanding)
+    if not grid then
+        print("ERROR: " .. gridStatus.code)
+        return false, gridStatus
+    end
+    local junctionPose = grid.junction(mainOffset)
+    local branch, branchStatus = grid.branch(junctionPose, side)
+    if not branch then
+        print("ERROR: " .. branchStatus.code)
+        return false, branchStatus
+    end
+    local traversal, traversalStatus = BranchTraversal.new(branch, length)
+    if not traversal then
+        print("ERROR: " .. traversalStatus.code)
+        return false, traversalStatus
+    end
+
+    local firstIndex = (resumeDistance or 0) + 1
+    local resumePose
+    if not resumePhase or resumePhase == "branch_outbound_lower" then
+        resumePose = traversal.outboundPose(resumeDistance or 0)
+    elseif resumePhase == "branch_turnaround" then
+        resumePose = traversal.outboundPose(length)
+    elseif resumePhase == "branch_upper_return" then
+        resumePose = traversal.upperReturnPose(length - resumeDistance)
+    elseif resumePhase == "branch_return_to_junction" then
+        resumePose = traversal.upperReturnPose(0)
+    end
+    if not resumePose or pos.x ~= resumePose.x or pos.y ~= resumePose.y
+        or pos.z ~= resumePose.z or pos.facing ~= resumePose.facing then
+        return false, { ok = false, code = "BRANCH_RESUME_POSE_MISMATCH" }
+    end
+    local outboundResult = resumePhase and resumePhase ~= "branch_outbound_lower"
+        and { ok = true, code = "BRANCH_OUTBOUND_ALREADY_COMPLETE", completed = length, requested = length }
+        or BranchProgress.run(length, function(i)
         local cursor = MiningCursor.branch(branchPair, side, "branch_outbound_lower",
             i - 1, mainOffset, "mine_branch_cell", activeFloor)
         if not persistMiningCursor(cursor) then
@@ -774,26 +1357,36 @@ local function mineBranch(length, branchPair, side, mainOffset)
         end
 
         if config.vein_mine then
-
-            turnLeft()
+            local turned = turnLeft()
+            if turned ~= true then return { ok = false, code = "TURN_FAILED" } end
             local scanned = checkAndMineOre()
             if not scanned.ok then return scanned end
-            turnRight()
+            turned = turnRight()
+            if turned ~= true then return { ok = false, code = "TURN_FAILED" } end
 
-            turnRight()
+            turned = turnRight()
+            if turned ~= true then return { ok = false, code = "TURN_FAILED" } end
             local scanned = checkAndMineOre()
             if not scanned.ok then return scanned end
-            turnLeft()
+            turned = turnLeft()
+            if turned ~= true then return { ok = false, code = "TURN_FAILED" } end
 
             local scanned = checkAndMineOreDown()
             if not scanned.ok then return scanned end
+        end
+
+        -- The shaft's right side is defined by its outbound heading, even
+        -- though the same helper is also used later while facing back home.
+        if not placeTunnelTorch(branch.facing, i, false, side .. "-shaft-" .. mainOffset) then
+            return { ok = false, code = "BRANCH_TORCH_FAILED",
+                message = "Unable to place the scheduled right-wall torch" }
         end
 
         if not serviceInventoryIfFull() then
             return { ok = false, code = "INVENTORY_SERVICE_FAILED", message = "Inventory service failed during branch mining" }
         end
         return true
-    end)
+    end, firstIndex)
 
     if not outboundResult.ok then
         print("ERROR: " .. outboundResult.code .. " (completed "
@@ -801,11 +1394,14 @@ local function mineBranch(length, branchPair, side, mainOffset)
         return false, outboundResult
     end
 
-    local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
-        length, mainOffset, "prepare_branch_return", activeFloor)
-    if not persistMiningCursor(turnaroundCursor) then return false end
+    if not resumePhase or resumePhase == "branch_outbound_lower" then
+        local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
+            length, mainOffset, "prepare_branch_return", activeFloor)
+        if not persistMiningCursor(turnaroundCursor) then return false end
+    end
 
-    if config.base.separateBulk ~= true then
+    if (not resumePhase or resumePhase == "branch_outbound_lower"
+        or resumePhase == "branch_turnaround") and config.base.separateBulk ~= true then
         local ejected = BranchEjection.run(turtle, itemConfig)
         if not ejected.ok then
             print("ERROR: " .. ejected.code .. " - " .. (ejected.message or "branch-end ejection failed"))
@@ -813,22 +1409,35 @@ local function mineBranch(length, branchPair, side, mainOffset)
         end
     end
 
-    local clearedAbove = digUp()
-    if not clearedAbove.ok then
-        return false, clearedAbove
+    if not resumePhase or resumePhase == "branch_outbound_lower"
+        or resumePhase == "branch_turnaround" then
+        local expectedEndpoint = traversal.outboundPose(length)
+        if not expectedEndpoint or pos.x ~= expectedEndpoint.x or pos.y ~= expectedEndpoint.y
+            or pos.z ~= expectedEndpoint.z or pos.facing ~= expectedEndpoint.facing then
+            return false, { ok = false, code = "BRANCH_POSE_MISMATCH" }
+        end
     end
 
-    if config.vein_mine then
+    if not resumePhase or resumePhase == "branch_outbound_lower"
+        or resumePhase == "branch_turnaround" then
+        local clearedAbove = digUp()
+        if not clearedAbove.ok then return false, clearedAbove end
+    end
 
-        if up() ~= true then
-            print("ERROR: BRANCH_RETURN_MOVE_FAILED")
-            return false
+    do
+
+        if not resumePhase or resumePhase == "branch_outbound_lower"
+            or resumePhase == "branch_turnaround" then
+            if up() ~= true then return false, { ok = false, code = "BRANCH_RETURN_MOVE_FAILED" } end
+            if turnRight() ~= true or turnRight() ~= true then
+                return false, { ok = false, code = "TURN_FAILED" }
+            end
         end
 
-        turnRight()
-        turnRight()
-
-        for i = 1, length do
+        local firstReturnIndex = resumePhase == "branch_upper_return"
+            and (length - resumeDistance + 1) or 1
+        local lastReturnIndex = resumePhase == "branch_return_to_junction" and 0 or length
+        for i = firstReturnIndex, lastReturnIndex do
 
             local returnCursor = MiningCursor.branch(branchPair, side, "branch_upper_return",
                 length - i + 1, mainOffset, "scan_and_return_branch_cell", activeFloor)
@@ -838,53 +1447,57 @@ local function mineBranch(length, branchPair, side, mainOffset)
                 return false
             end
 
-            turnLeft()
-            checkAndMineOre()
-            turnRight()
+            if config.vein_mine then
+                if turnLeft() ~= true then return false, { ok = false, code = "TURN_FAILED" } end
+                local scanned = checkAndMineOre()
+                if not scanned.ok then return false, scanned end
+                if turnRight() ~= true then return false, { ok = false, code = "TURN_FAILED" } end
 
-            turnRight()
-            checkAndMineOre()
-            turnLeft()
+                if turnRight() ~= true then return false, { ok = false, code = "TURN_FAILED" } end
+                scanned = checkAndMineOre()
+                if not scanned.ok then return false, scanned end
+                if turnLeft() ~= true then return false, { ok = false, code = "TURN_FAILED" } end
 
-            checkAndMineOreUp()
+                scanned = checkAndMineOreUp()
+                if not scanned.ok then return false, scanned end
+            end
 
             if not serviceInventoryIfFull() then
                 return false
             end
 
-            if safeForward() ~= true then
+            if forward() ~= true then
                 print("ERROR: BRANCH_RETURN_MOVE_FAILED")
                 return false
             end
         end
 
-        local junctionCursor = MiningCursor.branch(branchPair, side,
-            "branch_return_to_junction", 0, mainOffset, "descend_to_junction", activeFloor)
-        if not persistMiningCursor(junctionCursor) then return false end
-
-        if down() ~= true then
-            print("ERROR: BRANCH_RETURN_MOVE_FAILED")
-            return false
+        if not resumePhase or resumePhase ~= "branch_return_to_junction" then
+            local junctionCursor = MiningCursor.branch(branchPair, side,
+                "branch_return_to_junction", 0, mainOffset, "descend_to_junction", activeFloor)
+            if not persistMiningCursor(junctionCursor) then return false end
         end
 
-    else
+        if down() ~= true then return false, { ok = false, code = "BRANCH_RETURN_MOVE_FAILED" } end
 
-        turnRight()
-        turnRight()
-
-        for i = 1, length do
-
-            local returnCursor = MiningCursor.branch(branchPair, side, "branch_lower_return",
-                length - i + 1, mainOffset, "return_branch_cell", activeFloor)
-            if not persistMiningCursor(returnCursor) then return false end
-
-            if not safeForward() then
-                print("ERROR: BRANCH_RETURN_MOVE_FAILED")
-                return false
-            end
-        end
     end
 
+    local expectedJunction = traversal.canonicalJunctionPose()
+    if pos.x ~= expectedJunction.x or pos.y ~= expectedJunction.y or pos.z ~= expectedJunction.z
+        or pos.facing ~= (branch.facing + 2) % 4 then
+        return false, { ok = false, code = "BRANCH_JUNCTION_MISMATCH",
+            actual = copyCurrentPose(), expected = expectedJunction }
+    end
+    local restored, restoreResult = turn(side == "left" and "left" or "right")
+    if restored ~= true then
+        return false, { ok = false, code = "BRANCH_FACING_RESTORE_FAILED",
+            cause = type(restoreResult) == "table" and restoreResult.code or restoreResult }
+    end
+    if pos.x ~= expectedJunction.x or pos.y ~= expectedJunction.y
+        or pos.z ~= expectedJunction.z or pos.facing ~= expectedJunction.facing then
+        return false, { ok = false, code = "BRANCH_JUNCTION_MISMATCH",
+            actual = copyCurrentPose(), expected = expectedJunction }
+    end
     return true
 end
 
@@ -896,7 +1509,8 @@ local function printFuelStatus(branch_num)
     local level =
         turtle.getFuelLevel()
 
-    if level == "unlimited" then
+    if FuelLevel.isUnlimited(level) then
+        print("  [Fuel] Level: unlimited | Route admission: enabled")
         return
     end
 
@@ -969,14 +1583,14 @@ local function returnToKnownHome(returnTarget)
     return true, outcome
 end
 
-local function checkedMoveForRoute(direction)
+checkedMoveForRoute = function(direction)
     local moved, reason = move(direction)
     if moved then return pos, Result.new(true, "MOVE_COMMITTED") end
     if type(reason) == "table" and reason.ok == false then return pos, reason end
     return pos, lastMovementOutcome or Result.new(false, "MOVE_FAILED", tostring(reason))
 end
 
-local function checkedTurnForRoute(direction)
+checkedTurnForRoute = function(direction)
     local turned, reason = turn(direction)
     if turned then return pos, Result.new(true, "TURN_COMMITTED") end
     if type(reason) == "table" and reason.ok == false then return pos, reason end
@@ -998,6 +1612,7 @@ local function saveStairCursor(context)
 end
 
 local function descendToLanding(floor)
+    stairRouteAction = true
     local landingPose, outcome = StairRoute.descend({
         pose = pos,
         floor = floor,
@@ -1006,12 +1621,35 @@ local function descendToLanding(floor)
         move = checkedMoveForRoute,
         turn = checkedTurnForRoute,
         clear = clearForStair,
+        stairTorchInterval = config.lighting.stairInterval,
+        placeStairTorch = config.lighting.skipLandingSlice and function(slicePose, step)
+                local placed = placeStairTorch(slicePose)
+                return Result.new(placed, placed and "TORCH_PLACED" or "STAIR_TORCH_FAILED")
+            end or nil,
         beforeEntry = saveStairCursor,
         beforeStep = saveStairCursor,
-        beforeLanding = saveStairCursor,
+        beforeLanding = function(context)
+            context.stairStep = context.stairStep + 1
+            return saveStairCursor(context)
+        end,
         saveProgress = function(progress)
             stats:add("stair_slices_completed", 1)
+            local nextCursor = MiningCursor.stairs(
+                progress.floor, progress.nextStep, progress.nextAction)
+            local saved, code = persistMiningCursor(nextCursor)
+            if not saved then
+                return false, Result.new(false, code or "STATE_WRITE_FAILED",
+                    "Could not persist the next stairs action.")
+            end
             return true, Result.new(true, "STAIR_PROGRESS_RECORDED", nil, progress)
+        end,
+        afterStep = function()
+            local serviced, code = serviceInventoryIfFull()
+            if serviced ~= true then
+                return false, Result.new(false, code or "INVENTORY_SERVICE_FAILED",
+                    "Inventory service failed after a completed stairs slice.")
+            end
+            return true, Result.new(true, "STAIR_CHECKPOINT_READY")
         end,
         prepareLanding = function(rearPose)
             return FloorLanding.prepare({
@@ -1028,6 +1666,7 @@ local function descendToLanding(floor)
             return true, Result.new(true, "LANDING_SAVED")
         end,
     })
+    stairRouteAction = nil
     if outcome.ok ~= true then return landingPose, outcome end
     if pos.x ~= landingPose.x or pos.y ~= landingPose.y
         or pos.z ~= landingPose.z or pos.facing ~= landingPose.facing then
@@ -1040,7 +1679,34 @@ end
 -- MAIN MINING PATTERN
 -- ============================================================================
 
-local function executeMining(returnTarget, deferSummary)
+local function executeMining(returnTarget, deferSummary, resumeCursor)
+
+    local resumeStart
+    if resumeCursor then
+        local code
+        if resumeCursor.phase == "main_shaft" then
+            local MainShaftResume = require("src.mining.main_shaft_resume")
+            resumeStart, code = MainShaftResume.start(
+                resumeCursor, config.num_branches, config.spacing)
+        elseif resumeCursor.phase == "junction" then
+            local JunctionResume = require("src.mining.junction_resume")
+            resumeStart, code = JunctionResume.start(
+                resumeCursor, config.num_branches, config.spacing)
+        elseif resumeCursor.phase == "branch_outbound_lower"
+            or resumeCursor.phase == "branch_turnaround"
+            or resumeCursor.phase == "branch_upper_return"
+            or resumeCursor.phase == "branch_return_to_junction" then
+            local BranchResume = require("src.mining.branch_resume")
+            resumeStart, code = BranchResume.start(resumeCursor, config.num_branches,
+                config.spacing, config.branch_length)
+        else
+            code = "CURSOR_RESUME_UNSUPPORTED"
+        end
+        if not resumeStart then
+            persistenceError = code or "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
+            return false
+        end
+    end
 
     local startedAt = os.epoch("utc") / 1000
 
@@ -1052,7 +1718,10 @@ local function executeMining(returnTarget, deferSummary)
 
     print("=== Fuel Check ===")
 
-    if fuelLevel == "unlimited" then
+    if resumeCursor then
+        print("Fuel: resume route commitment validated; each next move remains route-gated")
+
+    elseif FuelLevel.isUnlimited(fuelLevel) then
 
         print(
             "Fuel: unlimited (creative mode)"
@@ -1094,9 +1763,9 @@ local function executeMining(returnTarget, deferSummary)
             else
 
                 print(
-                    string.format(
-                        "Refueled! New level: %d",
-                        turtle.getFuelLevel()
+                string.format(
+                    "Refueled! New level: %s",
+                        FuelLevel.format(turtle.getFuelLevel())
                     )
                 )
             end
@@ -1121,11 +1790,16 @@ local function executeMining(returnTarget, deferSummary)
 
     print("")
 
-    for branch = 1, config.num_branches do
+    local firstBranch = resumeStart and resumeStart.branch or 1
+    for branch = firstBranch, config.num_branches do
 
         print(Status.phase("MAIN", branch, config.num_branches, "main"))
 
-        for step = 1, config.spacing do
+        local branchResumeHere = resumeStart and branch == firstBranch
+            and resumeStart.phase ~= "main_shaft" and resumeStart.phase ~= "junction"
+        local firstStep = resumeStart and branch == firstBranch and resumeStart.step or 1
+        if not branchResumeHere then
+        for step = firstStep, config.spacing do
 
             local mainCursor = MiningCursor.mainShaft(branch, step, branch - 1, activeFloor)
             if not persistMiningCursor(mainCursor) then return false end
@@ -1147,6 +1821,8 @@ local function executeMining(returnTarget, deferSummary)
                 return false
             end
 
+            if not placeTunnelTorch(pos.facing, step, false, "main-" .. branch) then return false end
+
             -- Preserve the baseline's canonical junction pose without
             -- advancing the branch grid: each spacing cell is scanned from
             -- the cell just entered, then the checked edge is retraced.
@@ -1159,47 +1835,54 @@ local function executeMining(returnTarget, deferSummary)
                 return false
             end
         end
+        end
 
         print(Status.phase("BRANCH", branch, config.num_branches, "L out"))
 
-        local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch", activeFloor)
-        if not persistMiningCursor(leftJunctionCursor) then return false end
+        local resumedLeft = branchResumeHere and resumeStart.side == "left"
+        local resumedRight = branchResumeHere and resumeStart.side == "right"
+        if not resumedRight then
+            if not resumedLeft then
+                local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch", activeFloor)
+                if not persistMiningCursor(leftJunctionCursor) then return false end
+                if turnLeft() ~= true then
+                    print("ERROR: LEFT_BRANCH_TURN_FAILED")
+                    return false
+                end
+            end
 
-        turnLeft()
-
-        if not mineBranch(
-            config.branch_length,
-            branch,
-            "left",
-            branch
-        ) then
-
-            print(
-                "ERROR: Left branch mining failed"
-            )
-
-            return false
-        end
-
-        tryAutoRefuelCoal()
-
-        if not serviceInventoryIfFull() then
-            return false
+            local leftMined, leftFailure = mineBranch(config.branch_length, branch, "left",
+                branch, resumedLeft and resumeStart.distance or nil,
+                resumedLeft and resumeStart.phase or nil)
+            if not leftMined then
+                print("ERROR: Left branch mining failed ("
+                    .. tostring(type(leftFailure) == "table" and leftFailure.code or leftFailure) .. ")")
+                return false
+            end
+            tryAutoRefuelCoal()
+            if not serviceInventoryIfFull() then return false end
         end
 
         print(Status.phase("BRANCH", branch, config.num_branches, "R out"))
 
-        if not mineBranch(
+        if not resumedRight then
+            if turnRight() ~= true then
+                print("ERROR: RIGHT_BRANCH_TURN_FAILED")
+                return false
+            end
+        end
+
+        local rightMined, rightFailure = mineBranch(
             config.branch_length,
             branch,
             "right",
-            branch
-        ) then
-
-            print(
-                "ERROR: Right branch mining failed"
-            )
-
+            branch,
+            resumedRight and resumeStart.distance or nil,
+            resumedRight and resumeStart.phase or nil
+        )
+        if not rightMined then
+            print("ERROR: Right branch mining failed ("
+                .. tostring(type(rightFailure) == "table" and rightFailure.code or rightFailure) .. ")")
             return false
         end
 
@@ -1212,17 +1895,13 @@ local function executeMining(returnTarget, deferSummary)
         local mainFacingCursor = MiningCursor.junction(branch, branch, "restore_main_facing", activeFloor)
         if not persistMiningCursor(mainFacingCursor) then return false end
 
-        turnRight()
-
         stats:add("branches_completed", 1)
 
         local currentFuel =
             turtle.getFuelLevel()
 
         local fuelStr =
-            currentFuel == "unlimited"
-            and "unlimited"
-            or tostring(currentFuel)
+        FuelLevel.format(currentFuel)
 
         print(Status.branchComplete(branch, config.num_branches, stats:get("blocks_mined"), fuelStr))
 
@@ -1282,7 +1961,9 @@ local function executeMining(returnTarget, deferSummary)
     local endFuel =
         turtle.getFuelLevel()
 
-    if endFuel ~= "unlimited" then
+    if FuelLevel.isUnlimited(endFuel) then
+        print("Ending fuel: unlimited")
+    else
 
         print(
             string.format(
@@ -1408,22 +2089,81 @@ local function confirmConfiguration()
         or confirm == ""
 end
 
-local function executeFloors()
+local function executeFloors(firstFloor, resumeCursor)
     local startedAt = os.epoch("utc") / 1000
-    for floor = 1, config.mining.floorCount do
+    firstFloor = firstFloor or 1
+    for floor = firstFloor, config.mining.floorCount do
         activeFloor = floor
-        print(string.format("=== Floor %d/%d: stairs descent ===", floor, config.mining.floorCount))
-        local landingPose, stairOutcome = descendToLanding(floor)
-        if stairOutcome.ok ~= true then
-            persistenceError = stairOutcome.code or "STAIR_DESCENT_FAILED"
-            print("ERROR: " .. tostring(persistenceError))
+        local landingPose
+        if resumeCursor and floor == firstFloor
+            and resumeCursor.phase == "stairs" and resumeCursor.nextAction == "cross_landing" then
+            local prior = checkpoint:floorLanding(floor - 1)
+            if not prior or pos.x ~= prior.landing.x or pos.y ~= prior.landing.y
+                or pos.z ~= prior.landing.z or pos.facing ~= prior.landing.facing then
+                persistenceError = "LANDING_RESUME_UNSUPPORTED"
+                return false
+            end
+            local stairOutcome
+            landingPose, stairOutcome = descendToLanding(floor)
+            if stairOutcome.ok ~= true then
+                persistenceError = stairOutcome.code or "STAIR_DESCENT_FAILED"
+                return false
+            end
+            if turnRight() ~= true then
+                persistenceError = "FLOOR_MAIN_TURN_FAILED"
+                return false
+            end
+            if not executeMining(landingPose, true) then return false end
+            resumeCursor = nil
+        elseif resumeCursor and floor == firstFloor then
+            local landing = checkpoint:floorLanding(floor)
+            if not landing then
+                persistenceError = "LANDING_NOT_RECORDED"
+                return false
+            end
+            landingPose = landing.landing
+            if (resumeCursor.phase ~= "main_shaft" and resumeCursor.phase ~= "junction"
+                and resumeCursor.phase ~= "branch_outbound_lower"
+                and resumeCursor.phase ~= "branch_turnaround"
+                and resumeCursor.phase ~= "branch_upper_return"
+                and resumeCursor.phase ~= "branch_return_to_junction")
+                or resumeCursor.branchPair > config.num_branches
+                or (resumeCursor.phase == "main_shaft" and resumeCursor.offset >= config.spacing)
+                or (resumeCursor.phase == "branch_outbound_lower"
+                    and resumeCursor.offset >= config.branch_length) then
+                persistenceError = resumeCursor.phase == "junction" and "JUNCTION_CURSOR_OUT_OF_RANGE"
+                    or (resumeCursor.phase ~= "main_shaft" and "BRANCH_CURSOR_OUT_OF_RANGE")
+                    or "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
+                return false
+            end
+            if not executeMining(landingPose, true, resumeCursor) then return false end
+            resumeCursor = nil
+        else
+            print(string.format("=== Floor %d/%d: stairs descent ===", floor, config.mining.floorCount))
+            local stairOutcome
+            landingPose, stairOutcome = descendToLanding(floor)
+            if stairOutcome.ok ~= true then
+                persistenceError = stairOutcome.code or "STAIR_DESCENT_FAILED"
+                print("ERROR: " .. tostring(persistenceError))
+                return false
+            end
+            if turnRight() ~= true then
+                persistenceError = "FLOOR_MAIN_TURN_FAILED"
+                return false
+            end
+            if not executeMining(landingPose, true) then return false end
+        end
+        if pos.x ~= landingPose.x or pos.y ~= landingPose.y
+            or pos.z ~= landingPose.z or pos.facing ~= landingPose.facing then
+            persistenceError = "FLOOR_LANDING_NOT_RESTORED"
             return false
         end
-        if turnRight() ~= true then
-            persistenceError = "FLOOR_MAIN_TURN_FAILED"
+        local completedCursor, cursorError = MiningCursor.floorComplete(floor)
+        if not completedCursor then
+            persistenceError = cursorError or "INVALID_MINING_CURSOR"
             return false
         end
-        if not executeMining(landingPose, true) then return false end
+        if not persistMiningCursor(completedCursor) then return false end
         stats:add("floors_completed", 1)
     end
 
@@ -1470,7 +2210,304 @@ end
 -- MAIN
 -- ============================================================================
 
-local function main()
+local function main(...)
+
+    local args = { ... }
+    if args[1] == "status" then
+        if type(fsApi) ~= "table" or type(textutilsApi) ~= "table"
+            or type(fsApi.combine) ~= "function" or type(fsApi.exists) ~= "function" then
+            print("Recovery status unavailable: persistence API missing")
+            return
+        end
+        statePath = fsApi.combine("oreMiner", "state.json")
+        local session, code = Checkpoint.load(statePath, configSnapshot(), fsApi, textutilsApi)
+        local state = session and session:snapshotState() or nil
+        local occupied = 0
+        if type(turtle.getItemCount) == "function" then
+            for slot = 1, 16 do
+                if turtle.getItemCount(slot) > 0 then occupied = occupied + 1 end
+            end
+        end
+        local fuel = type(turtle.getFuelLevel) == "function" and turtle.getFuelLevel() or "unavailable"
+        RecoveryStatus.display(state, code, fuel, occupied,
+            config.inventory.returnThreshold, terminalPrint)
+        return
+    elseif args[1] == "resume" then
+        if type(fsApi) ~= "table" or type(textutilsApi) ~= "table"
+            or type(fsApi.combine) ~= "function" then
+            print("Resume unavailable: persistence API missing")
+            return
+        end
+        statePath = fsApi.combine("oreMiner", "state.json")
+        local saved, loadCode = Checkpoint.load(statePath, configSnapshot(), fsApi, textutilsApi)
+        local resumable, reason = Recovery.classify(saved and saved:snapshotState() or nil, loadCode)
+        if not resumable then
+            print("Resume stopped safely: " .. tostring(reason or loadCode))
+            return
+        end
+        local snapshot = saved:snapshotState()
+        if snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
+            or snapshot.progress.phase == "branch_outbound_lower"
+            or snapshot.progress.phase == "branch_turnaround"
+            or snapshot.progress.phase == "branch_upper_return"
+            or snapshot.progress.phase == "branch_return_to_junction" then
+            local MainShaftResume = require("src.mining.main_shaft_resume")
+            local start, startCode
+            if snapshot.progress.phase == "main_shaft" then
+                start, startCode = MainShaftResume.start(
+                    snapshot.progress, config.num_branches, config.spacing)
+            elseif snapshot.progress.phase == "junction" then
+                local JunctionResume = require("src.mining.junction_resume")
+                start, startCode = JunctionResume.start(
+                    snapshot.progress, config.num_branches, config.spacing)
+            else
+                local BranchResume = require("src.mining.branch_resume")
+                start, startCode = BranchResume.start(snapshot.progress,
+                    config.num_branches, config.spacing, config.branch_length)
+            end
+            if snapshot.progress.floor > config.mining.floorCount or not start then
+                print("Resume stopped safely: " .. tostring(startCode or "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"))
+                return
+            end
+        end
+        local target = snapshot.resumeCheckpoint.pose
+        if snapshot.progress.phase == "stairs"
+            and snapshot.progress.nextAction == "cross_landing" then
+            -- This cursor covers the complete crossing/descent unit. Recovery
+            -- classifier validated both endpoints; continue at committed pose.
+            target = snapshot.pose
+        end
+        local current = snapshot.pose
+        local path, pathCode = RouteHome.path(snapshot.route, current, nil, target)
+        if not path then
+            print("Resume stopped safely: " .. tostring(pathCode))
+            return
+        end
+        local origin = { x = 0, y = 0, z = 0, facing = 0 }
+        local homePath, homePathCode = RouteHome.path(snapshot.route, current, nil, origin)
+        if not homePath then
+            print("Resume stopped safely: " .. tostring(homePathCode))
+            return
+        end
+        local resumeMoves = #path
+        if snapshot.progress.phase == "floor_complete" then
+            local routes = saved:floorLandings()
+            for floor = 1, snapshot.progress.floor do
+                local route = routes[floor]
+                if not route then
+                    print("Resume stopped safely: LANDING_NOT_RECORDED")
+                    return
+                end
+                resumeMoves = resumeMoves + route.entryMoves + (2 * route.steps) + 1
+            end
+            local landing = saved:floorLanding(snapshot.progress.floor)
+            local landingToTarget, landingPathCode = RouteHome.path(
+                snapshot.route, landing.landing, nil, target)
+            if not landingToTarget then
+                print("Resume stopped safely: " .. tostring(landingPathCode))
+                return
+            end
+            resumeMoves = resumeMoves + #landingToTarget
+        elseif snapshot.progress.phase == "surface_entry" then
+            -- This cursor is admitted only at surface origin; the next floor
+            -- executor owns the four-block entry and first stair descent.
+            resumeMoves = 0
+        elseif snapshot.progress.phase == "stairs"
+            and snapshot.progress.nextAction == "cross_landing" then
+            -- Budget the saved clear landing crossing plus the new recorded
+            -- stair route before resuming from the preceding landing.
+            local route = saved:floorLanding(snapshot.progress.floor)
+            if not route or route.steps < 1
+                or route.entryMoves ~= 1 or route.steps ~= config.mining.stairSteps then
+                print("Resume stopped safely: LANDING_ROUTE_INVALID")
+                return
+            end
+            resumeMoves = 1
+        end
+        if snapshot.service then
+            local targetHomePath, targetHomeCode = RouteHome.path(
+                snapshot.route, target, nil, origin)
+            if not targetHomePath then
+                print("Resume stopped safely: " .. tostring(targetHomeCode))
+                return
+            end
+            -- Service replays base -> checkpoint after resupply; its resupply
+            -- admission also guarantees a checkpoint -> base return.
+            resumeMoves = 2 * #targetHomePath
+        end
+        local fuelTarget, fuelCode = ResumeCommitment.targetFuelForTrips(
+            #homePath, resumeMoves, config.fuel_reserve, 1)
+        if not fuelTarget or not refuel(fuelTarget) then
+            print("Resume stopped safely: " .. tostring(fuelCode or "NO_FUEL"))
+            return
+        end
+        pos = snapshot.pose
+        knownRoute = snapshot.route
+        checkpoint = saved
+        stats = Statistics.new(saved:statistics())
+        statisticsStartedAt = os.epoch("utc") / 1000
+        checkpoint:setStatisticsProvider(function()
+            local values = stats:snapshot()
+            values.active_runtime_seconds = stats:get("active_runtime_seconds")
+                + math.max(0, os.epoch("utc") / 1000 - statisticsStartedAt)
+            return values
+        end)
+        activeFloor = snapshot.progress.floor
+        local travelTarget = target
+        if snapshot.vein then
+            local vein = snapshot.vein
+            local unwind = VeinTraversal.unwindSaved(vein, {
+                pose = function() return pos end,
+                turn = function(direction) return turn(direction) end,
+                move = function(direction)
+                    deferVeinMovementCommit = true
+                    local moved = move(direction)
+                    deferVeinMovementCommit = false
+                    return moved == true
+                end,
+            }, function(veinState)
+                local savedVein, saveCode = checkpoint:commitVeinAction(
+                    pos, knownRoute, configSnapshot(), veinState)
+                if not savedVein then persistenceError = saveCode end
+                return savedVein
+            end)
+            if not unwind.ok then
+                print("Resume stopped safely: " .. tostring(unwind.code))
+                return
+            end
+            target = vein.checkpoint
+            travelTarget = target
+        end
+        if snapshot.progress.phase == "floor_complete" then
+            travelTarget = { x = 0, y = 0, z = 0, facing = 0 }
+        end
+        if snapshot.service then
+            local serviced, serviceCode = inventoryService.resume(target)
+            if not serviced then
+                print("Resume stopped safely: " .. tostring(serviceCode))
+                return
+            end
+        else
+            local arrived, outcome = RouteHome.run({
+                pose = pos,
+                route = knownRoute,
+                targetPose = travelTarget,
+                homeFacing = travelTarget.x == 0 and travelTarget.y == 0
+                    and travelTarget.z == 0 and 0 or nil,
+                move = checkedMoveForRoute,
+                turn = checkedTurnForRoute,
+            })
+            if outcome.ok ~= true then
+                print("Resume stopped safely: " .. tostring(outcome.code))
+                return
+            end
+            pos = arrived
+        end
+        if snapshot.progress.phase == "floor_complete" and not snapshot.service then
+            local landing = checkpoint:floorLanding(snapshot.progress.floor)
+            if not landing then
+                print("Resume stopped safely: LANDING_NOT_RECORDED")
+                return
+            end
+            local routes = checkpoint:floorLandings()
+            local resumed, stairOutcome = StairRoute.resumeToLanding({
+                pose = pos, floor = snapshot.progress.floor, routes = routes,
+                move = checkedMoveForRoute,
+            })
+            if stairOutcome.ok ~= true then
+                print("Resume stopped safely: " .. tostring(stairOutcome.code))
+                return
+            end
+            pos = resumed
+            local reached, routeOutcome = RouteHome.run({
+                pose = pos, route = knownRoute, targetPose = target,
+                homeFacing = target.facing, move = checkedMoveForRoute,
+                turn = checkedTurnForRoute,
+            })
+            if routeOutcome.ok ~= true then
+                print("Resume stopped safely: " .. tostring(routeOutcome.code))
+                return
+            end
+            pos = reached
+        end
+        local savedPose = snapshot.resumeCheckpoint.pose
+        if pos.x ~= savedPose.x or pos.y ~= savedPose.y or pos.z ~= savedPose.z
+            or pos.facing ~= savedPose.facing then
+            print("Resume stopped safely: RESUME_POSE_MISMATCH")
+            return
+        end
+        if snapshot.progress.phase == "floor_complete" then
+            local resumed = executeFloors(snapshot.progress.floor + 1)
+            if not resumed then
+                markFatal(persistenceError or "RESUME_MINING_STOPPED")
+                print("Resume stopped safely: " .. tostring(persistenceError or "RESUME_MINING_STOPPED"))
+                return
+            end
+            local completed, completeCode = checkpoint:markComplete(
+                pos, knownRoute, configSnapshot())
+            if not completed then
+                print("Resume stopped safely: " .. tostring(completeCode or "STATE_WRITE_FAILED"))
+                return
+            end
+            print("Resume completed the remaining floors and returned to surface origin.")
+            return
+        end
+        if snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
+            or snapshot.progress.phase == "branch_outbound_lower"
+            or snapshot.progress.phase == "branch_turnaround"
+            or snapshot.progress.phase == "branch_upper_return"
+            or snapshot.progress.phase == "branch_return_to_junction" then
+            local resumed = executeFloors(snapshot.progress.floor, snapshot.progress)
+            if not resumed then
+                markFatal(persistenceError or "RESUME_MINING_STOPPED")
+                print("Resume stopped safely: " .. tostring(persistenceError or "RESUME_MINING_STOPPED"))
+                return
+            end
+            local completed, completeCode = checkpoint:markComplete(
+                pos, knownRoute, configSnapshot())
+            if not completed then
+                print("Resume stopped safely: " .. tostring(completeCode or "STATE_WRITE_FAILED"))
+                return
+            end
+            print("Resume completed the remaining floors and returned to surface origin.")
+            return
+        end
+        if snapshot.progress.phase == "surface_entry" then
+            local resumed = executeFloors(snapshot.progress.floor)
+            if not resumed then
+                markFatal(persistenceError or "RESUME_MINING_STOPPED")
+                print("Resume stopped safely: " .. tostring(persistenceError or "RESUME_MINING_STOPPED"))
+                return
+            end
+            local completed, completeCode = checkpoint:markComplete(
+                pos, knownRoute, configSnapshot())
+            if not completed then
+                print("Resume stopped safely: " .. tostring(completeCode or "STATE_WRITE_FAILED"))
+                return
+            end
+            print("Resume completed the remaining floors and returned to surface origin.")
+            return
+        end
+        if snapshot.progress.phase == "stairs"
+            and snapshot.progress.nextAction == "cross_landing" then
+            local resumed = executeFloors(snapshot.progress.floor)
+            if not resumed then
+                markFatal(persistenceError or "RESUME_MINING_STOPPED")
+                print("Resume stopped safely: " .. tostring(persistenceError or "RESUME_MINING_STOPPED"))
+                return
+            end
+            local completed, completeCode = checkpoint:markComplete(
+                pos, knownRoute, configSnapshot())
+            if not completed then
+                print("Resume stopped safely: " .. tostring(completeCode or "STATE_WRITE_FAILED"))
+                return
+            end
+            print("Resume completed the remaining floors and returned to surface origin.")
+            return
+        end
+        print("Resume restored the committed checkpoint; active cursor restart is not supported yet")
+        return
+    end
 
     print(
         "=== ComputerCraft Branch Mining Program ==="
@@ -1485,17 +2522,19 @@ local function main()
     statePath = fsApi.combine("oreMiner", "state.json")
     if not fsApi.exists("oreMiner") then fsApi.makeDir("oreMiner") end
     local existing, stateCode = Checkpoint.load(statePath, configSnapshot(), fsApi, textutilsApi)
-    if stateCode == "POSITION_UNCERTAIN" then
-        error("POSITION_UNCERTAIN: pending movement or turn; reconcile pose before any action")
-    elseif stateCode == "STATE_CORRUPT" then
-        error("STATE_CORRUPT: active state and backup are invalid; refusing to overwrite")
-    elseif stateCode == "CONFIG_MISMATCH" then
-        error("CONFIG_MISMATCH: saved run configuration differs from current configuration")
-    elseif existing and existing:status() ~= "complete" then
-        error("ACTIVE_STATE_PRESENT: resume support is not implemented; refusing to restart mining")
+    local startup = Startup.newRunDecision(existing, stateCode)
+    if not startup.start then
+        print(startup.message)
+        return
     elseif confirmConfiguration() then
         if not newRun() then error("STATE_WRITE_FAILED: unable to create initial snapshot") end
-        local ok = executeFloors()
+        local ok
+        if hasStartupFuel() then
+            ok = executeFloors()
+        else
+            print("Stopping before movement: NO_FUEL")
+            ok = false
+        end
         if ok then
             local saved, saveCode = checkpoint:markComplete(pos, knownRoute, configSnapshot())
             if not saved then persistenceError = saveCode end
@@ -1507,4 +2546,4 @@ local function main()
     end
 end
 
-main()
+main(...)

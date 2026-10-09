@@ -31,6 +31,10 @@ local function rejected(mutator, expected)
 end
 
 rejected(function(config) config.schemaVersion = 2 end, "schemaVersion")
+rejected(function(config) config.workers = 2 end, "V1 runs one turtle")
+rejected(function(config) config.workerCount = 1 end, "V1 runs one turtle")
+rejected(function(config) config.turtleCount = 2 end, "V1 runs one turtle")
+rejected(function(config) config.fleet = {} end, "V1 runs one turtle")
 rejected(function(config) config.mining = nil end, "mining must be a table")
 rejected(function(config) config.mining.floorCount = 0 end, "floorCount")
 rejected(function(config) config.mining.surfaceEntryLength = 5 end, "surfaceEntryLength")

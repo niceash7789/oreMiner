@@ -11,13 +11,15 @@ local function failure(code, message, completed, requested)
     }
 end
 
-function BranchProgress.run(length, step)
+function BranchProgress.run(length, step, firstIndex)
+    firstIndex = firstIndex or 1
     if type(length) ~= "number" or length < 1 or length ~= math.floor(length)
-        or type(step) ~= "function" then
+        or type(step) ~= "function" or type(firstIndex) ~= "number"
+        or firstIndex ~= math.floor(firstIndex) or firstIndex < 1 or firstIndex > length + 1 then
         return failure("INVALID_BRANCH_PROGRESS", "A positive branch length and step function are required", 0, length)
     end
 
-    for index = 1, length do
+    for index = firstIndex, length do
         local outcome = step(index)
         if outcome ~= true then
             if type(outcome) == "table" and outcome.ok == true then

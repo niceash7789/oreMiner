@@ -6,19 +6,24 @@ Carve one bounded 3-wide by 3-tall descending stairs slice, restore the turtle t
 
 ## Implemented behavior
 
-`StairSlice.descend` starts at a centre-bottom stairs checkpoint. It clears and enters the next slice at its middle height, clears the centre column above and below, sweeps the left and right columns, unwinds each lateral excursion, restores the original stairs facing, and moves down to the next centre-bottom checkpoint. A successful slice advances exactly one block forward and one block down. If clearing or the final descent fails after a safe lateral unwind, the module follows the recorded clear approach back to the last centre-bottom checkpoint before returning the typed failure.
+`StairSlice.descend` starts at a centre-bottom stairs checkpoint. It clears and enters the next slice at its middle height, clears the centre column above and below, sweeps the left and right columns, unwinds each lateral excursion, restores the original stairs facing, and moves down to the next centre-bottom checkpoint. A successful slice advances exactly one block forward and one block down. If clearing, torch placement, or the final descent fails after a safe lateral unwind, the module follows the recorded clear approach back to the last centre-bottom checkpoint before returning the typed failure; an inverse failure is propagated and stops the route.
 
-`StairSlice.climb` performs the exact inverse centreline movement: up, then back. It does not call a clear or dig operation.
+`StairSlice.climb` follows the inverse slice geometry: up, forward to cancel the lateral offset, then back to the preceding centreline. It does not call a clear or dig operation. `StairRoute.returnToSurface` validates that resulting offset before continuing the recorded route.
+
+`StairRoute.returnToSurface` preflights the saved origin, entry length, step count, and mouth/rear/landing geometry against the V1 route before issuing its first inverse action. A pose-valid but geometrically corrupted route returns `LANDING_ROUTE_INVALID` without moving.
+
+The deterministic slice test runs the geometry for all four initial facings at a translated pose, verifies all nine route-relative target cells, checks the centre and lateral clear sub-phases at their expected positions and headings (proving each lateral sweep returns to centre before the next begins), and asserts the exact forward/down displacement with facing preserved. `tests/stair_route.lua` composes recorded floor 2 and floor 1 inverse routes through the four-block entry to exact surface origin, injects a failed inverse move to prove the route stops immediately, and verifies corrupted route geometry is rejected before any movement. The return, slice, surface-entry, main-shaft, and floor-grid tests pass under Lua 5.4.
+
+`StairRoute.descend` accepts an optional `afterStep` callback after a successful slice and saved progress. The active coordinator persists the next unfinished stair cursor, then checks inventory pressure at the restored centre-bottom pose. A service round trip uses recorded route edges and restores the exact pose and cursor. Service failure stops descent before another slice. On reboot, `cross_landing` is admitted only from the exact preceding landing with complete origin, mouth, rear, and landing geometry plus a recorded route home; resume budgets the new recorded route, crosses once, and runs the normal descent. Each physical dig now has durable intent and commit, and a crash with a pending dig stops as `POSITION_UNCERTAIN`. Active stair moves and turns atomically save their inverse edge with pending intent, then commit the new pose and remove that edge together. A literal API failure cancels the provisional edge and intent while retaining the old pose; a failed commit leaves durable pending intent and the edge for a certainty stop. Mid-slice and `prepare_landing` cursors remain fail-closed with distinct `STAIR_SLICE_RESUME_UNSUPPORTED` and `LANDING_CARVE_RESUME_UNSUPPORTED` reasons; no automatic in-slice replay is admitted.
 
 ## Public entry points
 
 - `require("src.navigation.stair_slice")`
-- `StairSlice.descend({ pose, clear, move, turn })` returns the final known pose and a structured outcome.
-- `StairSlice.climb({ pose, move, turn })` returns the previous centre-bottom checkpoint and a structured outcome.
-- `require("src.navigation.stair_route")` exposes `StairRoute.descend(options)` and `StairRoute.returnToSurface(options)` for checked route composition.
-- `require("src.navigation.floor_landing").prepare({ pose, clear, move, turn })` clears the flat landing and returns at its canonical centre.
-
-The `clear(direction)` callback accepts `forward`, `up`, or `down` and must return a structured outcome. The `move(movement)` and `turn(direction)` callbacks must be checked navigation boundaries returning `pose, outcome`.
+- `StairSlice.descend({ pose, clear, move, turn })`
+- `StairSlice.climb({ pose, move, turn })`
+- `require("src.navigation.stair_route")` exposes `descend`, `returnToSurface`, and `resumeToLanding`.
+- `StairRoute.descend` accepts `afterStep`, which receives `{ floor, stairStep, pose, nextStep, nextAction }` after successful slice progress persistence.
+- `require("src.navigation.floor_landing").prepare({ pose, clear, move, turn })`
 
 ## Invariants and assumptions
 
@@ -26,19 +31,10 @@ The `clear(direction)` callback accepts `forward`, `up`, or `down` and must retu
 - Every lateral move and turn is recorded and unwound in strict reverse order.
 - Each lateral column returns to the target centreline before another column or the final descent begins.
 - Successful descent preserves the starting facing and has net displacement one forward plus one down.
+- The service callback runs only at a committed centre-bottom checkpoint; it cannot interrupt a lateral sweep.
 - Inverse climb assumes the recorded centreline route is already clear and never digs.
 - Callers remain responsible for fuel admission, durable movement intent/commit, and bounded block/entity recovery.
 
-## Dependencies
+## Dependencies and limitations
 
-The module uses `src/navigation/pose.lua` for expected geometry, `src/navigation/action_stack.lua` for local reversible excursions, and the shared result/contract modules. The focused deterministic test uses the existing fake turtle with a small solid-block world harness.
-
-## Current limitations
-
-`src/navigation/stair_route.lua` composes the fixed surface entry and a configured number of checked stair slices. It reports per-slice progress to an optional persistence callback, requires a landing-preparation callback to finish at the centre one block beyond the final rear cell, and saves the origin/mouth/rear/landing poses through a required callback. `src/navigation/floor_landing.lua` clears the three rows and three-wide columns with three-block headroom, then returns to the centre row. The route's return path backs from the landing to the saved rear cell, climbs each slice without digging, reverses the first-floor surface entry or prior-floor landing crossing, and checks every expected pose.
-
-`Checkpoint.recordFloorLanding` and the state codec durably record validated landing routes, enforce fixed facing-relative geometry and contiguous floor origins, and expose defensive getters. `MiningCursor.stairs(floor, step, action)` now supplies validated next-action cursors for surface entry, stair slices, and landing preparation, but the active coordinator does not yet emit them or invoke the surface/stair route. It still uses the origin-level baseline. Torch niches, floor lifecycle, service/resume across floors, and in-world verification remain outstanding.
-
-## Checklist status
-
-S01 and the landing carve/checkpoint building blocks are covered by `tests/navigation_stair_slice.lua`, `tests/floor_landing.lua`, `tests/stair_route.lua`, and landing persistence cases in `tests/persistence_state.lua`. S02 remains unchecked until the active coordinator invokes these routes with durable intent and cursor boundaries.
+The module uses `src/navigation/pose.lua`, `src/navigation/action_stack.lua`, shared result/contract modules, and checked movement callbacks. `src/branch_miner.lua` persists stair move/turn intent and route edges through `src/persistence/checkpoint.lua`; `Session.beginRouteAction`, `commitRouteAction`, and `cancelRouteAction` are the storage entry points. The deterministic route and persistence tests cover geometry, intent uncertainty, atomic commit, and literal-failure cancellation. `tests/navigation_stair_slice.lua` verifies all four facing-relative target grids and injects a literal failure at every move/turn call in a successful slice trace, checking that reported pose matches simulated world pose. `tests/persistence_recovery.lua` injects committed snapshots with pending move/turn/dig intents and provisional stair route edges; recovery must keep them uncertain. The active coordinator's recovery classifier still rejects in-slice and landing-carve cursors before any movement. Hardware geometry, service round trips, and restart behavior remain unverified in-world.

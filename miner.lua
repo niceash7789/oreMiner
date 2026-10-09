@@ -23,7 +23,7 @@ if not fs.exists(baselinePath) then
     error("oreMiner active baseline not found: " .. baselinePath)
 end
 
-local loaded, runtimeError = pcall(dofile, baselinePath)
+local loaded, runtimeError = pcall(dofile, baselinePath, ...)
 if not loaded then
     error("oreMiner active baseline failed: " .. tostring(runtimeError))
 end

@@ -10,11 +10,25 @@ Keep ordinary return travel on edges the turtle has already traversed and keep f
 
 `RouteHome.run(options)` performs a bounded breadth-first search over the recorded edge graph, then follows only those checked edges to the saved home coordinate and optionally restores the original facing. The active baseline invokes it after all mining units complete, before printing success or marking the snapshot complete. Search is limited to 100,000 discovered route nodes by default; unknown or oversized routes stop without movement. This is a safe graph return for the active baseline while the planned stairs/floor hierarchy is being integrated.
 
-The startup estimate no longer prints “continue anyway.” If permitted onboard fuel cannot satisfy that estimate, the run stops with `NO_FUEL` before mining movement. Every later move remains independently gated by the exact known-route cost plus reserve.
+Before any route movement, the coordinator verifies the turtle can retain the configured reserve (or refuels from permitted onboard fuel); otherwise it persists `NO_FUEL` and stops at the origin. The broader branch-work estimate is still checked at each floor's mining phase, so it is not a substitute for per-move admission. Every move, including recorded-route service travel, is independently gated by exact known-route return cost plus reserve.
+
+`Motion.moveWithPolicy` fails closed with `NO_FUEL` when a numeric tank cannot meet the projected route commitment after permitted refuelling, or when the fuel reading is unavailable. It returns before action intent is written or the turtle movement API is called. A higher-level caller may select a service or return path only after independently proving that the recorded route home is affordable.
+
+`FuelLevel.isUnlimited` and `FuelLevel.format` keep CC:Tweaked's string fuel sentinel out of numeric comparisons and display it consistently in startup, service, route, status, and completion output. `Motion.move` samples fuel around the physical move and reports only an observed numeric decrease as `fuelUsed`; the coordinator adds that delta after confirmed movement. Refuelling increases and unlimited readings do not inflate consumption statistics.
+
+`KnownRoute.costHome(state)` computes the exact shortest recorded route from the committed pose to the origin for any mining phase. For an active or unwinding vein, it validates every saved inverse breadcrumb against the recorded route and requires the breadcrumb walk to end at its tunnel checkpoint, then measures from the committed pose so the excursion retrace is counted once. Unsupported or incomplete route evidence returns an error instead of an estimate. `Motion.moveWithPolicy` remains the final admission gate before each runtime movement, including proposed outward edges.
+
+`costHome` also refuses snapshots whose pose certainty is not `known` or that contain a pending physical action, returning `POSITION_UNCERTAIN` before producing a numeric cost. This prevents downstream status/fuel decisions from treating an ambiguous move or turn as an actionable route. `tests/route_home_mining_phases.lua` builds recorded route graphs to lower main-shaft, left/right lower branch, and left/right upper-scan checkpoints, returns each to exact origin/facing, and injects a first-edge return failure.
+
+Before vein traversal digs a newly discovered ore candidate, `RoutePolicy.canExplore` applies that same known-route-plus-reserve commitment to the projected candidate pose. It may consume configured onboard fuel through the checked refuel callback and verifies the resulting tank level. Unknown routes or insufficient fuel deny discovery, causing the vein to unwind; the movement wrapper repeats admission before entering the candidate.
 
 ## Public entry points
 
 - `require("src.fuel.known_route").hasEdge(route, fromPose, toPose)`
+- `require("src.fuel.known_route").costHome(state)` returns `(moves, "KNOWN_ROUTE_COST")` or `(nil, reason)`.
+- `require("src.fuel.route_policy").canExplore(options)` for pre-dig vein admission.
+- `require("src.fuel.level")` provides `isUnlimited(level)`, `format(level)`, and `consumed(before, after)` for safe sentinel handling and observed consumption.
+- `require("src.navigation.motion").moveWithPolicy(pose, route, movement, turtleApi, policy)` for checked fuel admission and typed denial.
 - `require("src.navigation.return_move").run(options)` with `hasEdge`, `move`, integer `maxAttempts`, and optional bounded `recover(attempt)` callback.
 - `require("src.navigation.route_home").path(route, pose, maxNodes)` returns the coordinate sequence to home using known edges only.
 - `require("src.navigation.route_home").run(options)` requires checked `move` and `turn` callbacks and returns the final known pose plus a structured result.
@@ -23,12 +37,16 @@ The startup estimate no longer prints “continue anyway.” If permitted onboar
 
 - Route edges are recorded bidirectionally only after successful adjacent movement, so each edge represents a cell previously entered/cleared by this turtle.
 - The caller supplies the planned adjacent pose and the movement callback remains responsible for fuel policy and pose commit.
+- Phase/cursor estimates never replace the known cleared-route graph; active vein depth is priced from the committed pose only after each inverse breadcrumb matches a recorded edge to its checkpoint.
 - Turn results and persistence of the graph are outside this item.
 
 ## Dependencies and limitations
 
-The helpers depend only on callback contracts. `src/branch_miner.lua` supplies the in-memory `KnownRoute`, checked movement/turn commits, and the existing finite dig-retry count as the retry bound; retries wait briefly but do not dig. The graph return is not yet a replacement for the plan's domain-aware branch/junction/landing/stairs hierarchy, and service-triggered return/resume is still incomplete. Manually obstructed edges stop with an error for operator recovery.
+The helpers depend only on callback contracts. `src/branch_miner.lua` supplies the in-memory `KnownRoute`, checked movement/turn commits, and the existing finite dig-retry count as the retry bound; retries wait briefly but do not dig. Inventory service uses the graph to travel to home and back to its saved work pose. The graph return is not a replacement for the domain-aware branch/junction/landing/stairs hierarchy. Manually obstructed edges stop with an error for operator recovery. The active coordinator maintains durable pre-service checkpoints and provides validated `status` and `resume` commands; physical reboot behavior remains an operator check.
 
 ## Verification
 
-`tests/return_move.lua` verifies a recorded edge is traversed without digging, an unknown edge is rejected before movement, and a persistent blockage stops at the configured attempt limit. `tests/route_home.lua` covers graph return, home-facing restoration, unknown-origin rejection, and movement failure. `tests/active_baseline_wiring.lua` verifies a completed live-coordinator run ends at the exact origin pose.
+`tests/fuel_level.lua` covers unlimited formatting, numeric and non-numeric readings, observed fuel decreases, and no consumption on increases. `tests/return_move.lua` verifies a recorded edge is traversed without digging, an unknown edge is rejected before movement, and a persistent blockage stops at the configured attempt limit. `tests/known_route_fuel.lua` covers phase-independent exact home cost, uncertainty/pending-action refusal, verified vein breadcrumb depth, rejected incomplete breadcrumbs, pre-dig admission with exact refuel, failed refuel, and unlimited fuel. `tests/navigation_motion.lua` verifies fuel denial emits no intent or movement call, reports actual movement fuel delta, and maps numeric shortfall and unavailable fuel to `NO_FUEL`. `tests/route_home.lua` covers graph return, home-facing restoration, unknown-origin rejection, and movement failure. `tests/route_home_mining_phases.lua` covers lower main-shaft and lower/upper left/right branch offsets, exact origin-facing restoration, recorded-edge-only movement, and immediate stop on injected return failure. These focused tests and syntax checks passed on 2026-10-09.
+
+
+Resume fuel uses src/fuel/resume_commitment.lua. 	argetFuelForTrips(homeMoves, resumeMoves, reserve, workStepMoves) accounts separately for the route home and the replay route from origin; floor replay includes each saved entry, stair centreline pair, and landing move plus any recorded route from the landing to the checkpoint. The coordinator validates these route counts before refuelling or moving. 	ests/resume_commitment.lua covers the arithmetic and invalid inputs.

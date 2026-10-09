@@ -5,6 +5,12 @@ local Chest = require("src.inventory.chest")
 
 local Service = {}
 
+local function atPose(actual, expected)
+    return type(actual) == "table"
+        and actual.x == expected.x and actual.y == expected.y
+        and actual.z == expected.z and actual.facing == expected.facing
+end
+
 function Service.new(deps)
     local function pressureReached()
         if deps.config.inventory.autoConsolidate ~= false then
@@ -40,6 +46,20 @@ function Service.new(deps)
         return true
     end
 
+    local function verifyDepartureChests(homeFacing)
+        if deps.config.base.separateBulk ~= true then return true, "CHESTS_VERIFIED" end
+        local faced, faceCode = face((homeFacing + 2) % 4)
+        if not faced then return false, faceCode end
+        local hasBlock, block = deps.turtle.inspect()
+        if not hasBlock or not block
+            or not Chest.acceptsBlock(block.name, deps.config.base) then
+            return false, "NO_BULK_CHEST"
+        end
+        local restored, restoreCode = face(homeFacing)
+        if not restored then return false, restoreCode end
+        return true, "CHESTS_VERIFIED"
+    end
+
     local function routeInventory(homeFacing)
         local guarded = SlotGuard.run(deps.turtle, function()
             local supplyOk, supplyCode = verifyChest((homeFacing + 3) % 4, "NO_SUPPLY_CHEST")
@@ -71,46 +91,53 @@ function Service.new(deps)
         return guarded.value
     end
 
-    local function returnToStartAndUnload()
+    local function returnToStartAndUnload(resumeTarget)
         local pos = deps.pose()
-        local saved = { x = pos.x, y = pos.y, z = pos.z, facing = pos.facing }
+        local saved = resumeTarget and {
+            x = resumeTarget.x, y = resumeTarget.y,
+            z = resumeTarget.z, facing = resumeTarget.facing,
+        } or { x = pos.x, y = pos.y, z = pos.z, facing = pos.facing }
+        local checkpoint = type(deps.checkpoint) == "function"
+            and deps.checkpoint() or deps.checkpoint
+        local progress = deps.progress and deps.progress()
+        local function persist(stage, checkpointPose)
+            if type(checkpoint) ~= "table" or type(progress) ~= "table" then
+                return true
+            end
+            local ok, code = checkpoint:setService({
+                stage = stage,
+                checkpoint = checkpointPose or saved,
+                resumeProgress = progress,
+            }, deps.pose(), deps.route(), deps.configSnapshot())
+            return ok, code
+        end
+        local savedService, saveCode = persist("returning")
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
         deps.report("[Inventory] Full - returning to chest...")
-
-        while pos.y > 0 do
-            if not deps.down() then deps.reportError("Could not move down for unload trip."); return false end
-            pos = deps.pose()
+        if type(deps.travel) ~= "function" then
+            deps.reportError("Known-route inventory travel is unavailable.")
+            return false, "RETURN_ROUTE_UNAVAILABLE"
         end
-        while pos.y < 0 do
-            if not deps.up() then deps.reportError("Could not move up for unload trip."); return false end
-            pos = deps.pose()
-        end
-
-        if pos.x > 0 then
-            if not face(3) then return false end
-            while deps.pose().x > 0 do
-                if not deps.safeForward() then deps.reportError("Could not return to main tunnel."); return false end
-            end
-        elseif pos.x < 0 then
-            if not face(1) then return false end
-            while deps.pose().x < 0 do
-                if not deps.safeForward() then deps.reportError("Could not return to main tunnel."); return false end
-            end
-        end
-
-        pos = deps.pose()
-        if pos.z < 0 then
-            if not face(2) then return false end
-            while deps.pose().z < 0 do
-                if not deps.safeForward() then deps.reportError("Could not return to start."); return false end
-            end
-        elseif pos.z > 0 then
-            if not face(0) then return false end
-            while deps.pose().z > 0 do
-                if not deps.safeForward() then deps.reportError("Could not return to start."); return false end
-            end
-        end
-
         local homeFacing = deps.homeFacing or 0
+        local homePose = { x = 0, y = 0, z = 0, facing = homeFacing }
+        local verified, verifyCode = verifyDepartureChests(homeFacing)
+        if not verified then
+            deps.reportError("Configured bulk output chest is unavailable (" .. tostring(verifyCode) .. ").")
+            return false, verifyCode
+        end
+        savedService, saveCode = persist("returning", homePose)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
+        local travelled, travelCode = deps.travel(homePose)
+        if not travelled or not atPose(deps.pose(), homePose) then
+            deps.reportError("Could not return to surface over the recorded route.")
+            return false, travelCode or "RETURN_ROUTE_FAILED"
+        end
+
+        savedService, saveCode = persist("at_base", homePose)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
+
+        savedService, saveCode = persist("unloading", homePose)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
         local routed = routeInventory(homeFacing)
         if not routed.ok then
             deps.reportError("Inventory service failed (" .. routed.code .. ").")
@@ -118,47 +145,52 @@ function Service.new(deps)
         end
         deps.report("[Inventory] Routed output; configured supply quotas preserved.")
 
-        if saved.z < 0 then
-            if not face(0) then return false, "POSITION_ERROR" end
-            while deps.pose().z > saved.z do
-                if not deps.safeForward() then deps.reportError("Could not return to mining position."); return false end
+        savedService, saveCode = persist("at_base", homePose)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
+
+            if type(deps.resupply) == "function" then
+                local supplyOk, supplyCode = verifyChest((homeFacing + 3) % 4, "NO_SUPPLY_CHEST")
+                if not supplyOk then return false, supplyCode end
+                local supplied = deps.resupply(saved, deps.route())
+                if type(supplied) ~= "table" or supplied.ok ~= true then
+                    local code = type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
+                    deps.reportError("Supply service failed (" .. tostring(code) .. ").")
+                    return false, code
+                end
+                local restored, restoreCode = face(homeFacing)
+                if not restored then return false, restoreCode end
+                deps.report("[Inventory] Fuel and torches verified for departure.")
             end
-        elseif saved.z > 0 then
-            if not face(2) then return false, "POSITION_ERROR" end
-            while deps.pose().z < saved.z do
-                if not deps.safeForward() then deps.reportError("Could not return to mining position."); return false end
-            end
+
+        savedService, saveCode = persist("resuming", homePose)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
+        savedService, saveCode = persist("resuming", saved)
+        if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
+        local returned, returnCode = deps.travel(saved)
+        if not returned or not atPose(deps.pose(), saved) then
+            deps.reportError("Could not return to the saved mining position over known route.")
+            return false, returnCode or "RETURN_ROUTE_FAILED"
         end
-        if saved.x > 0 then
-            if not face(1) then return false, "POSITION_ERROR" end
-            while deps.pose().x < saved.x do
-                if not deps.safeForward() then deps.reportError("Could not return to branch position."); return false end
-            end
-        elseif saved.x < 0 then
-            if not face(3) then return false, "POSITION_ERROR" end
-            while deps.pose().x > saved.x do
-                if not deps.safeForward() then deps.reportError("Could not return to branch position."); return false end
-            end
+        local cleared, clearCode = true, nil
+        if checkpoint and type(progress) == "table" then
+            cleared, clearCode = checkpoint:setService(nil, deps.pose(), deps.route(), deps.configSnapshot())
         end
-        pos = deps.pose()
-        while pos.y < saved.y do
-            if not deps.up() then deps.reportError("Could not restore mining height."); return false end
-            pos = deps.pose()
-        end
-        while pos.y > saved.y do
-            if not deps.down() then deps.reportError("Could not restore mining height."); return false end
-            pos = deps.pose()
-        end
-        if not face(saved.facing) then return false, "POSITION_ERROR" end
+        if not cleared then return false, clearCode or "STATE_WRITE_FAILED" end
         deps.report("[Inventory] Back at mining position.")
         return true
     end
 
     return {
         pressureReached = pressureReached,
-        serviceIfNeeded = function()
-            if not pressureReached() then return true end
+        serviceIfNeeded = function(force)
+            if force ~= true and not pressureReached() then return true end
             local serviced, code = returnToStartAndUnload()
+            if serviced then return true, "SERVICE_COMPLETE" end
+            return false, code or "INVENTORY_SERVICE_FAILED"
+        end,
+        resume = function(savedTarget)
+            if type(savedTarget) ~= "table" then return false, "INVALID_RESUME_TARGET" end
+            local serviced, code = returnToStartAndUnload(savedTarget)
             if serviced then return true, "SERVICE_COMPLETE" end
             return false, code or "INVENTORY_SERVICE_FAILED"
         end,

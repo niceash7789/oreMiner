@@ -22,4 +22,4 @@ The module depends on inventory consolidation, quota policy, checked chest drops
 
 ## Verification
 
-`tests/branch_ejection.lua` covers split stacks, reserve preservation, unrelated-item protection, no-excess behavior, partial-drop failure, and selected-slot restoration. `tests/active_baseline_wiring.lua` exercises the wired branch path.
+`tests/branch_ejection.lua` covers split stacks, reserve preservation, unrelated-item protection, no-excess behavior, partial-drop failure, and selected-slot restoration. It checks the mandatory reserve with paving both disabled and enabled, so the paving toggle cannot change branch-end ejection policy. `tests/inventory_routing.lua` verifies that, without rear separation, carried excess routes to the right base chest. `tests/active_baseline_wiring.lua` exercises the wired branch path. World placement of ejected cobblestone remains a physical check.

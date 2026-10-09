@@ -10,6 +10,7 @@ Trigger the existing return-and-unload path when occupied slots reach the config
 - `require("src.inventory.pressure").slotCounts(turtleApi)` returns occupied and free slot counts across all 16 slots.
 - `require("src.inventory.pressure").reached(turtleApi, threshold)` returns whether pressure is reached and the occupied count; invalid thresholds return a typed error as the second value.
 - `src.config.defaults.inventory.returnThreshold` provides the default threshold (14); `autoConsolidate` defaults to true.
+- `require("src.inventory.pressure_gate").beforeDig(pressureReached, serviceIfNeeded)` admits work only after an explicit clear pressure result or a completed service trip.
 
 ## Invariants and assumptions
 
@@ -22,6 +23,8 @@ Trigger the existing return-and-unload path when occupied slots reach the config
 
 The pressure module depends only on the injected CC:Tweaked turtle API and standard Lua. Consolidation is best effort, so incompatible or full stacks can remain separate. The service uses the existing checked movement and fuel-admission helpers. Pressure checks do not replace the independent fuel-to-home admission check.
 
+The pressure gate fails closed with `INVENTORY_PRESSURE_CHECK_FAILED` if its probe throws or returns anything other than a literal boolean; it does not invoke service in that case. A service exception returns `INVENTORY_SERVICE_FAILED`.
+
 ## Verification
 
-`tests/inventory_pressure.lua` and `tests/inventory_service.lua` passed with the project Lua executable; service verification asserts consolidation precedes measurement. The active wiring fixture does not simulate a pressure-triggered vein unwind.
+`tests/inventory_pressure.lua` verifies 13 versus 14 occupied slots using the configured threshold. `tests/inventory_pressure_gate.lua` connects that count to the pre-dig admission boundary: service completes before the dig at 14, and a failed service prevents the physical dig. `tests/vein_traversal.lua` uses the real pressure counter at 14 inside a seed excursion and verifies unwind before neighbor inspection or digging. Related service behavior is covered by `tests/inventory_service.lua` and `tests/inventory_mixed_partial_stacks.lua`. Run with the Lua 5.4 runtime documented in `docs/home-test.md`.

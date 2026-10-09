@@ -39,7 +39,7 @@ The classifier has no turtle or external dependencies. Users configure ore polic
 
 ## Verification
 
-Run `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/ore_classifier.lua` and the focused vein/fuel tests listed in `docs/STATUS.md`.
+Focused verification on 2026-10-09: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/ore_classifier.lua` passed and `luac.exe -p src/mining/ore_classifier.lua tests/ore_classifier.lua` passed. This verifies the classifier contract; runtime inspection and modpack tag availability still depend on the installed CC:Tweaked world.
 ## Tag availability warning
 
 The active API provides tags only for a specific block returned by `turtle.inspect*`; it does not expose the current modpack's complete registry. The implementation never infers absence from sampled blocks. Pack authors may provide `ore.availableTagKeys` to enable warning-only validation before movement.

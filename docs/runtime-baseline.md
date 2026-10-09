@@ -6,7 +6,7 @@ Keep the original phase-one miner as a reference while a writable copy serves as
 
 ## Implemented behavior
 
-The root `miner.lua` resolves `src/branch_miner.lua` relative to its own installed location and executes it in the normal CC:Tweaked environment. It fails before loading when the turtle, filesystem, shell, or active baseline file is unavailable. Runtime failures from the active program are reported with entry-point context.
+The root `miner.lua` resolves `src/branch_miner.lua` relative to its own installed location and executes it in the normal CC:Tweaked environment. It forwards all shell arguments so `miner status` and `miner resume` reach the coordinator. It fails before loading when the turtle, filesystem, shell, or active baseline file is unavailable. Runtime failures from the active program are reported with entry-point context.
 
 `reference/branch_miner_phase1.lua` is the preserved original. `src/branch_miner.lua` is its writable working copy. A worker implementing a checklist item should modify the relevant active routine directly when needed, extract its distinct responsibility into the appropriate focused module under `src/`, correct the plan-listed defects in that slice, test it, and replace the inline logic with a narrow module call. As extraction proceeds, `src/branch_miner.lua` should become a short high-level coordinator.
 
@@ -14,7 +14,7 @@ Completed modules are wired immediately when they replace behavior the active ba
 
 ## Public entry point
 
-- Run `miner.lua` on a CC:Tweaked mining turtle with the repository directory structure intact.
+- Run `miner.lua` on a CC:Tweaked mining turtle with the repository directory structure intact. Supported recovery command names are `status` and `resume`.
 
 ## Invariants and assumptions
 
@@ -30,4 +30,4 @@ The launcher depends on the CC:Tweaked `turtle`, `fs`, and `shell` globals. Conf
 
 ## Verification
 
-Run `lua tests/miner_entrypoint.lua` with Lua 5.4. The test supplies deterministic fake CC APIs and verifies path resolution, active-copy loading, missing-file failure, and rejection on a non-turtle computer. It does not execute the miner or move a turtle.
+Run `lua tests/miner_entrypoint.lua` with Lua 5.4. The test supplies deterministic fake CC APIs and verifies path resolution, active-copy loading, command-argument forwarding, missing-file failure, and rejection on a non-turtle computer. It does not execute the miner or move a turtle.

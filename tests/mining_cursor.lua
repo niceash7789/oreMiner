@@ -5,6 +5,10 @@ assert(initial.workUnitId == "surface-pair-1-main-1")
 assert(initial.floor == 0 and initial.branchPair == 1 and initial.offset == 0)
 assert(initial.phase == "main_shaft" and initial.nextAction == "mine_main_cell")
 assert(Cursor.validate(initial), "initial cursor should be valid")
+local completed = assert(Cursor.floorComplete(2))
+assert(Cursor.validate(completed) and completed.floor == 2
+    and completed.phase == "floor_complete" and completed.nextAction == "advance_floor",
+    "floor completion requires a valid durable cursor")
 
 local entry = assert(Cursor.stairs(1, 0, "enter_surface"))
 assert(entry.workDomain == "shaft" and entry.floor == 1
