@@ -100,6 +100,38 @@ assert(result.ok and result.blocks == 3 and result.code == "VEIN_COMPLETE")
 assert(mixedVein["0,0,-4"] ~= nil, "non-ore boundary must not be dug")
 assert(pose.z == 0 and pose.facing == 0, "mixed-ID vein must unwind to checkpoint")
 
+-- Pressure at the seed checkpoint must unwind immediately without probing or digging neighbors.
+local discoveryCalls = 0
+local pressureWorld = {
+    ["0,0,-2"] = { qualified = true },
+}
+local pressurePose = { x = 0, y = 0, z = -1, facing = 0 }
+local pressureChecked = false
+local pressureOps = {
+    pose = function() return pressurePose end,
+    project = function(direction)
+        if direction == "up" then return { x = pressurePose.x, y = pressurePose.y + 1, z = pressurePose.z }
+        elseif direction == "down" then return { x = pressurePose.x, y = pressurePose.y - 1, z = pressurePose.z } end
+        return { x = pressurePose.x, y = pressurePose.y, z = pressurePose.z - 1 }
+    end,
+    inspect = function() discoveryCalls = discoveryCalls + 1; return false end,
+    dig = function() error("pressure must prevent digging") end,
+    move = function(direction)
+        if direction == "back" then pressurePose.z = pressurePose.z + 1; return true end
+        error("pressure must prevent outward movement")
+    end,
+    turnRight = function() pressurePose.facing = (pressurePose.facing + 1) % 4; return true end,
+    inventoryPressure = function() return false end,
+    beforeDiscover = function()
+        if not pressureChecked then pressureChecked = true; return true end
+        return false
+    end,
+}
+local pressureResult = VeinTraversal.run({ x = 0, y = 0, z = 0, facing = 0 }, pressureOps,
+    "back", function(block) return block and block.qualified end)
+assert(pressureResult.ok and pressureResult.code == "INVENTORY_RETURN")
+assert(discoveryCalls == 0, "unwind request at the seed must suppress further neighbor discovery")
+
 print("vein traversal checks passed")
 
 

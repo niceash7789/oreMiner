@@ -31,7 +31,9 @@ local function serialize(value)
     return tostring(value)
 end
 
-local inputs = { "1", "1", "2", "n", "n", "y" }
+-- The file-backed configuration is now read-only at startup; only the final
+-- confirmation prompt consumes input.
+local inputs = { "y" }
 local inputIndex = 0
 local environment = {}
 for key, value in pairs(_G) do environment[key] = value end

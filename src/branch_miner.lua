@@ -27,6 +27,7 @@ local ForwardRecovery = require("src.safety.forward_recovery")
 local Result = require("src.safety.result")
 local BranchProgress = require("src.mining.branch_progress")
 local ReturnMove = require("src.navigation.return_move")
+local RouteHome = require("src.navigation.route_home")
 local MainTunnelScan = require("src.mining.main_tunnel_scan")
 local MainShaftBackfill = require("src.mining.main_shaft_backfill")
 local InventoryService = require("src.inventory.service")
@@ -316,7 +317,9 @@ local function turnRight() return turn("right") end
 local function digForward()
     local result = DigClear.run({
         detect = turtle.detect,
+        inspect = function() local found, data = turtle.inspect(); return found and data or nil end,
         dig = turtle.dig,
+        onBlock = function(name) print("Digging forward: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -330,7 +333,9 @@ end
 local function digUp()
     local result = DigClear.run({
         detect = turtle.detectUp,
+        inspect = function() local found, data = turtle.inspectUp(); return found and data or nil end,
         dig = turtle.digUp,
+        onBlock = function(name) print("Digging above: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -344,7 +349,9 @@ end
 local function digDown()
     local result = DigClear.run({
         detect = turtle.detectDown,
+        inspect = function() local found, data = turtle.inspectDown(); return found and data or nil end,
         dig = turtle.digDown,
+        onBlock = function(name) print("Digging below: " .. name) end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -693,6 +700,9 @@ local function mineForward()
         detect = turtle.detect,
         digClear = digForward,
         attack = turtle.attack,
+        warn = function()
+            print("WARNING: Entity blocks the tunnel; moving away will let mining continue.")
+        end,
         wait = function() sleep(itemConfig.safety.retryDelay) end,
         maxMoveRetries = itemConfig.safety.moveRetries,
         maxEntityRetries = itemConfig.safety.entityRetries,
@@ -926,6 +936,32 @@ local function printFuelStatus(branch_num)
     )
 end
 
+local function returnToKnownHome()
+    local homePose, outcome = RouteHome.run({
+        pose = pos,
+        route = knownRoute,
+        homeFacing = 0,
+        move = function(direction)
+            local moved, reason = move(direction)
+            if moved then return pos, Result.new(true, "MOVE_COMMITTED") end
+            if type(reason) == "table" and reason.ok == false then return pos, reason end
+            return pos, lastMovementOutcome or Result.new(false, "RETURN_MOVE_FAILED", tostring(reason))
+        end,
+        turn = function(direction)
+            local turned, reason = turn(direction)
+            if turned then return pos, Result.new(true, "TURN_COMMITTED") end
+            if type(reason) == "table" and reason.ok == false then return pos, reason end
+            return pos, Result.new(false, "RETURN_TURN_FAILED", tostring(reason))
+        end,
+    })
+    if outcome.ok ~= true then
+        print("ERROR: unable to return along the recorded route: " .. tostring(outcome.code))
+        return false, outcome
+    end
+    pos = homePose
+    return true, outcome
+end
+
 -- ============================================================================
 -- MAIN MINING PATTERN
 -- ============================================================================
@@ -1119,6 +1155,12 @@ local function executeMining()
         printFuelStatus(branch)
 
         print("")
+    end
+
+    local homeReached, homeOutcome = returnToKnownHome()
+    if not homeReached then
+        persistenceError = homeOutcome.code or "RETURN_FAILED"
+        return false
     end
 
     print("")

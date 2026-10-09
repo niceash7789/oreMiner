@@ -34,3 +34,7 @@ The module uses `src/navigation/pose.lua` for expected geometry, `src/navigation
 ## Current limitations
 
 Only one slice and its inverse are implemented. The separate four-block surface-entry primitive is available, but the active coordinator does not yet invoke either route. Repeated eight-slice descent, landings, torch niches, persistence of stair sub-phases, and hierarchical return remain separate backlog items. No in-world verification has been performed.
+
+## Checklist status
+
+S01 is implemented and verified by `tests/navigation_stair_slice.lua`. The active coordinator does not invoke this primitive yet; repeated descent and landing orchestration remain separate checklist work.

@@ -240,9 +240,10 @@ assert(guardedOperations > 0, "inventory pressure should consolidate through the
 assert(pavingChecks == 0, "disabled default paving should not classify items")
 assert(placements == 0, "disabled default paving should not place blocks")
 assert(selectedSlot == 5, "active helpers should restore the original selected slot")
--- With spacing 1, the main-tunnel step advances to z=-1 and is not retraced;
--- branch excursions return to that junction and finish facing north.
-assert(world.x == 0 and world.y == 0 and world.z == -1 and world.facing == 0, "short branch pair should restore the current active baseline endpoint")
+-- A completed baseline job now follows recorded cleared edges home and restores
+-- its original surface facing before reporting success.
+assert(world.x == 0 and world.y == 0 and world.z == 0 and world.facing == 0,
+    "short branch pair should return to the exact origin pose")
 
 local seenCursor = {}
 for _, progress in ipairs(physicalActionProgress) do
@@ -267,7 +268,7 @@ for _, line in ipairs(output) do
     end
     if line:find("Job summary:", 1, true) then foundFinalSummary = true end
 end
-assert(foundFinalPose or #output > 0, "active run should report its final pose")
+assert(foundFinalPose, "active run should report its exact home pose")
 assert(foundFinalSummary, "successful active run should report its final job summary")
 
 print("active baseline wiring checks passed")

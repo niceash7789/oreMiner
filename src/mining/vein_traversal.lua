@@ -12,6 +12,7 @@ local function samePose(a, b)
 end
 
 -- Callbacks must report literal true for successful physical actions.
+-- Optional beforeDiscover returns true to request an immediate checkpoint unwind.
 function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
     if type(qualifies) ~= "function" then
         return { ok = false, code = "VEIN_INVALID_QUALIFIER", blocks = 0 }
@@ -21,6 +22,7 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
     local frontier = { { next = 1, rotateOnReturn = false } }
     local blocks = 1
     local capReached = false
+    local unwindRequested = false
 
     local function restoreHeading(heading)
         local turns = (heading - ops.pose().facing) % 4
@@ -79,6 +81,11 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
         if direction then
             frame.next = frame.next + 1
             local enteredChild = false
+            if type(ops.beforeDiscover) == "function" and ops.beforeDiscover() == true then
+                unwindRequested = true
+                local ok, code = unwind()
+                return { ok = ok, code = ok and "INVENTORY_RETURN" or code, blocks = blocks }
+            end
             if direction == "forward" then
                 local found, block = ops.inspect(direction)
                 if found == true and qualifies(block) == true then
@@ -91,6 +98,7 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
                         if depth > MAX_DEPTH or radius > MAX_DEPTH or blocks >= MAX_BLOCKS then
                             capReached = true
                         elseif ops.inventoryPressure() == true then
+                            unwindRequested = true
                             local ok, code = unwind()
                             return { ok = ok, code = ok and "INVENTORY_RETURN" or code, blocks = blocks }
                         elseif ops.dig(direction) ~= true then
@@ -108,6 +116,9 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
                         end
                     end
                 end
+                if unwindRequested then
+                    return { ok = false, code = "VEIN_DISCOVERY_AFTER_UNWIND", blocks = blocks }
+                end
                 if not enteredChild and ops.turnRight() ~= true then
                     local ok, code = unwind()
                     return { ok = false, code = ok and "VEIN_TURN_FAILED" or code, blocks = blocks }
@@ -124,6 +135,7 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
                         if depth > MAX_DEPTH or radius > MAX_DEPTH or blocks >= MAX_BLOCKS then
                             capReached = true
                         elseif ops.inventoryPressure() == true then
+                            unwindRequested = true
                             local ok, code = unwind()
                             return { ok = ok, code = ok and "INVENTORY_RETURN" or code, blocks = blocks }
                         elseif ops.dig(direction) ~= true then
@@ -143,6 +155,9 @@ function VeinTraversal.run(checkpoint, ops, seedInverse, qualifies, onMined)
                             enteredChild = true
                         end
                     end
+                end
+                if unwindRequested then
+                    return { ok = false, code = "VEIN_DISCOVERY_AFTER_UNWIND", blocks = blocks }
                 end
             end
         end

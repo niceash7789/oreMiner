@@ -4,8 +4,11 @@
 
 - V1 is a single ComputerCraft: Tweaked mining turtle. Do not add networking, fleet coordination, multi-turtle jobs, or controller code.
 - Treat `MINER_PLAN.md` as the product specification. If code and plan conflict, stop and report the conflict instead of silently choosing.
-- Implement only the explicitly assigned checklist item and its direct prerequisites. Avoid unrelated cleanup and feature creep.
+- For the current user-authorized task, the assigned scope is the complete MVP in `MINER_PLAN.md`, including direct prerequisites, implementation fixes, focused tests, and required documentation. Work through dependency-ready MVP items until the software MVP is implemented; do not stop at one checklist item. This authorization does not include NEXT/LATER/EXPERIMENTAL or fleet scope.
+- Keep changes tied to MVP requirements. Avoid unrelated cleanup and feature creep.
+- The user has authorized implementation and verification needed to finish the MVP. Run focused automated checks and syntax checks as appropriate. Do not claim an in-world release gate passed unless it was physically performed.
 - Do not mark a plan item complete unless its implementation exists and its relevant verification passed.
+- Keep moving when a preferred approach is unavailable: identify the actual constraint, try a safe in-scope alternative, and reshape the implementation around the supported CC:Tweaked APIs. Do not treat missing hardware, an unavailable API, or a failed dispatch attempt as a reason to stop unrelated software work. Leave only genuinely environment-dependent release checks pending, with exact steps for the operator to perform.
 
 ## Project documentation and dispatcher handoff
 

@@ -1,7 +1,7 @@
 local ForwardRecovery = require("src.safety.forward_recovery")
 local Result = require("src.safety.result")
 
-local moves, attacks, waits = 0, 0, 0
+local moves, attacks, waits, warnings = 0, 0, 0, 0
 local result = ForwardRecovery.run({
     move = function()
         moves = moves + 1
@@ -10,25 +10,29 @@ local result = ForwardRecovery.run({
     detect = function() return false end,
     digClear = function() error("entity path must not dig") end,
     attack = function() attacks = attacks + 1; return true end,
+    warn = function() warnings = warnings + 1 end,
     wait = function() waits = waits + 1 end,
     maxMoveRetries = 2,
     maxEntityRetries = 3,
 })
 assert(result.ok and result.entityRetries == 2 and moves == 3)
 assert(attacks == 2 and waits == 2, "transient entity recovery should attack and wait within budget")
+assert(warnings == 0, "do not warn when recovery succeeds before the final retry")
 
-moves, attacks, waits = 0, 0, 0
+moves, attacks, waits, warnings = 0, 0, 0, 0
 result = ForwardRecovery.run({
     move = function() moves = moves + 1; return false end,
     detect = function() return false end,
     digClear = function() error("entity path must not dig") end,
     attack = function() attacks = attacks + 1; return false end,
+    warn = function() warnings = warnings + 1 end,
     wait = function() waits = waits + 1 end,
     maxMoveRetries = 2,
     maxEntityRetries = 3,
 })
 assert(not result.ok and result.code == "ENTITY_BLOCKED" and result.entityRetries == 3)
 assert(moves == 4 and attacks == 3 and waits == 3, "persistent entities must stop at the exact retry limit")
+assert(warnings == 1, "persistent obstruction should produce one warning before its final retry")
 
 moves = 0
 local clears = 0

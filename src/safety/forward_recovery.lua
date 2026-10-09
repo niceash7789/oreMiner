@@ -61,6 +61,9 @@ function ForwardRecovery.run(options)
                     entityRetries = entityRetries,
                 })
             end
+            if entityRetries + 1 == options.maxEntityRetries and options.warn then
+                options.warn()
+            end
             entityRetries = entityRetries + 1
             options.attack()
             options.wait()

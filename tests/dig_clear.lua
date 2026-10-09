@@ -54,6 +54,34 @@ result = scenario(8, { maxAttempts = 2, maxElapsed = 5 })
 assert(not result.ok and result.code == "BLOCKED" and result.attempts == 2,
     "a persistent obstruction must stop as BLOCKED at the attempt limit")
 
+local sameBlock = { identity = "minecraft:gravel", remaining = 4 }
+result = DigClear.run({
+    maxAttempts = 2,
+    maxElapsed = 3,
+    detect = function() return sameBlock.remaining > 0 end,
+    inspect = function() return { name = sameBlock.identity } end,
+    dig = function()
+        sameBlock.remaining = sameBlock.remaining - 1
+        return true
+    end,
+    now = function() return 0 end,
+})
+assert(not result.ok and result.code == "BLOCKED" and result.attempts == 2,
+    "the same block identity must not reset its retry allowance")
+
+local changingBlocks = { "minecraft:gravel", "minecraft:gravel", "minecraft:sand" }
+local changingIndex = 1
+result = DigClear.run({
+    maxAttempts = 2,
+    maxElapsed = 3,
+    detect = function() return changingIndex <= #changingBlocks end,
+    inspect = function() return { name = changingBlocks[changingIndex] } end,
+    dig = function() changingIndex = changingIndex + 1; return true end,
+    now = function() return 0 end,
+})
+assert(result.ok and result.attempts == 3 and result.dug == 3,
+    "a changed block identity must reset the per-block retry allowance")
+
 local state = { blocks = 8, time = 0, digs = 0 }
 result = DigClear.run({
     maxAttempts = 10,

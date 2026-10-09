@@ -1,11 +1,14 @@
 # Implementation status
 
-- Blocked checklist item: `MVP / P1 — Warn, but do not fail, when configured tag keys are absent in the current modpack` remains unchecked. CC:Tweaked `turtle.inspect`, `inspectUp`, and `inspectDown` report tags only for the particular inspected block; the supported turtle API exposes no modpack-wide tag-key registry. A sample of encountered blocks cannot establish that a configured key is absent. Exact next action: identify a supported, non-world-mutating runtime API or supplied registry that can enumerate available block tag keys; then implement warning-only validation and focused tests. No source, test, or plan changes were made.
-- Last completed checklist item: `MVP / P1 — Define mode behaviour` in the ore configuration section of `MINER_PLAN.md`.
-- Next eligible unchecked item: this blocked configured-tag availability warning; resolve the registry/API prerequisite before retrying.
-- Files changed: `docs/ore-classification.md` and this handoff.
-- Verification: inspected the classifier, defaults, coordinator call sites, original reference, plan, and official CC:Tweaked turtle API. No runtime tests or syntax checks run because no implementation was possible without inventing unavailable tag-registry behavior.
-- Blocker/decision: do not warn based on sampled block tags; that could falsely report a valid but not-yet-encountered tag as absent. The warning must not become a fatal config error.
+- Current task scope: full single-turtle MVP, explicitly authorized by the user and recorded in `AGENTS.md`; NEXT/LATER/fleet scope remains excluded.
+- Last completed checklist item: `MVP / P1 — F08 Implement config load, validation, and defaults` (existing implementation confirmed; plan reconciled).
+- Next eligible unchecked item: `MVP / P0 — S02 Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing`.
+- Files changed in the current task: `AGENTS.md`, `tests/startup_fuel_stop.lua`, `MINER_PLAN.md`, `docs/STATUS.md`, and the active dispatcher automation.
+- Verification: all `tests/*.lua` checks passed; Lua syntax validation passed for `src/`, `tests/`, `miner.lua`, and `config.lua`.
+- Current limitation: active coordinator still runs the single-floor baseline and does not yet invoke surface entry/stairs. In-world release checks are pending hardware/gallery access; continue software integration and leave those gates unchecked until physically performed.
+- Unresolved blockers: none requiring user input. If a preferred API or approach is unavailable, use a safe plan-compatible alternative and continue independent MVP work.
+
+Historical handoff entries below are retained for audit; the current task summary above supersedes their old blocker and next-item statements.
 
 - Blocked checklist item: `MVP / P0 — Save after changing the logical mining cursor, before beginning the next unit of work` remains unchecked. The assigned assumption that cursor state already exists is not true in the current code: `src/branch_miner.lua` uses transient `branch`/`step` loop variables, `src/persistence/state.lua` stores only the generic `active_baseline / continue` progress marker, and startup refuses incomplete runs. Exact next action: define the persistent logical cursor and its safe advancement boundary, then save it through `Checkpoint` before starting the following unit; that prerequisite is outside this assignment's supplied assumptions. No runtime or test changes were made. Reference file was inspected and remains unchanged; no tests were run because no implementation was possible without inventing the missing cursor contract.
 - Last completed checklist item: `MVP / P0 — Save the fatal error before stopping` in the persistence checkpoints section of `MINER_PLAN.md`.
@@ -113,3 +116,60 @@
 
 - Prior active implementation chats: 0. Recent archived workers for dig retry outcomes, slot quota accounting, threshold service, and vein cap reporting were read and show completed turns; older visible implementation chats are not active. No reservations retained.
 - Blocker key: SURFACE-ENTRY-INTEGRATION. Evidence: the assigned checkbox covers a complete multi-floor route and landing-driven main-shaft coordinator; the active coordinator only runs the legacy origin-level pattern, and the persisted snapshot lacks landing/staircase state. Dependencies S01/S02/M01/P03 and M02 are unchecked. Attempts: 1 fallback assessment after 3 thread-creation failures. Current owner: none. Exact next action: implement the dependency chain in plan order, beginning with unchecked S01 coordinator integration and focused tests; then extend phase/persistence state for S02 before claiming this integrated checkbox. User input required: no; no plan conflict found.
+
+## Current dispatcher handoff — 2026-10-09 06:23 UTC
+
+- Prior active implementation count: 0. Known surface-entry item task `01a11f35-e202-7e90-88be-8c771b2e60d3` completed with no implementation and reservation released; no other active `oreMiner item:` worker appears in the current visible listing. Older chats remain unenumerable, which is not an active reservation.
+- Last completed checklist item: `MVP / P1 — Re-inspect between retries so logs can identify the current block` in the falling-block section.
+- Next eligible unchecked item: `MVP / P1 — Reset the retry counter only when the observed block changes` in the same section; continue only if independently scoped.
+- Files changed: `src/safety/dig_clear.lua`, `src/branch_miner.lua`, `tests/dig_clear.lua`, `docs/falling-block-digging.md`, `MINER_PLAN.md`, and this status.
+- Verification: `lua.exe tests/dig_clear.lua` passed; `luac.exe -p src/safety/dig_clear.lua src/branch_miner.lua tests/dig_clear.lua` passed. No in-world verification was performed.
+- Resolved blockers: stale surface-entry reservation and list uncertainty released; worker creation remains unavailable (`create_thread` returned `invalid arguments` once this run). `SURFACE-ENTRY-INTEGRATION` remains recorded for its dependency chain; user input is not required.
+- No active worker reservations. MVP remains incomplete.
+## Current dispatcher handoff — 2026-10-09 06:26 UTC
+
+- Prior active implementation count: 0. The recorded surface-entry task `01a11f35-e202-7e90-88be-8c771b2e60d3` completed without implementation; reservation released. No other `oreMiner item:` worker is visible or recorded as unfinished. Listing cap creates no active reservation.
+- Last completed checklist item: `MVP / P1 — Reset the retry counter only when the observed block changes` (falling-block section).
+- Next eligible unchecked item: `MVP / P0 — Replace the assumption that (0,0,0) is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block.` This integrates navigation, phase, cursor, persistence, and the exclusive coordinator.
+- Reservation ledger: none active.
+- Files changed: `src/safety/dig_clear.lua`, `tests/dig_clear.lua`, `docs/falling-block-digging.md`, `MINER_PLAN.md`, and this handoff.
+- Verification: `lua.exe tests/dig_clear.lua` passed; `luac.exe -p src/safety/dig_clear.lua tests/dig_clear.lua` passed. No in-world verification was performed. Git CLI was unavailable for status/diff review.
+- Blocker key `SURFACE-ENTRY-INTEGRATION`: multi-floor coordinator route dependencies remain incomplete. Evidence: existing route helpers are primitives; the active coordinator/persistent state does not implement full landing-driven orchestration. Attempts 2 assessments; owner none; exact next action: implement and verify required dependencies in plan order before checking the integrated route item. User input required: no.
+- Resolved blocker: stale worker/list uncertainty; known task completed and listing cap is not evidence of active work. No unresolved decision/approval blocker. Dispatcher fallback used for one independent item; no worker dispatched. MVP remains incomplete.
+## Current dispatcher handoff — 2026-10-09 09:42 UTC
+
+- Prior active implementation count: 0. Recorded surface-entry task `01a11f35-e202-7e90-88be-8c771b2e60d3` was inspected and its implementation turn is completed without code; reservation released. Visible oreMiner chats contain no active checklist worker; the unrelated Git-download research chat reserves no files. The 50-chat listing limit is not treated as an active reservation.
+- Stale blocker reconciliation: `SURFACE-ENTRY-INTEGRATION` dependency list incorrectly named S01 as unchecked; plan confirms checked surface-entry and stair-slice primitives. The integrated route remains ineligible until M01 and P03 (among other dependencies) are implemented. No user decision is required.
+- Selected next prerequisite: `MVP / P1 — M01 Implement the explicit mining phase state machine` (AI-1), disjoint from the blocked multi-floor integration while progressing its dependency chain. Worker dispatch returned `create_thread received invalid arguments`; immediate relisting showed no created worker. No live reservation retained.
+- Dispatcher fallback item: M01 was found already implemented by `src/mining/phase_machine.lua` and verified with `tests/mining_phase_machine.lua`; its checklist was stale. This run reconciled and checked only M01 after rerunning focused verification; no runtime behavior change was needed. Updated `docs/mining-phase-machine.md` and this handoff.
+- Files changed this run: `MINER_PLAN.md`, `docs/mining-phase-machine.md`, and `docs/STATUS.md`.
+- Verification: `C:/Users/Game/AppData/Local/Programs/Lua/bin/lua.exe tests/mining_phase_machine.lua` passed; `luac.exe -p src/mining/phase_machine.lua src/mining/cursor.lua tests/mining_phase_machine.lua` passed. No in-world verification.
+- Blocker `SURFACE-ENTRY-INTEGRATION`: evidence is that only the primitive S01/S00 modules exist; no integrated landing cursor, persisted stair/floor checkpoint, or coordinator route. Attempts 3 assessments; owner none; next action: implement the next unchecked route dependency in plan order, beginning with P03 state fields after verifying its dependency readiness. User input required: no.
+- Blocker `DISPATCH-THREAD-API`: M01 worker creation failed with `invalid arguments`; re-list confirmed no worker appeared. Resolved for this run via dispatcher fallback; no user input required. No active worker reservations remain. MVP remains incomplete.
+- Prior active implementation count: 0 oreMiner checklist workers. The active `Check in-game Git download options` chat concerns a separate user research request and reserves no MVP files. No reservation retained; earlier surface-entry worker was completed without implementation and released.
+- Last completed checklist item: `MVP / P1 — Print a short warning so nearby players can move before the final retry` (Entities).
+- Next eligible unchecked item: `MVP / P0 — Replace the assumption that (0,0,0) is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block.` This remains an integration item coupled to phase, cursor, persistence, routes, and the exclusive coordinator.
+- Files changed: `src/safety/forward_recovery.lua`, `src/branch_miner.lua`, `tests/forward_recovery.lua`, `docs/forward-recovery.md`, `MINER_PLAN.md`, and this status.
+- Verification: `lua.exe tests/forward_recovery.lua`, `lua.exe tests/active_baseline_wiring.lua`, and `luac.exe -p src/safety/forward_recovery.lua src/branch_miner.lua tests/forward_recovery.lua tests/active_baseline_wiring.lua` passed. No in-world verification was performed.
+- Blocker key `SURFACE-ENTRY-INTEGRATION`: dependency chain for complete multi-floor route remains incomplete; owner none; prior assessments 2. Exact next action: implement required stair, phase, persistence, and coordinator dependencies in plan order. User input required: no.
+- Thread dispatch attempts failed twice this run with `create_thread received invalid arguments`; no worker appeared on re-list. Dispatcher fallback completed one independent item. No user decision/approval blocker; MVP remains incomplete.
+
+## Current dispatcher handoff — 2026-10-09 06:48 UTC
+
+- Prior active implementation count: 0. The known surface-entry worker `01a11f35-e202-7e90-88be-8c771b2e60d3` completed without implementation and its reservation was released; no active `oreMiner item:` implementation chat is visible or recorded. No reservation retained.
+- Resolved stale blocker notes for M01, logical cursor persistence, and configured-tag warnings by matching checked plan entries to implementation and tests. `SURFACE-ENTRY-INTEGRATION` is narrowed to remaining stairs/landing orchestration; no user input is required.
+- Last completed item: `MVP / P0 — S01 Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb` (AI-2).
+- Next eligible unchecked item: `MVP / P0 — S02 Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing` (AI-2). This integrates movement, state persistence, and coordinator boundaries; audit dependencies and ownership before dispatch.
+- Files changed by fallback: `MINER_PLAN.md`, `docs/stairs.md`, and `docs/STATUS.md`. No runtime code changed; S01 implementation/test were already present.
+- Verification: `lua.exe tests/navigation_stair_slice.lua` and `luac.exe -p src/navigation/stair_slice.lua tests/navigation_stair_slice.lua` passed. `git diff --check` reports an unrelated existing extra blank line at EOF in `docs/mining-phase-machine.md`, left untouched. No in-world check.
+- No worker created: `create_thread` returned `invalid arguments`; immediate re-list showed no S01 worker. Dispatcher fallback used. The current reservation ledger is empty. 93 unchecked MVP lines remain.
+- Blocker `DISPATCH-THREAD-API`: dispatch attempt failed, fallback resolved the selected item; retry next run if candidate dispatch is needed. User input required: no.
+- Blocker `SURFACE-ENTRY-INTEGRATION`: remaining dependencies are S02/S03/S04, P03, and coordinator integration. Owner none; next action follow plan dependency order; user input required: no.## Current dispatcher handoff — 2026-10-09 10:35 UTC
+
+- Active implementation reservations: none. No worker was dispatched; this run implemented one independent P0 vein safeguard directly.
+- Last completed checklist item: `MVP / P0 — Ensure no new vein discovery occurs once unwind has been requested`.
+- Next eligible item: `MVP / P0 — S02 Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing` (S01/M01 are checked). It requires deliberate integration of stair cursor, action journaling, route recording, landing pose and the exclusive `src/branch_miner.lua` coordinator.
+- Files changed: `src/mining/vein_traversal.lua`, `tests/vein_traversal.lua`, `docs/vein-traversal.md`, `MINER_PLAN.md`, and this status.
+- Verification: `lua.exe tests/vein_traversal.lua` passed; `luac.exe -p src/mining/vein_traversal.lua tests/vein_traversal.lua` passed. No in-world verification.
+- S02 remains unchecked. Existing surface-entry/stair modules are only primitives; the legacy active coordinator's cursor and snapshot config do not yet represent floor/stair/landing progress. Exact next action: extend the persistence schema and cursor with a restart-safe stair action boundary, add a focused route runner for four entry moves/eight slices/landing carving, then wire it into coordinator startup with fuel and intent commits. No user decision is required.
+- No other blocker or reservation is active. MVP remains incomplete.

@@ -28,3 +28,8 @@ Pure Lua. The cursor API passes its validator to the transition module to avoid 
 ## Verification
 
 Run `lua tests/mining_phase_machine.lua` for legal and illegal transitions, immutability, offset boundaries, and return paths.
+
+## Checklist status
+
+The M01 entries in both the planning summary and Milestone 2 are checked after the focused test and syntax check passed. Multi-floor stairs, landing, service, resume, and vein phases remain separate work; this state machine still describes the active surface-level baseline.
+

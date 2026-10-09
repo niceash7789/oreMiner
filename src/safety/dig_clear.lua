@@ -34,6 +34,7 @@ function DigClear.run(options)
         return result(false, "INVALID_DIG_CLEAR_CLOCK", "Dig-clear clock returned an invalid time", 0, 0)
     end
     local attempts = 0
+    local blockAttempts = 0
     local dug = 0
     local lastBlock
 
@@ -56,14 +57,18 @@ function DigClear.run(options)
                 return result(false, "INVALID_BLOCK_INSPECTION",
                     "Dig-clear inspection returned no block identity", attempts, dug)
             end
-            lastBlock = block.name
+            if block.name ~= lastBlock then
+                lastBlock = block.name
+                blockAttempts = 0
+            end
         end
 
-        if attempts >= options.maxAttempts then
+        if blockAttempts >= options.maxAttempts then
             return result(false, "BLOCKED", "Dig-clear attempt limit reached", attempts, dug)
         end
 
         attempts = attempts + 1
+        blockAttempts = blockAttempts + 1
         if options.dig() then
             dug = dug + 1
             if options.onBlock then options.onBlock(lastBlock, attempts) end

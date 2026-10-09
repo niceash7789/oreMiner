@@ -587,7 +587,7 @@ Inventory backlog:
 - [x] **MVP / P0** Distinguish `NO_SUPPLY_CHEST`, `NO_OUTPUT_CHEST`, `NO_BULK_CHEST`, `CHEST_FULL`, and generic `UNLOAD_FAILED`. — **AI-2** Focused routing tests exercise every code.
 - [ ] **MVP / P0** Persist the resume checkpoint before moving home. — **AI-2**
 - [ ] **MVP / P0** Handle threshold reached while descending stairs, in a floor main tunnel, in either branch phase, and at any vein depth. — **AI-2**
-- [ ] **MVP / P0** Ensure no new vein discovery occurs once unwind has been requested. — **AI-2**
+- [x] **MVP / P0** Ensure no new vein discovery occurs once unwind has been requested. `VeinTraversal.run` honors an optional `beforeDiscover()` admission callback and unwinds before inspecting a neighbor when it requests return; the focused regression test verifies zero discovery calls. — **AI-2**
 - [ ] **MVP / P0** Refuel from allowed items pulled from the left supply chest until the resume fuel invariant is satisfied. — **AI-2**
 - [ ] **MVP / P0** Restock configured torches from the left supply chest and verify the minimum departure count. — **AI-2**
 - [ ] **MVP / P0** Bound mixed-supply pull/classify attempts and fail safely when chest ordering/content prevents a quota from being met. — **AI-2**
@@ -705,14 +705,14 @@ Vein backlog:
 
 - [x] **MVP / P0** Use a shared bounded dig-clear loop for forward/up/down. — **AI-2** `DigClear.run` is used by the coordinator's forward, up, and down clear functions; `tests/dig_clear.lua` verifies attempt/time caps and typed failures.
 - [x] **MVP / P0** Stop after `digRetries` or a time limit with `BLOCKED`/`UNBREAKABLE_BLOCK`. — **AI-2** Attempt/time exhaustion returns `BLOCKED`; an unsuccessful dig of a detected block returns `UNBREAKABLE_BLOCK`.
-- [ ] **MVP / P1** Re-inspect between retries so logs can identify the current block. — **AI-1**
-- [ ] **MVP / P1** Reset the retry counter only when the observed block changes, allowing a bounded sequence of gravel/sand without an infinite stream. — **AI-1**
+- [x] **MVP / P1** Re-inspect between retries so logs can identify the current block. `DigClear` inspects before each dig and reports the block ID and attempt through the active directional logger; focused tests cover changing identities and malformed inspection. — **AI-1**
+- [x] **MVP / P1** Reset the retry counter only when the observed block changes, allowing a bounded sequence of gravel/sand without an infinite stream. `DigClear.run` resets its per-block retry budget when inspected block identity changes, while total attempts and elapsed time remain globally bounded. — **AI-1**
 
 ### Entities
 
-- [ ] **MVP / P0** If movement fails with no solid block detected, attempt at most `entityRetries` attacks/waits. — **AI-2**
-- [ ] **MVP / P0** Stop with `ENTITY_BLOCKED` after the limit; never attack forever. — **AI-2**
-- [ ] **MVP / P1** Print a short warning so nearby players can move before the final retry. — **AI-1**
+- [x] **MVP / P0** If movement fails with no solid block detected, attempt at most `entityRetries` attacks/waits. `ForwardRecovery.run` retries only `MOVE_FAILED`, inspects for a solid obstruction before entity handling, and makes no more than the configured entity attack/wait attempts; active coordinator wiring supplies `turtle.attack` and configured limits. Focused recovery and wiring tests pass. — **AI-2**
+- [x] **MVP / P0** Stop with `ENTITY_BLOCKED` after the limit; never attack forever. `ForwardRecovery.run` returns `ENTITY_BLOCKED` after the exact bound, with tests asserting attack, wait, and movement counts. — **AI-2**
+- [x] **MVP / P1** Print a short warning so nearby players can move before the final retry. `ForwardRecovery.run` invokes an optional warning callback once before its final configured entity attack/wait attempt; the coordinator prints a short request for nearby players to move. Focused recovery and wiring checks pass. — **AI-1**
 
 ### Liquids
 
@@ -886,15 +886,15 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 - [x] **MVP / P0 — F02** Build a deterministic mock turtle with configurable action success/failure. — **AI-2** `tests/fake_turtle.lua` supports queued outcomes and call accounting; its focused behavior test passes.
 - [x] **MVP / P0 — F03** Implement navigation wrappers and prohibit raw movement elsewhere. — **AI-2** Movement and turns are routed through `Motion`; active wiring tests exercise the boundary.
 - [x] **MVP / P0 — F04** Implement exact pose/facing updates and invariant assertions. — **AI-2** Pose and face tests cover all facings and failure-safe updates.
-- [ ] **MVP / P0 — F05** Implement bounded dig/entity retry policy. — **AI-2**
+- [x] **MVP / P0 — F05** Implement bounded dig/entity retry policy. `DigClear` bounds solid-block attempts and elapsed time; `ForwardRecovery` bounds movement and entity attack/wait attempts, returning typed exhaustion outcomes. Focused tests cover these policies and coordinator wiring. — **AI-2**
 - [x] **MVP / P0 — F06** Implement route-cost fuel invariant and unlimited-fuel handling. — **AI-2** Known-route and fuel-policy tests cover projected home cost, denial, refuel, and unlimited fuel.
 - [x] **MVP / P0 — F07** Implement structured fatal-stop handling. — **AI-2** Fatal outcomes are persisted before the coordinator stops; startup low fuel now persists `NO_FUEL` with zero movement.
-- [ ] **MVP / P1 — F08** Implement config load, validation, and defaults. — **AI-1**
+- [x] **MVP / P1 — F08** Implement config load, validation, and defaults. `src/config/loader.lua` validates and normalizes the complete schema before coordinator startup; `tests/config_loader.lua` and `tests/config_startup.lua` verify normalization and zero turtle calls on invalid configuration. — **AI-1**
 
 ### Pattern miner
 
-- [ ] **MVP / P1 — M01** Implement the explicit mining phase state machine. — **AI-1**
-- [ ] **MVP / P0 — S01** Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2**
+- [x] **MVP / P1 — M01** Implement the explicit mining phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between main-shaft, junction, branch outbound, turnaround, upper/lower return, and junction restoration phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
+- [x] **MVP / P0 — S01** Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2** `src/navigation/stair_slice.lua` sweeps each three-cell column, unwinds lateral moves, and provides a non-digging inverse climb; `tests/navigation_stair_slice.lua` verifies geometry, pose, and failure unwind.
 - [ ] **MVP / P0 — S02** Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing. — **AI-2**
 - [ ] **MVP / P0 — S03** Return from a landing to the surface using only the recorded staircase. — **AI-2**
 - [ ] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. — **AI-2**
@@ -1205,7 +1205,7 @@ Exit criterion: injected movement failures, low fuel, and obstructions can never
 ### Milestone 2 — Deterministic pattern miner (MVP)
 
 - [x] Add validated configuration. `tests/config_loader.lua` covers full-schema validation/normalization and `tests/config_startup.lua` proves invalid configuration stops before every turtle API. — **AI-1**
-- [ ] Add the explicit phase state machine. — **AI-1**
+- [x] Add the explicit phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between the active baseline phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
 - [ ] Descend eight 3×3 slices to floor 1, save the landing, and later continue to floor 2. — **AI-1**
 - [ ] Mine floor main/left/right geometry with canonical-pose assertions. — **AI-1**
 - [ ] Return each completed floor to its exact landing before descending again. — **AI-1**
