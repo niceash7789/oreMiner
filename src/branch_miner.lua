@@ -229,8 +229,10 @@ local lastMovementOutcome
 local deferVeinMovementCommit = false
 local veinMovementCommitPending = false
 local stairRouteAction
+local move
+local turn
 
-local function move(movement)
+local function attemptMove(movement)
     local updated, result = Motion.moveWithPolicy(pos, knownRoute, movement, turtle, {
         reserve = config.fuel_reserve,
         getFuelLevel = turtle.getFuelLevel,
@@ -265,6 +267,7 @@ local function move(movement)
             if not ok then
                 persistenceError = code
                 lastMovementOutcome = { ok = false, code = code }
+                return false, Result.new(false, code or "PERSISTENCE_FAILED")
             end
         end
         if result.code ~= "MOVE_FAILED" then
@@ -301,7 +304,7 @@ local function move(movement)
     return true, Result.new(true, "MOVE_COMMITTED", nil, { retryable = false })
 end
 
-local function turn(direction)
+turn = function(direction)
     local expectedAction = direction == "left" and "turnLeft" or "turnRight"
     local ready, reason
     if veinMovementCommitPending then
@@ -416,7 +419,7 @@ local function digUp()
         wait = function() sleep(0.5) end,
     })
     if digFailure then result = digFailure end
-    stats:add("blocks_mined", result.dug)
+    stats:add("blocks_mined", result.dug or 0)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
 end
@@ -439,7 +442,7 @@ local function digDown()
         wait = function() sleep(0.5) end,
     })
     if digFailure then result = digFailure end
-    stats:add("blocks_mined", result.dug)
+    stats:add("blocks_mined", result.dug or 0)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
 end
@@ -1428,9 +1431,30 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
                 return false
             end
 
-            if forward() ~= true then
-                print("ERROR: BRANCH_RETURN_MOVE_FAILED")
-                return false
+            -- This is the active upper mining sweep, not a service/home replay.
+            -- A new block in its already-cleared lane may be mined in place;
+            -- never detour from the recorded branch axis.
+            local advanced = ForwardRecovery.run({
+                move = forward,
+                detect = turtle.detect,
+                inspect = turtle.inspect,
+                digClear = function()
+                    if not serviceInventoryIfFull() then
+                        return Result.new(false, "INVENTORY_SERVICE_FAILED")
+                    end
+                    return digForward()
+                end,
+                attack = turtle.attack,
+                warn = function()
+                    print("WARNING: Entity blocks the upper branch sweep; moving away will let mining continue.")
+                end,
+                wait = function() sleep(itemConfig.safety.retryDelay) end,
+                maxMoveRetries = itemConfig.safety.moveRetries,
+                maxEntityRetries = itemConfig.safety.entityRetries,
+            })
+            if not advanced.ok then
+                print("ERROR: " .. advanced.code .. " during upper branch sweep")
+                return false, advanced
             end
         end
 

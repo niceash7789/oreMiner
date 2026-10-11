@@ -67,6 +67,9 @@ local torchPlacementFrames = {}
 local torchNicheReady = false
 local torchNicheDigs = 0
 local failedTorchPlace = false
+local upperObstructionPresent = true
+local upperObstructionDigs = 0
+local upperBlockedMoves = 0
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
@@ -138,6 +141,13 @@ local turtleApi = {
     refuel = function() return false end,
     forward = function()
         recordPhysicalAction("move", "forward")
+        local state = assert(load("return " .. persistedFiles["oreMiner/state.json"]))()
+        local progress = state.progress
+        if progress.phase == "branch_upper_return" and progress.floor == 1
+            and progress.side == "left" and upperObstructionPresent then
+            upperBlockedMoves = upperBlockedMoves + 1
+            return false
+        end
         return translateForward()
     end,
     back = function()
@@ -168,9 +178,13 @@ local turtleApi = {
         return true
     end,
     detect = function()
+        local raw = persistedFiles["oreMiner/state.json"]
+        local progress = raw and assert(load("return " .. raw))().progress
+        if progress and progress.phase == "branch_upper_return"
+            and progress.floor == 1 and progress.side == "left" then
+            return upperObstructionPresent
+        end
         if selectedSlot == 3 then
-            local raw = persistedFiles["oreMiner/state.json"]
-            local progress = raw and assert(load("return " .. raw))().progress
             if progress and (progress.phase == "main_shaft"
                 or progress.phase == "branch_outbound_lower") then
                 return not torchNicheReady
@@ -181,6 +195,16 @@ local turtleApi = {
     detectUp = function() return false end,
     detectDown = function() return false end,
     dig = function()
+        local raw = persistedFiles["oreMiner/state.json"]
+        local progress = raw and assert(load("return " .. raw))().progress
+        if progress and progress.phase == "branch_upper_return"
+            and progress.floor == 1 and progress.side == "left"
+            and upperObstructionPresent then
+            recordPhysicalAction("dig", "forward")
+            upperObstructionPresent = false
+            upperObstructionDigs = upperObstructionDigs + 1
+            return true
+        end
         if selectedSlot == 3 then
             recordPhysicalAction("dig", "forward")
             torchNicheReady = true
@@ -193,6 +217,14 @@ local turtleApi = {
     digDown = function() return false end,
     attack = function() return false end,
     inspect = function()
+        if upperObstructionPresent then
+            local raw = persistedFiles["oreMiner/state.json"]
+            local progress = raw and assert(load("return " .. raw))().progress
+            if progress and progress.phase == "branch_upper_return"
+                and progress.floor == 1 and progress.side == "left" then
+                return true, { name = "minecraft:stone" }
+            end
+        end
         if world.x == 0 and world.y == 0 and world.z == 0 and world.facing == 3 then
             return true, { name = "minecraft:chest" }
         end
@@ -330,6 +362,9 @@ activeConfig.mayConsumeForPaving = originalMayConsume
 activeConfig.isPaving = originalPolicyIsPaving
 
 assert(ok, runtimeError)
+assert(upperBlockedMoves == 1 and upperObstructionDigs == 1
+    and not upperObstructionPresent,
+    "upper branch sweep should dig one blocking block and retry its saved forward edge")
 assert(failedOneReport, "the test should inject an optional reporting failure")
 assert(ok, runtimeError)
 assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard: "
