@@ -95,7 +95,7 @@ assert(unlimitedPose and unlimitedResult.fuelUsed == 0,
     "unlimited fuel has no numeric consumption delta")
 
 local projected, projectedReason = RoutePolicy.canMove({
-    pose = moved,
+    pose = admittedPose,
     route = route,
     movement = "forward",
     reserve = 1,

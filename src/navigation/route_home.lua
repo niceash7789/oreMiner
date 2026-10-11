@@ -75,6 +75,15 @@ function RouteHome.path(route, pose, maxNodes, targetPose)
     end
     local targetKey = Contracts.isPose(targetPose) and key(targetPose)
         or type(route) == "table" and route.home
+    if type(route) == "table" and route.trail ~= nil
+        and targetKey == route.home and route.trail[#route.trail] == key(pose) then
+        local trail, reason = KnownRoute.trailHome(route, pose)
+        if not trail then return nil, reason end
+        if #trail + 1 > (maxNodes or DEFAULT_MAX_NODES) then
+            return nil, "ROUTE_SEARCH_LIMIT"
+        end
+        return trail
+    end
     local keys, reason = routeKeys(route, key(pose), targetKey, maxNodes or DEFAULT_MAX_NODES)
     if not keys then return nil, reason end
     local path = {}

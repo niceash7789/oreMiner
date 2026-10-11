@@ -23,7 +23,8 @@ function RoutePolicy.canMove(options)
         options.route, options.pose, proposed)
     if routeCost == nil then return false, routeReason end
 
-    local requiredFuel = routeCost + options.reserve
+    -- The proposed move burns one unit before the saved return path is usable.
+    local requiredFuel = routeCost + options.reserve + 1
     local allowed, reason = FuelPolicy.canMove(
         options.getFuelLevel(),
         requiredFuel,
@@ -49,8 +50,8 @@ function RoutePolicy.canExplore(options)
         options.route, options.pose, options.target)
     if cost == nil then return false, reason end
     local allowed, fuelReason = FuelPolicy.canMove(
-        level, cost + options.reserve, options.refuel, options.getFuelLevel)
-    return allowed, fuelReason, cost + options.reserve
+        level, cost + options.reserve + 1, options.refuel, options.getFuelLevel)
+    return allowed, fuelReason, cost + options.reserve + 1
 end
 
 return RoutePolicy

@@ -1,6 +1,7 @@
 -- In-memory graph of movement edges the turtle has successfully traversed.
 -- Every recorded edge is reversible because the move already cleared its cell.
 local KnownRoute = {}
+local MAX_TRAIL_NODES = 100000
 
 local function key(pose)
     if type(pose) ~= "table"
@@ -27,6 +28,7 @@ function KnownRoute.new(home)
     return {
         home = homeKey,
         edges = { [homeKey] = {} },
+        trail = { homeKey },
     }
 end
 
@@ -43,8 +45,54 @@ function KnownRoute.recordMove(route, fromPose, toPose)
     if not route or not fromKey or not toKey or not adjacent(fromPose, toPose) then
         return false, "INVALID_ROUTE_MOVE"
     end
+    local trail = route.trail
+    local previousIndex
+    if trail ~= nil then
+        if type(trail) ~= "table" or trail[#trail] ~= fromKey then
+            return false, "ROUTE_TRAIL_POSE_MISMATCH"
+        end
+        for index = #trail - 1, 1, -1 do
+            if trail[index] == toKey then
+                previousIndex = index
+                break
+            end
+        end
+        if not previousIndex and #trail >= MAX_TRAIL_NODES then
+            return false, "ROUTE_TRAIL_LIMIT"
+        end
+    end
     addEdge(route, fromKey, toKey)
+    if trail ~= nil then
+        if previousIndex then
+            for index = #trail, previousIndex + 1, -1 do trail[index] = nil end
+        else
+            trail[#trail + 1] = toKey
+        end
+    end
     return true
+end
+
+-- A compact, loop-erased sequence of individually committed cells from home
+-- to the current pose. Legacy snapshots without a trail still use the graph.
+function KnownRoute.trailHome(route, pose)
+    if type(route) ~= "table" or route.trail == nil then return nil, "NO_ROUTE_TRAIL" end
+    local trail = route.trail
+    if type(trail) ~= "table" or #trail < 1 or #trail > MAX_TRAIL_NODES
+        or trail[1] ~= route.home or trail[#trail] ~= key(pose) then
+        return nil, "ROUTE_TRAIL_INVALID"
+    end
+    local path = {}
+    for index = #trail, 2, -1 do
+        local fromKey, toKey = trail[index], trail[index - 1]
+        if type(route.edges[fromKey]) ~= "table"
+            or route.edges[fromKey][toKey] ~= true then
+            return nil, "ROUTE_TRAIL_INVALID"
+        end
+        local x, y, z = toKey:match("^(-?%d+),(-?%d+),(-?%d+)$")
+        if not x then return nil, "ROUTE_TRAIL_INVALID" end
+        path[#path + 1] = { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
+    end
+    return path, "ROUTE_TRAIL_COST"
 end
 
 function KnownRoute.hasEdge(route, fromPose, toPose)
@@ -90,6 +138,17 @@ function KnownRoute.projectedReturnCost(route, currentPose, proposedPose)
     if not route or not currentKey or not proposedKey or not adjacent(currentPose, proposedPose) then
         return nil, "INVALID_ROUTE_POSE"
     end
+    if route.trail ~= nil then
+        local path, reason = KnownRoute.trailHome(route, currentPose)
+        if not path then return nil, reason end
+        for index = #route.trail - 1, 1, -1 do
+            if route.trail[index] == proposedKey then
+                return index - 1, "KNOWN_ROUTE_COST"
+            end
+        end
+        if #route.trail >= MAX_TRAIL_NODES then return nil, "ROUTE_TRAIL_LIMIT" end
+        return #route.trail, "KNOWN_ROUTE_COST"
+    end
 
     local currentDistances = distances(route, currentKey)
     if not currentDistances or currentDistances[route.home] == nil then
@@ -121,6 +180,12 @@ function KnownRoute.costHome(state)
     if state.route.home ~= homeKey then return nil, "INVALID_HOME_ROUTE" end
     local currentKey = key(state.pose)
     if not currentKey then return nil, "INVALID_ROUTE_POSE" end
+    local trailCost
+    if state.route.trail ~= nil then
+        local trail, trailReason = KnownRoute.trailHome(state.route, state.pose)
+        if not trail then return nil, trailReason end
+        trailCost = #trail
+    end
     local vein = state.vein
     if vein ~= nil then
         if type(vein) ~= "table" or type(vein.checkpoint) ~= "table"
@@ -172,7 +237,7 @@ function KnownRoute.costHome(state)
     if cost == nil then return nil, "UNKNOWN_RETURN_ROUTE" end
     -- The route graph already includes committed vein edges; adding their
     -- breadcrumb count again would double-charge the same retrace.
-    return cost, "KNOWN_ROUTE_COST"
+    return trailCost or cost, "KNOWN_ROUTE_COST"
 end
 
 return KnownRoute

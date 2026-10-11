@@ -207,4 +207,112 @@ for slot = 1, 16 do
 end
 assert(cappedCoal == 64, "resupply must retain no more than one coal stack")
 
+-- If a partial onboard coal stack needs only four more items, return the
+-- other six from a pulled supply stack instead of keeping or burning them.
+local partialStacks = {
+    [1] = { name = "minecraft:coal", count = 60 },
+}
+local partialSupply = {
+    { name = "minecraft:coal", count = 10 },
+    { name = "minecraft:torch", count = 4 },
+}
+local partialSelected, returnedCoal = 1, 0
+local partialApi = {
+    getSelectedSlot = function() return partialSelected end,
+    select = function(slot) partialSelected = slot return true end,
+    getItemCount = function(slot) return partialStacks[slot] and partialStacks[slot].count or 0 end,
+    getItemDetail = function(slot)
+        return partialStacks[slot] and { name = partialStacks[slot].name }
+    end,
+    getFuelLevel = function() return 80 end,
+    refuel = function(amount)
+        return amount == 0 and partialStacks[partialSelected] ~= nil
+            and partialStacks[partialSelected].name == "minecraft:coal"
+    end,
+    suck = function()
+        local item = table.remove(partialSupply, 1)
+        if not item then return false end
+        partialStacks[partialSelected] = { name = item.name, count = item.count }
+        return true
+    end,
+    drop = function(amount)
+        local stack = partialStacks[partialSelected]
+        if not stack then return false end
+        local removed = amount or stack.count
+        if stack.name == "minecraft:coal" then returnedCoal = returnedCoal + removed end
+        stack.count = stack.count - removed
+        if stack.count == 0 then partialStacks[partialSelected] = nil end
+        return true
+    end,
+}
+local partial = Resupply.run({
+    turtle = partialApi,
+    itemConfig = {
+        fuel = { allowedItems = { "minecraft:coal" } },
+        inventory = { fuelRetainedCount = 64, torchRetainedCount = 4 },
+    },
+    targetFuel = 80,
+    torchTarget = 4,
+    minimumTorches = 4,
+})
+assert(partial.ok, partial.code)
+assert(returnedCoal == 6 and partialStacks[1].count == 60
+    and partialStacks[2].count == 4 and partialStacks[2].name == "minecraft:coal"
+    and partialStacks[3].count == 4 and partialStacks[3].name == "minecraft:torch"
+    and partialSelected == 1,
+    "resupply must return only coal above the aggregate quota and restore selection")
+
+-- Searching for torches must not retain several coal stacks along the way.
+local fourStacks = { [1] = { name = "minecraft:coal", count = 64 } }
+local fourSupply = {}
+for _ = 1, 4 do
+    fourSupply[#fourSupply + 1] = { name = "minecraft:coal", count = 64 }
+end
+fourSupply[#fourSupply + 1] = { name = "minecraft:torch", count = 4 }
+local fourSelected, fourReturned = 1, 0
+local fourApi = {
+    getSelectedSlot = function() return fourSelected end,
+    select = function(slot) fourSelected = slot return true end,
+    getItemCount = function(slot) return fourStacks[slot] and fourStacks[slot].count or 0 end,
+    getItemDetail = function(slot)
+        return fourStacks[slot] and { name = fourStacks[slot].name }
+    end,
+    getFuelLevel = function() return 80 end,
+    refuel = function(amount) return amount == 0 end,
+    suck = function()
+        local item = table.remove(fourSupply, 1)
+        if not item then return false end
+        fourStacks[fourSelected] = { name = item.name, count = item.count }
+        return true
+    end,
+    drop = function(amount)
+        local stack = fourStacks[fourSelected]
+        if not stack then return false end
+        local removed = amount or stack.count
+        if stack.name == "minecraft:coal" then fourReturned = fourReturned + removed end
+        stack.count = stack.count - removed
+        if stack.count == 0 then fourStacks[fourSelected] = nil end
+        return true
+    end,
+}
+local fourResult = Resupply.run({
+    turtle = fourApi,
+    itemConfig = {
+        fuel = { allowedItems = { "minecraft:coal" } },
+        inventory = { fuelRetainedCount = 64, torchRetainedCount = 4 },
+    },
+    targetFuel = 80,
+    torchTarget = 4,
+    minimumTorches = 4,
+})
+assert(fourResult.ok, fourResult.code)
+local fourHeld = 0
+for slot = 1, 16 do
+    if fourStacks[slot] and fourStacks[slot].name == "minecraft:coal" then
+        fourHeld = fourHeld + fourStacks[slot].count
+    end
+end
+assert(fourHeld == 64 and fourReturned == 256 and fourSelected == 1,
+    "four incidental coal stacks must go back to the supply chest")
+
 print("inventory resupply checks passed")

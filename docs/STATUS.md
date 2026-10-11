@@ -1,12 +1,15 @@
 # Implementation status
 
+- Latest fix (2026-10-11): startup no longer burns onboard coal toward the legacy whole-job fuel estimate. It fills only the surface departure commitment, and the existing per-move known-route gate adds fuel when needed. Resupply now returns verified partial coal/torch excess above the aggregate onboard quotas instead of retaining additional supply stacks while searching for torches. The reported four-stack startup pull is covered by `tests/inventory_resupply.lua`; the user confirmed the intended onboard coal target remains 64. Changed `src/branch_miner.lua`, `src/inventory/resupply.lua`, `tests/inventory_resupply.lua`, added `tests/startup_coal_budget.lua`, and updated `docs/fuel-and-return.md` and `docs/fuel-and-torch-resupply.md`. Lua 5.4 checks passed for startup coal budget, startup shortage, resupply, refuel, route fuel, commitment, inventory service, persistence recovery, and active baseline wiring; `luac -p` and Git `diff --check` passed. No in-world check was performed. Next eligible work remains the pending MVP geometry/lighting and physical release checks below; operator should verify startup fuel level and coal counts in the backed-up gallery before a long run.
+
 ## Current handoff (2026-10-11)
 
-- Last completed checklist item: the software verification for the 3×4 stair slice and full active baseline has now run; plan rows that require physical geometry and torch confirmation remain open.
+- Last completed checklist item: the Milestone 2 eight-slice/floor-landing software proof (`MINER_PLAN.md`), after the 3×4 slice and fixed-geometry checks passed. Plan rows that require physical geometry and torch confirmation remain open.
 - Next eligible unchecked item: complete the controlled-world stair and right-wall torch checks in `docs/home-test.md`, then record the measured outcome for the open geometry and M08 rows in `MINER_PLAN.md`.
 - This review changed `src/branch_miner.lua`, `src/fuel/refuel.lua`, `src/safety/dig_clear.lua`, `config.example.lua`, the focused startup, recovery, inventory, lighting, dig, and refuel tests, and their concern-specific docs. Other concurrent working-tree edits, including installer changes, were preserved.
-- Verification: 64 deterministic Lua tests passed; `luac -p` passed for 129 Lua files; `git diff --check` should be rerun after the final doc edit. No in-world release gate was performed.
+- Verification: 65 deterministic Lua tests passed; `luac -p` passed for 130 Lua files; `git diff --check` passed after the documentation edits. No in-world release gate was performed.
 - Decisions and limitations: startup now saves a surface-entry cursor before supply waits and rechecks supplies on `miner resume`; onboard refuelling has a 1,024-item progress-verified limit; falling-block clearing has a 64-dig global limit. The full coordinator still eagerly loads many modules and is larger than the target module boundary. Its in-world movement, placement, and reboot behavior remains unverified.
+- Plan conflict requiring a product decision: the F07 summary in `MINER_PLAN.md` says absent startup fuel persists `NO_FUEL` and stops, while the later `NO_FUEL_SUPPLY`/`NO_TORCHES` policy says to wait and retry at base. The current startup follows the later retry policy; do not change that behavior or mark the conflicting requirement resolved without reconciling the plan.
 
 ## Earlier handoff notes
 

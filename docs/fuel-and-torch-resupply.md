@@ -6,6 +6,8 @@ Restore enough internal fuel for the saved checkpoint's known-route round trip, 
 
 Before a new run leaves the surface, the coordinator faces and verifies the configured left supply chest, checks all carried fuel and torch stacks through the bounded resupply scan, and restores the original facing. Startup fuel covers the fixed surface entry and its return, reserve, and one work move. If fuel or required torches are temporarily short, it waits at the surface and repeats the check before any route movement.
 
+Startup does not refuel toward an estimate for the entire mining job. The tank is filled only to the departure route commitment; later moves consume permitted onboard fuel only when the recorded route home plus reserve requires it. When a supply pull would exceed the configured onboard coal or torch quota, resupply returns the exact excess to the left chest and verifies the slot count. This includes partial stacks. A coal stack repeatedly offered ahead of needed torches may exhaust the bounded scan, leaving the turtle at base for an operator to reorder or restock the chest.
+
 ## Public entry point
 
 The first durable startup snapshot carries a surface-entry cursor. After a reboot during a fuel or torch wait, `miner resume` rechecks the left supply chest before admitting any route move.
@@ -21,6 +23,7 @@ The first durable startup snapshot carries a surface-entry cursor. After a reboo
 - A fuel item is consumed only when `refuel(0)` verifies it. The API must return literal `true`; truthy non-boolean values fail closed. Resupply additionally requires each consumed item to reduce its stack and increase reported fuel.
 - Departure requires fuel for both route legs, one bounded work move, and reserve, plus at least `minimumTorches`. If the left chest is temporarily short, the coordinator stays at base and retries the durable service stage, without replaying the saved mining route. `miner resume` also accepts a saved supply-short service state after a reboot. Resupply pulls toward `torchTarget` while supply and capacity remain, but an exhausted chest or full inventory is acceptable when the minimum is already met.
 - After filling the tank, resupply retains at most `inventory.fuelRetainedCount` items across configured fuel IDs. This onboard quota is separate from internal tank fuel and is restored during every base service. Resupply retains at most `inventory.torchRetainedCount` torches; excess torch stacks encountered while searching for fuel are returned to the supply chest.
+- The onboard quotas are aggregate caps across slots. A partial pulled stack is reduced only by the excess amount, and the return is verified before another pull.
 - Supply pulls and the amount of mixed-chest scanning are finite. Unwanted items are ignored only after a verified return to the chest; a failed return stops resupply.
 
 ## Dependencies and limitations
@@ -30,3 +33,5 @@ Uses CC:Tweaked `suck`, `drop`, `refuel`, inventory, selected-slot, and fuel API
 ## Verification
 
 `tests/fuel_item_validation.lua` verifies configured-item checks, literal API success, and non-consuming `refuel(0)` behavior. `tests/resume_commitment.lua` covers round-trip, reserve, work-step, and invalid-input calculations. `tests/inventory_resupply.lua` covers both chest category orderings, fuel verification, best-effort torch target with minimum-count admission, emergency-fuel quota restoration (including intervening torch stacks), selected-slot restoration, absent fuel/insufficient torch results, and invalid numeric inputs rejected before turtle calls. `tests/inventory_service.lua` checks that base service invokes resupply before resuming, keeps its durable service stage after a supply shortage, and replays to the exact checkpoint once supplies become available. No in-world check was performed.
+
+`tests/startup_coal_budget.lua` reaches the first floor-mining action with a finite tank and confirms the whole-job estimate consumes no coal. `tests/inventory_resupply.lua` also verifies an exact partial-stack coal return at the aggregate quota and four incidental coal stacks returned while searching for torches. These checks passed with local Lua 5.4 on 2026-10-11; physical startup fuel and chest contents remain an operator check.

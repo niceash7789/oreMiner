@@ -35,6 +35,10 @@ local pendingCost, pendingReason = KnownRoute.costHome({
 assert(pendingCost == nil and pendingReason == "POSITION_UNCERTAIN",
     "a durable uncommitted action must not produce a route-home cost")
 
+-- The remaining graph cases intentionally assemble edges out of traversal
+-- order; legacy snapshots without a live breadcrumb trail still support them.
+route.trail = nil
+
 -- Existing explored edges can make the exact known return shorter.
 local d = pose(0, 0, -2)
 record(c, d)
@@ -95,8 +99,8 @@ local allowed, exploreReason, requiredFuel = RoutePolicy.canExplore({
         return true
     end,
 })
-assert(allowed and exploreReason == "FUEL_SAFE" and requiredFuel == 106)
-assert(requestedFuel == 106 and fuelLevel == 106,
+assert(allowed and exploreReason == "FUEL_SAFE" and requiredFuel == 107)
+assert(requestedFuel == 107 and fuelLevel == 107,
     "vein discovery should refuel to the exact known-route commitment")
 
 fuelLevel = 3

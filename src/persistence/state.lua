@@ -44,6 +44,24 @@ local function routeValid(route, pose)
             end
         end
     end
+    if route.trail ~= nil then
+        local trail = route.trail
+        if type(trail) ~= "table" or #trail < 1 or #trail > 100000
+            or trail[1] ~= route.home or trail[#trail] ~= current then return false end
+        local count = 0
+        for index, step in pairs(trail) do
+            count = count + 1
+            if not integer(index) or index < 1 or index > #trail
+                or not coordinateKeyValid(step) then return false end
+        end
+        if count ~= #trail then return false end
+        for index = 2, #trail do
+            if type(route.edges[trail[index - 1]]) ~= "table"
+                or route.edges[trail[index - 1]][trail[index]] ~= true then
+                return false
+            end
+        end
+    end
     return true
 end
 
