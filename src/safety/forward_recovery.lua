@@ -81,7 +81,13 @@ function ForwardRecovery.run(options)
                 options.warn()
             end
             entityRetries = entityRetries + 1
-            options.attack()
+            local attacked, attackError = options.attack()
+            if type(attacked) == "table" and attacked.ok == false then
+                return attacked
+            end
+            if type(attackError) == "table" and attackError.ok == false then
+                return attackError
+            end
             options.wait()
         end
     end

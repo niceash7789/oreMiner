@@ -143,7 +143,7 @@ local turtleApi = {
         recordPhysicalAction("move", "forward")
         local state = assert(load("return " .. persistedFiles["oreMiner/state.json"]))()
         local progress = state.progress
-        if progress.phase == "branch_upper_return" and progress.floor == 1
+        if progress.phase == "branch_upper_return"
             and progress.side == "left" and upperObstructionPresent then
             upperBlockedMoves = upperBlockedMoves + 1
             return false
@@ -181,12 +181,14 @@ local turtleApi = {
         local raw = persistedFiles["oreMiner/state.json"]
         local progress = raw and assert(load("return " .. raw))().progress
         if progress and progress.phase == "branch_upper_return"
-            and progress.floor == 1 and progress.side == "left" then
+            and progress.side == "left" then
             return upperObstructionPresent
         end
         if selectedSlot == 3 then
-            if progress and (progress.phase == "main_shaft"
-                or progress.phase == "branch_outbound_lower") then
+            local nicheFacing = progress and (progress.phase == "main_shaft" and 2
+                or progress.phase == "branch_outbound_lower"
+                    and (progress.side == "left" and 1 or 3))
+            if nicheFacing == world.facing then
                 return not torchNicheReady
             end
         end
@@ -198,7 +200,7 @@ local turtleApi = {
         local raw = persistedFiles["oreMiner/state.json"]
         local progress = raw and assert(load("return " .. raw))().progress
         if progress and progress.phase == "branch_upper_return"
-            and progress.floor == 1 and progress.side == "left"
+            and progress.side == "left"
             and upperObstructionPresent then
             recordPhysicalAction("dig", "forward")
             upperObstructionPresent = false
@@ -221,7 +223,17 @@ local turtleApi = {
             local raw = persistedFiles["oreMiner/state.json"]
             local progress = raw and assert(load("return " .. raw))().progress
             if progress and progress.phase == "branch_upper_return"
-                and progress.floor == 1 and progress.side == "left" then
+                and progress.side == "left" then
+                return true, { name = "minecraft:stone" }
+            end
+        end
+        if selectedSlot == 3 then
+            local raw = persistedFiles["oreMiner/state.json"]
+            local progress = raw and assert(load("return " .. raw))().progress
+            local nicheFacing = progress and (progress.phase == "main_shaft" and 2
+                or progress.phase == "branch_outbound_lower"
+                    and (progress.side == "left" and 1 or 3))
+            if nicheFacing == world.facing and not torchNicheReady then
                 return true, { name = "minecraft:stone" }
             end
         end
@@ -362,9 +374,18 @@ activeConfig.mayConsumeForPaving = originalMayConsume
 activeConfig.isPaving = originalPolicyIsPaving
 
 assert(ok, runtimeError)
+local upperTrace = {}
+for _, progress in ipairs(physicalActionProgress) do
+    if progress.phase == "branch_upper_return" then
+        upperTrace[#upperTrace + 1] = tostring(progress.side) .. ":" .. tostring(progress.floor)
+    end
+end
 assert(upperBlockedMoves == 1 and upperObstructionDigs == 1
     and not upperObstructionPresent,
-    "upper branch sweep should dig one blocking block and retry its saved forward edge")
+    "upper branch sweep should dig one blocking block and retry its saved forward edge: "
+        .. tostring(upperBlockedMoves) .. "/" .. tostring(upperObstructionDigs)
+        .. " cursors=" .. table.concat(upperTrace, ",")
+        .. " output=" .. table.concat(output, " | "))
 assert(failedOneReport, "the test should inject an optional reporting failure")
 assert(ok, runtimeError)
 assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard: "

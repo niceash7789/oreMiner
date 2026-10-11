@@ -29,6 +29,7 @@ local RouteFuelPolicy = require("src.fuel.route_policy")
 local VeinTraversal = require("src.mining.vein_traversal")
 local DigClear = require("src.safety.dig_clear")
 local ForwardRecovery = require("src.safety.forward_recovery")
+local Pressure = require("src.inventory.pressure")
 local Result = require("src.safety.result")
 local BranchProgress = require("src.mining.branch_progress")
 local BranchTraversal = require("src.navigation.branch_traversal")
@@ -445,6 +446,83 @@ local function digDown()
     stats:add("blocks_mined", result.dug or 0)
     if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
     return result
+end
+
+local function atRear(callback)
+    local originalFacing = pos.facing
+    for _ = 1, 2 do
+        local turned, outcome = turn("right")
+        if not turned then return nil, outcome end
+    end
+    local value = callback()
+    for _ = 1, 2 do
+        local turned, outcome = turn("right")
+        if not turned then return nil, outcome end
+    end
+    if pos.facing ~= originalFacing then
+        return nil, Result.new(false, "POSITION_ERROR", "Rear clearing changed facing")
+    end
+    return value
+end
+
+-- Every physical move retries only its planned edge. The checked attempt
+-- owns fuel admission and pending-action/pose commits on each try.
+move = function(movement)
+    local rearFailure
+    local function detect()
+        if movement == "up" then return turtle.detectUp() end
+        if movement == "down" then return turtle.detectDown() end
+        if movement == "back" then
+            local detected, outcome = atRear(turtle.detect)
+            if detected == nil then
+                rearFailure = outcome
+                return true
+            end
+            return detected
+        end
+        return turtle.detect()
+    end
+    local function clear()
+        if rearFailure then return rearFailure end
+        local pressure, occupied = Pressure.reached(turtle, itemConfig.inventory.returnThreshold)
+        if pressure ~= false then
+            return Result.new(false, "INVENTORY_CRITICAL",
+                "Blocked route needs digging while inventory is under pressure", { occupied = occupied })
+        end
+        if movement == "up" then return digUp() end
+        if movement == "down" then return digDown() end
+        if movement == "back" then
+            local outcome, errorResult = atRear(digForward)
+            return outcome or errorResult
+        end
+        return digForward()
+    end
+    local function attack()
+        if movement == "back" then
+            local outcome, errorResult = atRear(turtle.attack)
+            return errorResult or outcome
+        end
+        local action = movement == "up" and turtle.attackUp
+            or movement == "down" and turtle.attackDown or turtle.attack
+        if type(action) ~= "function" then
+            return Result.new(false, "ENTITY_BLOCKED", "No attack API for blocked movement")
+        end
+        return action()
+    end
+    local result = ForwardRecovery.run({
+        move = function() return attemptMove(movement) end,
+        detect = detect,
+        inspect = movement == "back" and nil or (movement == "up" and turtle.inspectUp
+            or movement == "down" and turtle.inspectDown or turtle.inspect),
+        digClear = clear,
+        attack = attack,
+        warn = function() print("WARNING: Entity blocks movement; moving away will let mining continue.") end,
+        wait = function() sleep(itemConfig.safety.retryDelay) end,
+        maxMoveRetries = itemConfig.safety.moveRetries,
+        maxEntityRetries = itemConfig.safety.entityRetries,
+    })
+    if result.ok then return true, result end
+    return false, result
 end
 
 local function paveDown()
@@ -1032,22 +1110,11 @@ local function mineForward()
     local overheadDig = digUp()
     if not overheadDig.ok then return overheadDig end
 
-    local recovery = ForwardRecovery.run({
-        move = forward,
-        detect = turtle.detect,
-        inspect = turtle.inspect,
-        digClear = digForward,
-        attack = turtle.attack,
-        warn = function()
-            print("WARNING: Entity blocks the tunnel; moving away will let mining continue.")
-        end,
-        wait = function() sleep(itemConfig.safety.retryDelay) end,
-        maxMoveRetries = itemConfig.safety.moveRetries,
-        maxEntityRetries = itemConfig.safety.entityRetries,
-    })
-    if not recovery.ok then
-        print("ERROR: " .. recovery.code .. " - " .. tostring(recovery.message or "Forward movement recovery failed"))
-        return recovery
+    local moved, movementOutcome = forward()
+    if not moved then
+        print("ERROR: " .. movementOutcome.code .. " - "
+            .. tostring(movementOutcome.message or "Forward movement recovery failed"))
+        return movementOutcome
     end
 
     stats:add("tunnel_blocks_mined", 1)
@@ -1431,30 +1498,10 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
                 return false
             end
 
-            -- This is the active upper mining sweep, not a service/home replay.
-            -- A new block in its already-cleared lane may be mined in place;
-            -- never detour from the recorded branch axis.
-            local advanced = ForwardRecovery.run({
-                move = forward,
-                detect = turtle.detect,
-                inspect = turtle.inspect,
-                digClear = function()
-                    if not serviceInventoryIfFull() then
-                        return Result.new(false, "INVENTORY_SERVICE_FAILED")
-                    end
-                    return digForward()
-                end,
-                attack = turtle.attack,
-                warn = function()
-                    print("WARNING: Entity blocks the upper branch sweep; moving away will let mining continue.")
-                end,
-                wait = function() sleep(itemConfig.safety.retryDelay) end,
-                maxMoveRetries = itemConfig.safety.moveRetries,
-                maxEntityRetries = itemConfig.safety.entityRetries,
-            })
-            if not advanced.ok then
-                print("ERROR: " .. advanced.code .. " during upper branch sweep")
-                return false, advanced
+            local advanced, movementOutcome = forward()
+            if not advanced then
+                print("ERROR: " .. movementOutcome.code .. " during upper branch sweep")
+                return false, movementOutcome
             end
         end
 
