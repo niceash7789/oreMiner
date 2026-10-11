@@ -106,6 +106,7 @@ end
 
 local function managedPath(path)
     return path == "miner.lua"
+        or path == "boot.lua"
         or path == "install.lua"
         or path == "git.lua"
         or path == "config.example.lua"
@@ -125,10 +126,10 @@ local function selectFiles(tree)
         end
     end
     table.sort(files)
-    for _, path in ipairs({ "miner.lua", "install.lua", "git.lua", "config.example.lua" }) do
+    for _, path in ipairs({ "miner.lua", "boot.lua", "install.lua", "git.lua", "config.example.lua" }) do
         if not required[path] then return nil, "Repository is missing " .. path end
     end
-    if #files < 5 then return nil, "Repository contains no runtime modules" end
+    if #files < 6 then return nil, "Repository contains no runtime modules" end
     return files
 end
 
@@ -235,6 +236,28 @@ local function createLiveConfig(root)
     return true
 end
 
+local function ensureAutostart(root)
+    local startupDirectory = "/startup"
+    local hookPath = fs.combine(startupDirectory, "oreminer.lua")
+    local marker = "-- oreMiner managed startup hook\n"
+    local program = "/" .. combine(root, "boot.lua"):gsub("^/", "")
+    if not fs.exists(combine(root, "boot.lua")) then
+        return false, "boot.lua is missing; pull the current runtime first"
+    end
+    local contents = marker .. "shell.run(" .. string.format("%q", program) .. ")\n"
+    if fs.exists(hookPath) then
+        local existing = readFile(hookPath)
+        if existing == contents then return true end
+        if type(existing) ~= "string" or existing:sub(1, #marker) ~= marker then
+            return false, "Existing /startup/oreminer.lua was preserved; install the oreMiner hook manually"
+        end
+        fs.delete(hookPath)
+    end
+    if not fs.exists(startupDirectory) then fs.makeDir(startupDirectory) end
+    writeFile(hookPath, contents)
+    return true
+end
+
 local function pull()
     if type(http) ~= "table" or type(http.get) ~= "function" then
         return false, "HTTP is disabled in CC:Tweaked"
@@ -253,7 +276,13 @@ local function pull()
         or type(treeSha) ~= "string" or not treeSha:match("^[0-9a-fA-F]+$") then
         return false, "GitHub commit response is incomplete"
     end
-    if repository.commit == commitSha then
+    if repository.commit == commitSha and fs.exists(combine(root, "boot.lua")) then
+        local hooked, hookResult, hookError = pcall(ensureAutostart, root)
+        if not hooked then
+            print("Autostart setup failed: " .. tostring(hookResult))
+        elseif not hookResult then
+            print("Autostart setup failed: " .. tostring(hookError))
+        end
         print("Already up to date at " .. commitSha:sub(1, 7))
         return true
     end
@@ -275,6 +304,12 @@ local function pull()
     repository.commit = commitSha
     repository.files = files
     saveRepository(configPath, repository)
+    local hooked, hookResult, hookError = pcall(ensureAutostart, root)
+    if not hooked then
+        print("Autostart setup failed: " .. tostring(hookResult))
+    elseif not hookResult then
+        print("Autostart setup failed: " .. tostring(hookError))
+    end
     print("Pull complete at " .. commitSha:sub(1, 7))
     return true
 end

@@ -98,7 +98,7 @@ local function response(body)
     }
 end
 
-local function runPull(stateStatus)
+local function runPull(stateStatus, existingHook)
     local stateBody = stateStatus and "STATE" or nil
     local fsApi, files = memoryFs({
         ["oreMiner/.git_config"] = "CONFIG",
@@ -106,6 +106,7 @@ local function runPull(stateStatus)
         ["oreMiner/miner.lua"] = "OLD MINER",
         ["oreMiner/src/old.lua"] = "OLD MODULE",
         ["oreMiner/oreMiner/state.json"] = stateBody,
+        ["startup/oreminer.lua"] = existingHook,
     })
     if not stateStatus then files["oreMiner/oreMiner/state.json"] = nil end
 
@@ -155,6 +156,7 @@ local function runPull(stateStatus)
                         truncated = false,
                         tree = {
                             { type = "blob", path = "miner.lua" },
+                            { type = "blob", path = "boot.lua" },
                             { type = "blob", path = "install.lua" },
                             { type = "blob", path = "git.lua" },
                             { type = "blob", path = "config.example.lua" },
@@ -180,9 +182,12 @@ assert(files["oreMiner/config.lua"] == "LOCAL CONFIG", "pull must preserve live 
 assert(files["oreMiner/oreMiner/state.json"] == "STATE", "pull must preserve saved state")
 assert(files["oreMiner/src/old.lua"] == nil, "pull should remove stale managed files")
 assert(files["oreMiner/src/new.lua"] == 'return "src/new.lua"', "pull should install runtime modules")
+assert(files["oreMiner/boot.lua"] == 'return "boot.lua"', "pull should install boot entry point")
+assert(files["startup/oreminer.lua"]:find('shell.run("/oreMiner/boot.lua")', 1, true),
+    "pull should install a root startup hook for the installed directory")
 assert(files["oreMiner/tests/not-installed.lua"] == nil, "pull must exclude development files")
 assert(files["oreMiner/config.example.lua"] ~= nil, "pull should install the tracked example")
-assert(savedRepository.commit == "bbbbbbb" and #savedRepository.files == 5,
+assert(savedRepository.commit == "bbbbbbb" and #savedRepository.files == 6,
     "pull should persist the installed commit and managed file list")
 
 ok, reason, files, savedRepository, httpCalls = runPull("mining")
@@ -196,6 +201,11 @@ ok, reason, files = runPull("unreadable")
 assert(ok, reason)
 assert(files["oreMiner/oreMiner/state.json"] == "STATE",
     "pull must preserve saved state without requiring a valid status")
+
+ok, reason, files = runPull("complete", "USER STARTUP")
+assert(ok, reason)
+assert(files["startup/oreminer.lua"] == "USER STARTUP",
+    "pull must not replace an unrelated startup file")
 
 local fsApi, bootstrapFiles = memoryFs({})
 local ranClient

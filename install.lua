@@ -65,5 +65,6 @@ if not pulled then fail("oreMiner pull failed; existing live files were preserve
 print("")
 print("oreMiner installed successfully.")
 print("Edit config.lua, then run: miner")
+print("The turtle will launch oreMiner on its next boot.")
 print("To fetch a later test build, stop the miner and run: git pull")
 

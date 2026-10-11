@@ -14,9 +14,9 @@ cd oreMiner
 wget run https://raw.githubusercontent.com/niceash7789/oreMiner/main/install.lua
 ```
 
-`install.lua` downloads the repository's read-only `git.lua`, creates `.git_config` for `niceash7789/oreMiner` on `main`, and performs exactly one foreground pull. The pull resolves one GitHub commit, obtains its recursive tree, and downloads only `miner.lua`, `install.lua`, `git.lua`, `config.example.lua`, and Lua modules under `src/`. Tests, plans, reference material, and other development files are excluded to fit normal turtle storage.
+`install.lua` downloads the repository's read-only `git.lua`, creates `.git_config` for `niceash7789/oreMiner` on `main`, and performs exactly one foreground pull. The pull resolves one GitHub commit, obtains its recursive tree, and downloads only `miner.lua`, `boot.lua`, `install.lua`, `git.lua`, `config.example.lua`, and Lua modules under `src/`. Tests, plans, reference material, and other development files are excluded to fit normal turtle storage.
 
-All files are downloaded and syntax-checked in a staging directory before installed runtime files change. Existing managed files are moved to a backup during replacement and restored if installation fails. A successful first pull copies `config.example.lua` to the untracked `config.lua`; later pulls retain the live config. `.git_config` records the installed commit and managed file list so a later pull can remove obsolete runtime modules safely.
+All files are downloaded and syntax-checked in a staging directory before installed runtime files change. Existing managed files are moved to a backup during replacement and restored if installation fails. A successful first pull copies `config.example.lua` to the untracked `config.lua`; later pulls retain the live config. `.git_config` records the installed commit and managed file list so a later pull can remove obsolete runtime modules safely. The runtime pull also installs a managed `/startup/oreminer.lua` hook; see [turtle autostart](autostart.md).
 
 After installation, edit `config.lua` and run `miner` from the installation directory. To fetch another test build, stop the miner, return to that directory, and run:
 
@@ -29,10 +29,12 @@ git pull
 - `install.lua` — bootstrap a public `main`-branch installation and perform one pull.
 - `git pull` — perform one manual foreground pull using the local `.git_config`.
 - `config.example.lua` — tracked example copied only when `config.lua` is absent.
+- `boot.lua` — installed boot dispatcher; a fresh boot asks for new-run confirmation, while a saved run goes through `miner resume`.
 
 ## Invariants and assumptions
 
 - Pull never downloads or replaces `config.lua`, `.git_config`, or anything under `oreMiner/`.
+- Pull preserves an unrelated `/startup/oreminer.lua` rather than overwriting it.
 - Pull does not inspect `oreMiner/state.json`; it preserves the file even when a run is incomplete.
 - Every downloaded path is restricted to the runtime allowlist and checked for unsafe path components.
 - Every pull is internally consistent: the tree and raw files use one resolved commit SHA even though the test channel follows `main`.
