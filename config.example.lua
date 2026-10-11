@@ -6,12 +6,12 @@ return {
         floorCount = 4,
         surfaceEntryLength = 4,
         stairStepsPerFloor = 4,
-        firstFloorDepthOffset = 0, -- Extra stair slices before floor 1; later floors stay 4 apart.
+        firstFloorDepthOffset = 16, -- Extra stair slices before floor 1; later floors stay 4 apart.
         stairWidth = 3,
         stairHeight = 4,
         floorMainTurn = "right",
-        branchLength = 30,
-        branchPairs = 2, -- Test run: two left and two right branches per floor.
+        branchLength = 16,
+        branchPairs = 16, -- Test run: two left and two right branches per floor.
         branchSpacing = 3,
         tunnelHeight = 2,
         scanMainTunnel = true,
