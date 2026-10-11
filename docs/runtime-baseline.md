@@ -27,7 +27,7 @@ Completed modules are wired immediately when they replace behavior the active ba
 
 ## Dependencies and current limitations
 
-The launcher depends on CC:Tweaked's `turtle`, `fs`, `shell`, `os.epoch`, `load`, and `setmetatable` APIs. Native `require` is optional; the fallback loader resolves module names from the installation root and caches returned values. Configuration is file-backed and validated, but the active coordinator does not yet run the isolated surface-entry/stairs modules or the later multi-floor phase machine. Do not treat this baseline as V1-complete or safe for unattended operation.
+The launcher depends on CC:Tweaked's `turtle`, `fs`, `shell`, `os.epoch`, `load`, and `setmetatable` APIs. Native `require` is optional; the fallback loader resolves module names from the installation root, caches returned values, and rejects circular dependencies. Configuration is file-backed and validated, but the active coordinator does not yet run the isolated surface-entry/stairs modules or the later multi-floor phase machine. Do not treat this baseline as V1-complete or safe for unattended operation.
 
 ## Verification
 

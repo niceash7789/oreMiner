@@ -340,6 +340,25 @@ local interruptedState = interrupted:snapshotState()
 local serviceAllowed, serviceRecoveryCode = Recovery.classify(interruptedState, interruptedCode)
 assert(serviceAllowed and serviceRecoveryCode == "RESUME_SAFE_SERVICE",
     "the reloaded interrupted service must pass the same admission gate as resume")
+-- A recoverable chest lookup error at base keeps the committed service stage.
+-- Once the operator fixes the layout, resume must reach the service executor
+-- and repeat its current chest checks instead of rejecting the error status.
+assert(interrupted:markFatal("NO_SUPPLY_CHEST", origin, mainRoute, crashConfig))
+interrupted = nil
+local fixedService, fixedServiceCode = Checkpoint.load(servicePath, crashConfig, fs, textutils)
+assert(fixedService, "known-pose service error snapshot must reload: " .. tostring(fixedServiceCode))
+local fixedServiceAllowed, fixedServiceReason = Recovery.classify(
+    fixedService:snapshotState(), fixedServiceCode)
+assert(fixedServiceAllowed and fixedServiceReason == "RESUME_SAFE_SERVICE",
+    "known-pose NO_SUPPLY_CHEST service failure must be rechecked on resume")
+local unsafeServiceState = fixedService:snapshotState()
+unsafeServiceState.pendingAction = { kind = "move", direction = "forward" }
+unsafeServiceState.poseCertainty = "uncertain"
+local unsafeAllowed, unsafeReason = Recovery.classify(unsafeServiceState, fixedServiceCode)
+assert(not unsafeAllowed and unsafeReason == "RESUME_STATE_UNSAFE",
+    "service retry must still reject uncertain physical actions")
+interrupted = fixedService
+interruptedState = interrupted:snapshotState()
 local servicePose = { x = 0, y = 0, z = 0, facing = 0 }
 local serviceTravel, serviceResupply, serviceStages = {}, 0, {}
 local executor = InventoryService.new({

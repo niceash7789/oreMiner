@@ -12,11 +12,12 @@ if type(fs) ~= "table"
     or type(fs.exists) ~= "function"
     or type(fs.open) ~= "function"
     or type(load) ~= "function"
+    or type(setmetatable) ~= "function"
     or type(os) ~= "table"
     or type(os.epoch) ~= "function"
     or type(shell) ~= "table"
     or type(shell.getRunningProgram) ~= "function" then
-    error("oreMiner requires the CC:Tweaked os.epoch, filesystem, Lua load, and shell APIs. Run it with the CC:Tweaked Lua runtime.")
+    error("oreMiner requires the CC:Tweaked os.epoch, filesystem, Lua load/setmetatable, and shell APIs. Run it with the CC:Tweaked Lua runtime.")
 end
 
 local programPath = shell.getRunningProgram()
@@ -32,6 +33,7 @@ end
 if type(require) ~= "function" then
     local moduleCache = {}
     local loadingModules = {}
+    local runtimeEnvironment = _ENV
 
     local function loadModule(moduleName)
         if type(moduleName) ~= "string" or not moduleName:match("^[%w_%.]+$")
@@ -53,7 +55,7 @@ if type(require) ~= "function" then
         if type(source) ~= "string" then error("unable to read module: " .. moduleName, 2) end
 
         loadingModules[moduleName] = true
-        local environment = setmetatable({ require = loadModule }, { __index = _G })
+        local environment = setmetatable({ require = loadModule }, { __index = runtimeEnvironment })
         local chunk, compileError = load(source, "@" .. modulePath, "t", environment)
         if not chunk then
             loadingModules[moduleName] = nil
@@ -75,7 +77,7 @@ if not baselineHandle then error("oreMiner cannot read active baseline: " .. bas
 local baselineSource = baselineHandle.readAll()
 baselineHandle.close()
 if type(baselineSource) ~= "string" then error("oreMiner active baseline is unreadable: " .. baselinePath) end
-local baselineEnvironment = setmetatable({ require = require }, { __index = _G })
+local baselineEnvironment = setmetatable({ require = require }, { __index = _ENV })
 local baselineChunk, compileError = load(baselineSource, "@" .. baselinePath, "t", baselineEnvironment)
 if not baselineChunk then error("oreMiner active baseline has invalid Lua syntax: " .. tostring(compileError)) end
 

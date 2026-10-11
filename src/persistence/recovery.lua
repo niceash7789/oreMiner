@@ -44,7 +44,9 @@ function Recovery.classify(state, loadCode)
     if loadCode == "POSITION_UNCERTAIN" then
         return false, "POSITION_UNCERTAIN"
     end
-    if type(state) ~= "table" or state.status ~= "mining"
+    local recoverableServiceError = type(state) == "table" and state.status == "error"
+        and state.error == "NO_SUPPLY_CHEST" and state.service ~= nil
+    if type(state) ~= "table" or (state.status ~= "mining" and not recoverableServiceError)
         or state.poseCertainty ~= "known" or state.pendingAction ~= nil
         or not Cursor.validate(state.progress)
         or type(state.pose) ~= "table"

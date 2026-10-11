@@ -24,7 +24,11 @@ local function validateOptions(options)
     end
     local inventory = options.itemConfig.inventory
     local fuelQuota = type(inventory) == "table" and inventory.fuelRetainedCount or 0
+    local torchQuota = type(inventory) == "table" and inventory.torchRetainedCount or 0
     if not isNonNegativeInteger(fuelQuota) then
+        return false, "INVALID_RESUPPLY_OPTIONS"
+    end
+    if not isNonNegativeInteger(torchQuota) then
         return false, "INVALID_RESUPPLY_OPTIONS"
     end
     for _, name in ipairs({ "getSelectedSlot", "getItemCount", "getItemDetail", "getFuelLevel", "select", "refuel", "suck", "drop" }) do
@@ -112,9 +116,21 @@ local function firstEmptySlot(api)
     return nil
 end
 
+local function dropCurrentSlot(api)
+    local slot = api.getSelectedSlot()
+    local before = type(slot) == "number" and api.getItemCount(slot) or nil
+    if type(before) ~= "number" or before <= 0
+        or api.drop() ~= true or api.getItemCount(slot) ~= 0 then
+        return false, "SUPPLY_RETURN_FAILED"
+    end
+    return true
+end
+
 local function runUnsafe(options)
     local api = options.turtle
     local maxPulls = options.maxPulls or 32
+    local inventory = options.itemConfig.inventory or {}
+    local torchQuota = inventory.torchRetainedCount or options.torchTarget
 
     local fueled, fuelCode = refuelTo(api, options.itemConfig, options.targetFuel)
     if not fueled then
@@ -129,7 +145,14 @@ local function runUnsafe(options)
             end
             local detail = api.getItemDetail(slot)
             if detail and detail.name == "minecraft:torch" then
-                -- Keep torches encountered while searching for fuel; chest ordering is arbitrary.
+                -- Chest ordering is arbitrary. Keep only what fits below the
+                -- configured onboard torch quota and return all excess.
+                local torches = inventoryCount(api, "minecraft:torch")
+                if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
+                if torches > torchQuota then
+                    local returned, returnCode = dropCurrentSlot(api)
+                    if not returned then return { ok = false, code = returnCode } end
+                end
             elseif not detail or not ItemPolicy.isFuel(detail.name, options.itemConfig) then
                 local before = count
                 local dropped = api.drop()
@@ -148,7 +171,8 @@ local function runUnsafe(options)
     local torches = inventoryCount(api, "minecraft:torch")
     if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
     local pulls = 0
-    while torches < options.torchTarget and pulls < maxPulls do
+    local torchTarget = math.min(options.torchTarget, torchQuota)
+    while torches < torchTarget and pulls < maxPulls do
         local slot = firstEmptySlot(api)
         -- The configured target is a best-effort stock level. A full turtle or
         -- exhausted chest may still meet the separately configured departure
@@ -169,7 +193,12 @@ local function runUnsafe(options)
             local ok, code = refuelTo(api, options.itemConfig, options.targetFuel)
             if not ok then return { ok = false, code = code } end
         elseif detail and detail.name == "minecraft:torch" then
-            -- The empty slot avoids merging ambiguities; the following count is authoritative.
+            torches = inventoryCount(api, "minecraft:torch")
+            if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
+            if torches > torchQuota then
+                local returned, returnCode = dropCurrentSlot(api)
+                if not returned then return { ok = false, code = returnCode } end
+            end
         else
             local dropped = api.drop()
             if dropped ~= true or api.getItemCount(slot) ~= 0 then
@@ -210,8 +239,14 @@ local function runUnsafe(options)
         if type(amount) ~= "number" or amount <= 0 or not detail then
             return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" }
         end
-        if not ItemPolicy.isFuel(detail.name, options.itemConfig)
-            and detail.name ~= "minecraft:torch" then
+        if detail.name == "minecraft:torch" then
+            local torchCount = inventoryCount(api, "minecraft:torch")
+            if torchCount == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
+            if torchCount > torchQuota then
+                local returned, returnCode = dropCurrentSlot(api)
+                if not returned then return { ok = false, code = returnCode } end
+            end
+        elseif not ItemPolicy.isFuel(detail.name, options.itemConfig) then
             if api.drop() ~= true or api.getItemCount(slot) ~= 0 then
                 return { ok = false, code = "SUPPLY_RETURN_FAILED" }
             end

@@ -64,6 +64,7 @@ ok, result = runWith({
         getDir = function() return "" end,
         combine = function(_, path) return path end,
         exists = function() return false end,
+        open = function() return nil end,
     },
 })
 
@@ -89,7 +90,7 @@ ok, result, fallbackEnvironment = runWith({
             local source
             if path == "src/branch_miner.lua" then
                 source = "capture(require, ...)"
-            elseif path == "src.fixture.lua" then
+            elseif path == "src/fixture.lua" then
                 source = "return { answer = 42 }"
             end
             if not source then return nil end
@@ -107,7 +108,7 @@ assert(fallbackEnvironment.require("src.fixture").answer == 42,
 
 ok, result = runWith({ turtle = {}, require = function() end, os = {} })
 assert(ok == false, "launcher should reject runtimes without os.epoch")
-assert(tostring(result):find("requires the CC:Tweaked os.epoch, filesystem, Lua load, and shell APIs", 1, true),
+assert(tostring(result):find("requires the CC:Tweaked os.epoch, filesystem, Lua load/setmetatable, and shell APIs", 1, true),
     "missing clock API error should explain the runtime requirement")
 
 ok, result = runWith({
@@ -120,7 +121,7 @@ ok, result = runWith({
         combine = function(_, path) return path end,
         exists = function() return true end,
         open = function(path)
-            if path == "branch_miner.lua" then
+            if path == "src/branch_miner.lua" then
                 return { readAll = function() return "error(\"test failure\")" end, close = function() end }
             end
             return nil

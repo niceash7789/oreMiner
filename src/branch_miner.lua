@@ -2384,6 +2384,16 @@ local function main(...)
         if snapshot.service then
             local serviced, serviceCode = inventoryService.resume(target)
             if not serviced then
+                -- Service-stage failures (for example a chest that was fixed
+                -- after the last attempt) retain a known pose and checkpoint.
+                -- Keep that snapshot retryable; unsafe actions and mining
+                -- failures remain terminal through their existing paths.
+                if serviceCode ~= "NO_SUPPLY_CHEST" and serviceCode ~= "NO_OUTPUT_CHEST"
+                    and serviceCode ~= "NO_BULK_CHEST" and serviceCode ~= "CHEST_FULL"
+                    and serviceCode ~= "UNLOAD_FAILED" and serviceCode ~= "NO_TORCHES"
+                    and serviceCode ~= "NO_FUEL_SUPPLY" then
+                    markFatal(serviceCode or "SERVICE_RESUME_FAILED")
+                end
                 print("Resume stopped safely: " .. tostring(serviceCode))
                 return
             end

@@ -19,6 +19,7 @@ local pose = { x = 0, y = -8, z = -13, facing = 1 }
 local travelCalls = 0
 local resupplyCalls = 0
 local serviceStages = {}
+local serviceMessages = {}
 local rearChestChecks = 0
 local rearChestAvailable = true
 local serviceCheckpoints = {}
@@ -79,7 +80,7 @@ local service = InventoryService.new({
     safeForward = function() return true end,
     up = function() return true end,
     down = function() return true end,
-    report = function() end,
+    report = function(message) serviceMessages[#serviceMessages + 1] = message end,
     reportError = function(message) error(message) end,
 })
 
@@ -108,6 +109,36 @@ assert(serviceCheckpoints[1].y == -8 and serviceCheckpoints[1].z == -13
 local forcedService = service.serviceIfNeeded(true)
 assert(forcedService and travelCalls == 4 and resupplyCalls == 2,
     "forced low-torch service must use the normal return, supply, and exact resume path")
+local lowTorchMessageFound = false
+for _, message in ipairs(serviceMessages) do
+    if message:find("Low torch stock", 1, true) then lowTorchMessageFound = true end
+end
+assert(lowTorchMessageFound, "low-torch service must not be reported as inventory full")
+
+local pressureServiceReported = InventoryService.new({
+    turtle = api,
+    config = { inventory = { returnThreshold = 1, autoConsolidate = false }, base = config.base },
+    itemConfig = defaults,
+    pose = function() return pose end,
+    route = function() return {} end,
+    turnToFacing = function(facing) pose.facing = facing; return true end,
+    travel = function(target)
+        pose.x, pose.y, pose.z, pose.facing = target.x, target.y, target.z, target.facing
+        return true
+    end,
+    report = function(message) serviceMessages[#serviceMessages + 1] = message end,
+    reportError = function() end,
+})
+local pressureMessageStart = #serviceMessages
+pressureServiceReported.serviceIfNeeded()
+local pressureMessageFound = false
+for index = pressureMessageStart + 1, #serviceMessages do
+    if serviceMessages[index]:find("Inventory pressure 1/1 slots", 1, true) then
+        pressureMessageFound = true
+    end
+end
+assert(pressureMessageFound,
+    "pressure service must report occupied slots and configured threshold")
 
 local recoveredPose = { x = 0, y = 0, z = 0, facing = 0 }
 local recoveryStages = {}

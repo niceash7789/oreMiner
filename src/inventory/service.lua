@@ -23,9 +23,9 @@ function Service.new(deps)
             deps.turtle,
             deps.config.inventory.returnThreshold
         )
-        if result == nil or type(result) == "number" then return reached end
+        if result == nil or type(result) == "number" then return reached, result end
         deps.reportError(result.message)
-        return true
+        return true, nil
     end
 
     local function face(facing)
@@ -84,7 +84,7 @@ function Service.new(deps)
         return guarded.value
     end
 
-    local function returnToStartAndUnload(resumeTarget)
+    local function returnToStartAndUnload(resumeTarget, triggerReason)
         local pos = deps.pose()
         local saved = resumeTarget and {
             x = resumeTarget.x, y = resumeTarget.y,
@@ -106,7 +106,8 @@ function Service.new(deps)
         end
         local savedService, saveCode = persist("returning")
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
-        deps.report("[Inventory] Full - returning to chest...")
+        deps.report("[Inventory] " .. (triggerReason or "Service requested")
+            .. " - returning to chests...")
         if type(deps.travel) ~= "function" then
             deps.reportError("Known-route inventory travel is unavailable.")
             return false, "RETURN_ROUTE_UNAVAILABLE"
@@ -172,14 +173,24 @@ function Service.new(deps)
     return {
         pressureReached = pressureReached,
         serviceIfNeeded = function(force)
-            if force ~= true and not pressureReached() then return true end
-            local serviced, code = returnToStartAndUnload()
+            local triggerReason
+            if force == true then
+                triggerReason = "Low torch stock"
+            else
+                local reached, occupied = pressureReached()
+                if not reached then return true end
+                triggerReason = type(occupied) == "number"
+                    and ("Inventory pressure " .. occupied .. "/"
+                        .. tostring(deps.config.inventory.returnThreshold) .. " slots")
+                    or "Inventory pressure check failed"
+            end
+            local serviced, code = returnToStartAndUnload(nil, triggerReason)
             if serviced then return true, "SERVICE_COMPLETE" end
             return false, code or "INVENTORY_SERVICE_FAILED"
         end,
         resume = function(savedTarget)
             if type(savedTarget) ~= "table" then return false, "INVALID_RESUME_TARGET" end
-            local serviced, code = returnToStartAndUnload(savedTarget)
+            local serviced, code = returnToStartAndUnload(savedTarget, "Resuming interrupted service")
             if serviced then return true, "SERVICE_COMPLETE" end
             return false, code or "INVENTORY_SERVICE_FAILED"
         end,

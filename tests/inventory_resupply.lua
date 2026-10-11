@@ -63,7 +63,7 @@ local function run(order, torchTarget, minimumTorches, shouldSucceed)
         turtle = api,
         itemConfig = {
             fuel = { allowedItems = { "minecraft:coal" } },
-            inventory = { fuelRetainedCount = 2 },
+            inventory = { fuelRetainedCount = 2, torchRetainedCount = torchTarget or 4 },
         },
         targetFuel = 200,
         torchTarget = torchTarget or 4,
@@ -137,5 +137,57 @@ local failed = Resupply.run({
 })
 assert(not failed.ok and failed.code == "NO_FUEL_SUPPLY")
 assert(selected == 3, "failed resupply must restore selected slot")
+
+-- Extra torches encountered while searching for fuel must be returned, and
+-- service must not exceed the configured one-stack retention quota.
+local torchQuotaStacks = { [1] = { name = "minecraft:torch", count = 64 } }
+local torchQuotaSupplies = {
+    { name = "minecraft:torch", count = 64 },
+    { name = "minecraft:coal", count = 64 },
+}
+local quotaSelected, quotaFuel = 1, 0
+local quotaApi = {
+    getSelectedSlot = function() return quotaSelected end,
+    select = function(slot) quotaSelected = slot return true end,
+    getItemCount = function(slot) return torchQuotaStacks[slot] and torchQuotaStacks[slot].count or 0 end,
+    getItemDetail = function(slot) return torchQuotaStacks[slot] and { name = torchQuotaStacks[slot].name } end,
+    getFuelLevel = function() return quotaFuel end,
+    refuel = function(amount)
+        local stack = torchQuotaStacks[quotaSelected]
+        if amount == 0 then return stack ~= nil and stack.name == "minecraft:coal" end
+        if not stack or stack.name ~= "minecraft:coal" or stack.count <= 0 then return false end
+        stack.count = stack.count - 1
+        quotaFuel = quotaFuel + 80
+        return true
+    end,
+    suck = function()
+        local item = table.remove(torchQuotaSupplies, 1)
+        if not item then return false end
+        torchQuotaStacks[quotaSelected] = { name = item.name, count = item.count }
+        return true
+    end,
+    drop = function()
+        torchQuotaStacks[quotaSelected] = nil
+        return true
+    end,
+}
+local capped = Resupply.run({
+    turtle = quotaApi,
+    itemConfig = {
+        fuel = { allowedItems = { "minecraft:coal" } },
+        inventory = { fuelRetainedCount = 64, torchRetainedCount = 64 },
+    },
+    targetFuel = 80,
+    torchTarget = 64,
+    minimumTorches = 8,
+})
+assert(capped.ok, capped.code)
+assert(capped.torches == 64, "resupply must cap onboard torches at one stack")
+local cappedCoal = 0
+for slot = 1, 16 do
+    local stack = torchQuotaStacks[slot]
+    if stack and stack.name == "minecraft:coal" then cappedCoal = cappedCoal + stack.count end
+end
+assert(cappedCoal == 64, "resupply must retain no more than one coal stack")
 
 print("inventory resupply checks passed")
