@@ -64,8 +64,8 @@ function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor, fir
 
     local expected = copyPose(origin)
     expected.y = origin.y - landing.floor * stairStepsPerFloor - firstFloorDepthOffset
-    -- Floor one has four entry moves, the configured slices, and one centre move.
-    -- Each later segment crosses the prior landing, adds configured slices, then
+    -- Floor one has four entry moves, interval plus offset slices, and one centre move.
+    -- Each later segment crosses the prior landing, adds interval slices, then
     -- moves from stair rear-centre to the new landing centre.
     expected = step(expected, staircaseFacing,
         3 + landing.floor * (stairStepsPerFloor + 2) + firstFloorDepthOffset)

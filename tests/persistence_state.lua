@@ -62,6 +62,12 @@ local changedOffset = {
 local rejectedOffset, offsetMismatch = State.load("offset.json", changedOffset, fs, textutils)
 assert(rejectedOffset == nil and offsetMismatch == "CONFIG_MISMATCH",
     "changing first-floor depth during a saved run must fail closed")
+local legacyOffsetState = assert(State.new(changedOffset, pose, route, "legacy-offset-run"))
+legacyOffsetState.configSnapshot.first_floor_depth_offset = nil
+assert(State.save(legacyOffsetState, "legacy-offset.json", fs, textutils))
+local legacyRejected, legacyMismatch = State.load("legacy-offset.json", offsetConfig, fs, textutils)
+assert(legacyRejected == nil and legacyMismatch == "CONFIG_MISMATCH",
+    "an older saved run with implicit zero offset must reject a deeper live config")
 local state = assert(State.new(config, pose, route, "run-1"))
 local returnCursor = assert(MiningCursor.branch(1, "left", "branch_upper_return",
     1, 3, "scan_and_return_branch_cell", 1))

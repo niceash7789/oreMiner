@@ -6,7 +6,7 @@ Load one versioned V1 job configuration, reject invalid or incomplete settings b
 
 ## Implemented behavior
 
-The tracked example sets `mining.stairStepsPerFloor = 4`, the minimum safe interval for the 3×4 passage, and `lighting.stairInterval = 2` so the final landing slice is skipped while an earlier stair slice can be lit. Validation accepts integer intervals from 4 through 64. `mining.stairHeight = 4` remains fixed. The example sets `mining.branchPairs = 2` for a short test run: two left and two right branches per floor. This differs from the plan's 20-pair production example; the validated pair count is configurable. Existing installed `config.lua` files are retained by the installer and must be checked separately.
+The tracked example sets `mining.stairStepsPerFloor = 4`, `mining.firstFloorDepthOffset = 0`, and `lighting.stairInterval = 2`. Set the offset to the number of extra descending slices before floor 1. Validation accepts integer intervals from 4 through 64 and offsets from 0 through 60, provided their sum does not exceed 64. Omitting the offset in an older V1 config means zero. `mining.stairHeight = 4` remains fixed. The example sets `mining.branchPairs = 2` for a short test run: two left and two right branches per floor. This differs from the plan's 20-pair production example; the validated pair count is configurable. Existing installed `config.lua` files are retained by the installer and must be checked separately.
 
 Tracked `config.example.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. The installer copies it to the untracked live `config.lua` only when that file is absent, so a pull can update the example without overwriting operator settings. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It rejects top-level `workers`, `workerCount`, `turtleCount`, and `fleet` fields so unsupported multi-turtle settings cannot be silently accepted. The coordinator uses one local sequential executor and one persisted mining cursor. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
 
@@ -23,7 +23,7 @@ The coordinator loads and normalizes this file before constructing a run, shows 
 ## Invariants and assumptions
 
 - Validation and normalization are pure and perform no turtle, filesystem, or inventory operation.
-- The complete loader requires schema version 1 and all documented V1 sections. Stair depth is an integer from 4 through 64; stair width/height, surface entry, tunnel height, floor-main turn, chest sides, and lighting side must match the implemented values.
+- The complete loader requires schema version 1 and all documented V1 sections. Stair interval is an integer from 4 through 64; the optional first-floor offset is an integer from 0 through 60, and the combined first descent is at most 64. Stair width/height, surface entry, tunnel height, floor-main turn, chest sides, and lighting side must match the implemented values.
 - The normalized table is a deep copy. Runtime compatibility aliases do not appear in or mutate `config.lua`.
 - Configuration is loaded once for a run and is not changed after confirmation.
 - Configuration validation is independent of movement, inventory, and persistence modules.

@@ -171,7 +171,7 @@ r/c/f are the rear-centre, canonical centre, and front-centre cells of a flat 3�
 The lifecycle for each floor is:
 
 1. On the first descent, travel `surfaceEntryLength` level blocks from base to the stair mouth.
-2. Descend `stairStepsPerFloor` recorded 3×4 stair slices to the landing's rear-centre cell, carve the flat 3×3 landing, and move level to its centre.
+2. Descend `stairStepsPerFloor + firstFloorDepthOffset` recorded 3×4 stair slices for floor 1, or `stairStepsPerFloor` slices for later floors, to the landing's rear-centre cell; carve the flat 3×3 landing and move level to its centre.
 3. Save and assert the centre landing pose, face right, and mine every configured pair along the right main shaft.
 4. Return along recorded cells to the exact landing centre and restore the stairs-facing orientation.
 5. Face left and mine every configured pair along the left main shaft with the same spacing, length, scan, lighting, and fuel rules.
@@ -341,6 +341,7 @@ Configuration rules:
 
 - [x] **MVP / P0** Reject non-integers, non-positive floor/step/branch counts and lengths, spacing below 2, thresholds outside `1..15`, and negative reserves/quotas. `src.config.numeric_validation.validate` checks active and nested-schema settings before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Validate `stairStepsPerFloor` as an integer from 4 through 64. Four is the minimum safe separation for a 3×4 stair passage; the bounded upper limit prevents impractical runs. `src.config.numeric_validation.validate` rejects values outside this range before run confirmation, and floor-grid geometry uses the configured interval. — **AI-2**
+- [x] **MVP / P0** Allow `firstFloorDepthOffset` extra first-descent slices while preserving the later `stairStepsPerFloor` interval. Validate offset `0..60` and total first descent `<=64`; persist it and reject mid-run changes. Focused config, cursor, landing, recovery, and fake-turtle tests pass; physical verification remains in the separate open geometry gate. — **AI-2**
 - [x] **MVP / P0** Require `surfaceEntryLength = 4`, `stairWidth = 3`, and `stairHeight = 4` in V1 rather than pretending the first implementation supports arbitrary stair geometry. `src.config.numeric_validation.validate` rejects any supplied value other than the fixed geometry before run confirmation; deterministic numeric and configuration checks pass. — **AI-2**
 - [x] **MVP / P0** Require `floorMainTurn = "right"` in V1 so landing orientation and return routes stay canonical. `src.config.numeric_validation.validate` rejects any supplied unsupported value before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Require supply left, primary output right, and optional bulk output behind relative to the initial surface facing. `src.config.numeric_validation.validate` rejects any supplied unsupported `base` side before run confirmation; omitted fields remain valid during config migration. Deterministic numeric validation tests pass. — **AI-2**
@@ -619,7 +620,7 @@ Route cost components are explicit:
 - Remaining straight branch distance to the junction.
 - Required vertical normalisation at the junction.
 - Floor main-tunnel distance to the active landing.
-- Exact recorded staircase centreline climb cost from the active landing to the stair mouth, plus four moves back to the base. Each completed floor segment costs `2 * stairStepsPerFloor` movement fuel to climb; temporary lateral slice sweeps add their own reversible excursion cost while carving.
+- Exact recorded staircase centreline climb cost from the active landing to the stair mouth, plus four moves back to the base. Each completed later-floor segment costs `2 * stairStepsPerFloor` movement fuel to climb; the first segment also includes `2 * firstFloorDepthOffset`. Temporary lateral slice sweeps add their own reversible excursion cost while carving.
 - Configured reserve.
 
 The reserve default remains 100. It is extra margin, not a replacement for route cost.

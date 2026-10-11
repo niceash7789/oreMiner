@@ -453,8 +453,8 @@ assert(placements == 0, "disabled default paving should not place blocks")
 local leftShaftTorch, rightShaftTorch = false, false
 local stairTorchInsidePassage = false
 for _, torchPose in ipairs(torchPlacementFrames) do
-    if torchPose.y == -4 and torchPose.facing == 1 then leftShaftTorch = true end
-    if torchPose.y == -4 and torchPose.facing == 3 then rightShaftTorch = true end
+    if torchPose.y == -6 and torchPose.facing == 1 then leftShaftTorch = true end
+    if torchPose.y == -6 and torchPose.facing == 3 then rightShaftTorch = true end
     if torchPose.x == 0 and torchPose.y == -1 and torchPose.z == -6
         and torchPose.facing == 1 and torchPose.progress
         and torchPose.progress.phase == "stairs" then
@@ -474,8 +474,8 @@ for _, line in ipairs(output) do
     end
 end
 assert(warnedAboutTorch, "failed branch torch placement should warn and keep mining")
-assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -4
-    and firstShaftStart.z == -9 and firstShaftStart.facing == 0,
+assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -6
+    and firstShaftStart.z == -11 and firstShaftStart.facing == 0,
     "the first shaft should start three blocks along the perpendicular main tunnel")
 assert(#firstMainTunnelTrace == 3 and firstMainTunnelBackMoves == 0
     and firstMainTunnelTrace[1].cursorOffset == 0 and firstMainTunnelTrace[1].x == 0

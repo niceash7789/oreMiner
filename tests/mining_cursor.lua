@@ -18,6 +18,22 @@ local stair = assert(Cursor.stairs(1, 5, "descend_stair_slice"))
 assert(stair.workUnitId == "floor-1-stairs-5-descend_stair_slice")
 assert(stair.stairStep == 5 and stair.offset == 5 and stair.phase == "stairs")
 assert(Cursor.validate(stair), "stair slice cursor should be valid")
+local offsetFrame = assert(Cursor.withWorkUnit(stair,
+    { x = 0, y = -4, z = -8, facing = 0 }, {
+        branch_length = 30, num_branches = 2, spacing = 3,
+        floor_count = 2, stair_steps_per_floor = 4,
+        first_floor_depth_offset = 3,
+    }))
+assert(offsetFrame.bounds.stairStepLast == 8 and offsetFrame.bounds.offsetLast == 8,
+    "first-floor cursor bounds must include the deeper descent and landing cursor")
+local laterFrame = assert(Cursor.withWorkUnit(assert(Cursor.stairs(2, 0, "cross_landing")),
+    { x = 0, y = -7, z = -12, facing = 0 }, {
+        branch_length = 30, num_branches = 2, spacing = 3,
+        floor_count = 2, stair_steps_per_floor = 4,
+        first_floor_depth_offset = 3,
+    }))
+assert(laterFrame.bounds.stairStepLast == 5,
+    "later-floor cursor bounds must use the ordinary interval")
 local landing = assert(Cursor.stairs(1, 8, "prepare_landing"))
 assert(Cursor.validate(landing), "landing preparation cursor should be valid")
 local crossing = assert(Cursor.stairs(2, 0, "cross_landing"))

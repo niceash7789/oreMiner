@@ -2120,6 +2120,10 @@ local function confirmConfiguration()
             .. config.spacing
     )
 
+    print("  First floor depth: "
+        .. (config.mining.stairStepsPerFloor + config.mining.firstFloorDepthOffset)
+        .. " (extra " .. config.mining.firstFloorDepthOffset .. ")")
+
     print(
         "  Floor paving: "
             .. (

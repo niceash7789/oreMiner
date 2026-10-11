@@ -41,6 +41,8 @@ local function copy(value)
     return result
 end
 
+local StairGeometry = require("src.core.stair_geometry")
+
 -- Attach the durable frame and configured bounds at the exact committed pose
 -- from which this next cursor will run. The logical cursor itself remains the
 -- compact route position; these fields make its work unit independently clear.
@@ -51,11 +53,18 @@ function Cursor.withWorkUnit(progress, origin, config)
         or type(config) ~= "table" or not integer(config.branch_length)
         or not integer(config.num_branches) or not integer(config.spacing)
         or (config.floor_count ~= nil and not integer(config.floor_count))
-        or (config.stair_steps_per_floor ~= nil and not integer(config.stair_steps_per_floor)) then
+        or (config.stair_steps_per_floor ~= nil and not integer(config.stair_steps_per_floor))
+        or (config.first_floor_depth_offset ~= nil
+            and (not integer(config.first_floor_depth_offset)
+                or config.first_floor_depth_offset < 0)) then
         return nil, "INVALID_WORK_UNIT"
     end
     local floorCount = config.floor_count or 1
-    local stairSteps = config.stair_steps_per_floor or 8
+    local stairSteps = StairGeometry.stepsForFloor(
+        config.stair_steps_per_floor or 8,
+        config.first_floor_depth_offset or 0,
+        math.max(progress.floor, 1))
+    if not stairSteps then return nil, "INVALID_WORK_UNIT" end
     local outboundFrame = origin.facing
     if progress.phase == "branch_upper_return" or progress.phase == "branch_lower_return"
         or progress.phase == "branch_return_to_junction" then
