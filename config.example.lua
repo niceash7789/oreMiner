@@ -1,5 +1,6 @@
--- V1 single-turtle example configuration. install.lua copies this to the
--- untracked config.lua only when no live configuration exists.
+-- V1 single-turtle example configuration. The installer copies this to the
+-- untracked config.lua when absent; the miner also reads this file directly
+-- when run without a live config.lua.
 return {
     schemaVersion = 1,
     mining = {

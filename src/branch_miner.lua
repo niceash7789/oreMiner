@@ -11,10 +11,11 @@ local Refuel = require("src.fuel.refuel")
 local FuelLevel = require("src.fuel.level")
 local ItemPolicy = require("src.config.item_policy")
 local ConfigLoader = require("src.config.loader")
+local ConfigSource = require("src.config.source")
 local OreClassifier = require("src.mining.ore_classifier")
-local configLoaded, rawConfig = pcall(require, "config")
-if not configLoaded then
-    error("CONFIG_INVALID: unable to load config.lua: " .. tostring(rawConfig))
+local rawConfig, configPath, configError = ConfigSource.load(fs, shell, require, dofile)
+if configError then
+    error("CONFIG_INVALID: unable to load " .. configPath .. ": " .. configError)
 end
 local config, configResult = ConfigLoader.normalize(rawConfig)
 if not config then
@@ -2103,7 +2104,7 @@ local function confirmConfiguration()
     end
 
     print("")
-    print("Configuration file: config.lua (schema 1)")
+    print("Configuration file: " .. configPath .. " (schema 1)")
 
     print(
         "  Branch length: "

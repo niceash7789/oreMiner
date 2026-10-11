@@ -18,7 +18,7 @@ wget run https://raw.githubusercontent.com/niceash7789/oreMiner/main/install.lua
 
 All files are downloaded and syntax-checked in a staging directory before installed runtime files change. Existing managed files are moved to a backup during replacement and restored if installation fails. A successful first pull copies `config.example.lua` to the untracked `config.lua`; later pulls retain the live config. `.git_config` records the installed commit and managed file list so a later pull can remove obsolete runtime modules safely. The runtime pull also installs a managed `/startup/oreminer.lua` hook; see [turtle autostart](autostart.md).
 
-After installation, edit `config.lua` and run `miner` from the installation directory. To fetch another test build, stop the miner, return to that directory, and run:
+After installation, edit `config.lua` and run `miner` from the installation directory. When running directly from a checkout without `config.lua`, the miner uses `config.example.lua`; a present but invalid `config.lua` stops startup. To fetch another test build, stop the miner, return to that directory, and run:
 
 ```text
 git pull

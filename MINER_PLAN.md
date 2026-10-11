@@ -129,7 +129,7 @@ Cost-control workflow:
 - [x] **MVP / P0** Replace recursive call-stack backtracking with an explicit, persisted route stack. `VeinTraversal.run` uses iterative frontier and inverse-route arrays; `src/persistence/checkpoint.lua` atomically stores/updates the vein route, frontier, and committed pose after each successful edge, while bounded local route actions use `ActionStack`. `tests/vein_traversal.lua`, `tests/persistence_state.lua`, and `tests/navigation_action_stack.lua` cover the implementation. Cross-reboot recovery unwinds saved active/unwinding breadcrumbs only when classifier evidence proves each inverse edge and exact checkpoint; entering and pending-action states remain refused under P03.
 - [x] **MVP / P0** Replace “continue anyway” fuel behaviour with `RETURN_REQUIRED` or `NO_FUEL`. — **AI-2** Startup now stops with `NO_FUEL` before movement when onboard permitted fuel cannot meet the estimate; per-move route admission remains enforced by the known-route fuel policy.
 - [x] **MVP / P0** Replace ad-hoc booleans with structured results such as `{ok, code, message, retryable}`. `src/safety/result.lua` constructs and validates the full result shape with a conservative non-retryable default; shared contracts reject missing retryability, and movement/turn adapters expose typed outcomes while retaining their compatibility success flag. `tests/safety_result.lua` and contract checks pass. Some high-level feature APIs still return compatibility booleans and remain migration work under their own checklist items. — **AI-2**
-- [x] **MVP / P1** Replace interactive configuration as the normal launch path with a validated config file; keep a minimal confirmation/summary only when appropriate. Root `config.lua` now supplies schema version 1, `src.config.loader` validates and copies the complete V1 schema, and the coordinator displays a read-only summary plus one start confirmation. — **AI-1**
+- [x] **MVP / P1** Replace interactive configuration as the normal launch path with a validated config file; keep a minimal confirmation/summary only when appropriate. Root `config.lua` supplies schema version 1 when present; otherwise the tracked `config.example.lua` is used. `src.config.loader` validates and copies the complete V1 schema, and the coordinator displays a read-only summary plus one start confirmation. — **AI-1**
 
 ## 4. Recommended mining strategy
 
@@ -231,7 +231,7 @@ These constraints are features: they make safe return possible without generic p
 
 ## 5. Proposed configuration model
 
-Use one `config.lua` file returning a table. Validate and normalise it at startup, then store a snapshot of job-affecting values in run state. Avoid mutating config while a job is in progress.
+Use `config.lua` returning a table when it exists; otherwise load `config.example.lua` as the example configuration. Validate and normalise the selected file at startup, then store a snapshot of job-affecting values in run state. Avoid mutating config while a job is in progress. A present but invalid `config.lua` must stop the run rather than fall back.
 
 ```lua
 return {
