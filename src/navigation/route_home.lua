@@ -76,6 +76,10 @@ function RouteHome.path(route, pose, maxNodes, targetPose)
     local targetKey = Contracts.isPose(targetPose) and key(targetPose)
         or type(route) == "table" and route.home
     if type(route) == "table" and route.trail ~= nil
+        and type(route.trail) ~= "table" then
+        return nil, "ROUTE_TRAIL_INVALID"
+    end
+    if type(route) == "table" and route.trail ~= nil
         and targetKey == route.home and route.trail[#route.trail] == key(pose) then
         local trail, reason = KnownRoute.trailHome(route, pose)
         if not trail then return nil, reason end

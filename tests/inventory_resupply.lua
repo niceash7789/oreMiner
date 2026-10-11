@@ -140,7 +140,7 @@ local failed = Resupply.run({
     turtle = emptySupply,
     itemConfig = {
         fuel = { allowedItems = { "minecraft:coal" } },
-        inventory = { fuelRetainedCount = 2 },
+        inventory = { fuelRetainedCount = 2, torchRetainedCount = 4 },
     },
     targetFuel = 200,
     torchTarget = 4,
@@ -314,5 +314,83 @@ for slot = 1, 16 do
 end
 assert(fourHeld == 64 and fourReturned == 256 and fourSelected == 1,
     "four incidental coal stacks must go back to the supply chest")
+
+-- A chest may offer the stack just dropped back as its next suck. The second
+-- torch stack must stay in a scratch slot until the later coal is reached.
+local cyclingStacks = { [1] = { name = "minecraft:torch", count = 64 } }
+local cyclingChest = {
+    [1] = { name = "minecraft:torch", count = 64 },
+    [2] = { name = "minecraft:coal", count = 64 },
+    [3] = { name = "minecraft:coal", count = 1 },
+}
+local cyclingSelected, cyclingFuel = 1, 0
+local pulledNames = {}
+local cyclingApi = {
+    getSelectedSlot = function() return cyclingSelected end,
+    select = function(slot) cyclingSelected = slot return true end,
+    getItemCount = function(slot)
+        return cyclingStacks[slot] and cyclingStacks[slot].count or 0
+    end,
+    getItemDetail = function(slot)
+        return cyclingStacks[slot] and { name = cyclingStacks[slot].name }
+    end,
+    getFuelLevel = function() return cyclingFuel end,
+    refuel = function(amount)
+        local stack = cyclingStacks[cyclingSelected]
+        if amount == 0 then return stack ~= nil and stack.name == "minecraft:coal" end
+        if not stack or stack.name ~= "minecraft:coal" then return false end
+        stack.count = stack.count - 1
+        if stack.count == 0 then cyclingStacks[cyclingSelected] = nil end
+        cyclingFuel = cyclingFuel + 80
+        return true
+    end,
+    suck = function()
+        for slot = 1, 3 do
+            local stack = cyclingChest[slot]
+            if stack then
+                cyclingStacks[cyclingSelected] = stack
+                cyclingChest[slot] = nil
+                pulledNames[#pulledNames + 1] = stack.name
+                return true
+            end
+        end
+        return false
+    end,
+    drop = function(amount)
+        local stack = cyclingStacks[cyclingSelected]
+        if not stack then return false end
+        local removed = amount or stack.count
+        for slot = 1, 3 do
+            if not cyclingChest[slot] then
+                cyclingChest[slot] = { name = stack.name, count = removed }
+                stack.count = stack.count - removed
+                if stack.count == 0 then cyclingStacks[cyclingSelected] = nil end
+                return true
+            end
+        end
+        return false
+    end,
+}
+local cyclingResult = Resupply.run({
+    turtle = cyclingApi,
+    itemConfig = {
+        fuel = { allowedItems = { "minecraft:coal" } },
+        inventory = { fuelRetainedCount = 64, torchRetainedCount = 64 },
+    },
+    targetFuel = 80,
+    torchTarget = 64,
+    minimumTorches = 8,
+    maxPulls = 6,
+})
+assert(cyclingResult.ok, cyclingResult.code)
+assert(#pulledNames == 3 and pulledNames[1] == "minecraft:torch"
+    and pulledNames[2] == "minecraft:coal"
+    and pulledNames[3] == "minecraft:coal",
+    "resupply must pass the surplus torch stack to reach later fuel")
+assert(cyclingChest[1] and cyclingChest[1].name == "minecraft:torch"
+    and cyclingStacks[1].count == 64 and cyclingResult.torches == 64
+    and cyclingStacks[3].count == 63 and cyclingStacks[4].count == 1
+    and cyclingFuel == 80,
+    "surplus torches must return only after fuel is reached and quotas are met")
 
 print("inventory resupply checks passed")

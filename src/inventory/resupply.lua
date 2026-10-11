@@ -31,6 +31,9 @@ local function validateOptions(options)
     if not isNonNegativeInteger(torchQuota) then
         return false, "INVALID_RESUPPLY_OPTIONS"
     end
+    if options.minimumTorches > torchQuota then
+        return false, "INVALID_RESUPPLY_OPTIONS"
+    end
     for _, name in ipairs({ "getSelectedSlot", "getItemCount", "getItemDetail", "getFuelLevel", "select", "refuel", "suck", "drop" }) do
         if type(options.turtle[name]) ~= "function" then
             return false, "RESUPPLY_API_UNAVAILABLE"
@@ -127,36 +130,6 @@ local function returnCurrentExcess(api, excess)
     return true
 end
 
-local function capCurrentStack(api, total, quota)
-    if type(total) ~= "number" then return false, "SUPPLY_COUNT_UNAVAILABLE" end
-    local count = api.getItemCount(api.getSelectedSlot())
-    if type(count) ~= "number" or count < 0 then
-        return false, "SUPPLY_COUNT_UNAVAILABLE"
-    end
-    return returnCurrentExcess(api, math.min(count, math.max(0, total - quota)))
-end
-
-local function capOnboardFuel(api, config, quota)
-    local total = inventoryFuelCount(api, config)
-    if total == nil then return false, "SUPPLY_COUNT_UNAVAILABLE" end
-    for slot = 16, 1, -1 do
-        if total <= quota then break end
-        local detail = api.getItemDetail(slot)
-        if detail and ItemPolicy.isFuel(detail.name, config) then
-            if api.select(slot) ~= true then return false, "SUPPLY_SELECT_FAILED" end
-            local count = api.getItemCount(slot)
-            if type(count) ~= "number" or count < 0 then
-                return false, "SUPPLY_COUNT_UNAVAILABLE"
-            end
-            local excess = math.min(count, total - quota)
-            local returned, code = returnCurrentExcess(api, excess)
-            if not returned then return false, code end
-            total = total - excess
-        end
-    end
-    return total <= quota, "SUPPLY_RETURN_FAILED"
-end
-
 local function returnUnwantedSupply(api, count)
     if type(count) ~= "number" or count <= 0 or api.drop() ~= true then
         return false, "SUPPLY_RETURN_FAILED"
@@ -168,7 +141,42 @@ local function returnUnwantedSupply(api, count)
     return true
 end
 
-local function runUnsafe(options)
+local function returnStagedExcess(api, config, slots, fuelQuota, torchQuota)
+    local fuel = inventoryFuelCount(api, config)
+    local torches = inventoryCount(api, "minecraft:torch")
+    if fuel == nil or torches == nil then return false, "SUPPLY_COUNT_UNAVAILABLE" end
+    -- A returned stack can be the next stack sucked from a chest. Keep every
+    -- pulled stack onboard until scanning is finished, then restore the caps.
+    local pulled = {}
+    for _, slot in ipairs(slots) do pulled[slot] = true end
+    for slot = 16, 1, -1 do
+        local count = api.getItemCount(slot)
+        if type(count) ~= "number" or count < 0 then
+            return false, "SUPPLY_COUNT_UNAVAILABLE"
+        end
+        if count > 0 then
+            local detail = api.getItemDetail(slot)
+            if api.select(slot) ~= true then return false, "SUPPLY_SELECT_FAILED" end
+            if detail and detail.name == "minecraft:torch" then
+                local excess = math.min(count, math.max(0, torches - torchQuota))
+                local ok, code = returnCurrentExcess(api, excess)
+                if not ok then return false, code end
+                torches = torches - excess
+            elseif detail and ItemPolicy.isFuel(detail.name, config) then
+                local excess = math.min(count, math.max(0, fuel - fuelQuota))
+                local ok, code = returnCurrentExcess(api, excess)
+                if not ok then return false, code end
+                fuel = fuel - excess
+            elseif pulled[slot] then
+                local ok, code = returnUnwantedSupply(api, count)
+                if not ok then return false, code end
+            end
+        end
+    end
+    return true
+end
+
+local function runUnsafe(options, pulledSlots)
     local api = options.turtle
     local maxPulls = options.maxPulls or 32
     local inventory = options.itemConfig.inventory or {}
@@ -186,19 +194,8 @@ local function runUnsafe(options)
                 return { ok = false, code = fuelCode or "NO_FUEL_SUPPLY" }
             end
             local detail = api.getItemDetail(slot)
-            if detail and detail.name == "minecraft:torch" then
-                -- Chest ordering is arbitrary. Keep only what fits below the
-                -- configured onboard torch quota and return all excess.
-                local torches = inventoryCount(api, "minecraft:torch")
-                if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
-                if torches > torchQuota then
-                    local returned, returnCode = capCurrentStack(api, torches, torchQuota)
-                    if not returned then return { ok = false, code = returnCode } end
-                end
-            elseif not detail or not ItemPolicy.isFuel(detail.name, options.itemConfig) then
-                local returned, returnCode = returnUnwantedSupply(api, count)
-                if not returned then return { ok = false, code = returnCode } end
-            else
+            pulledSlots[#pulledSlots + 1] = slot
+            if detail and ItemPolicy.isFuel(detail.name, options.itemConfig) then
                 fueled, fuelCode = refuelTo(api, options.itemConfig, options.targetFuel)
                 if fueled then break end
             end
@@ -207,9 +204,6 @@ local function runUnsafe(options)
     if not fueled then return { ok = false, code = fuelCode or "NO_FUEL_SUPPLY" } end
 
     local fuelQuota = inventory.fuelRetainedCount or 0
-    local cappedFuel, capCode = capOnboardFuel(api, options.itemConfig, fuelQuota)
-    if not cappedFuel then return { ok = false, code = capCode } end
-
     local torches = inventoryCount(api, "minecraft:torch")
     if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
     local pulls = 0
@@ -231,21 +225,10 @@ local function runUnsafe(options)
             return { ok = false, code = "NO_TORCHES" }
         end
         local detail = api.getItemDetail(slot)
+        pulledSlots[#pulledSlots + 1] = slot
         if detail and ItemPolicy.isFuel(detail.name, options.itemConfig) then
             local ok, code = refuelTo(api, options.itemConfig, options.targetFuel)
             if not ok then return { ok = false, code = code } end
-            local capped, fuelCapCode = capOnboardFuel(api, options.itemConfig, fuelQuota)
-            if not capped then return { ok = false, code = fuelCapCode } end
-        elseif detail and detail.name == "minecraft:torch" then
-            torches = inventoryCount(api, "minecraft:torch")
-            if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
-            if torches > torchQuota then
-                local returned, returnCode = capCurrentStack(api, torches, torchQuota)
-                if not returned then return { ok = false, code = returnCode } end
-            end
-        else
-            local returned, returnCode = returnUnwantedSupply(api, count)
-            if not returned then return { ok = false, code = returnCode } end
         end
         torches = inventoryCount(api, "minecraft:torch")
         if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
@@ -270,25 +253,12 @@ local function runUnsafe(options)
         if api.suck() ~= true then return { ok = false, code = "NO_FUEL_SUPPLY" } end
         fuelPulls = fuelPulls + 1
         local amount = api.getItemCount(slot)
-        local detail = api.getItemDetail(slot)
-        if type(amount) ~= "number" or amount <= 0 or not detail then
+        pulledSlots[#pulledSlots + 1] = slot
+        if type(amount) ~= "number" or amount <= 0 or not api.getItemDetail(slot) then
             return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" }
         end
-        if detail.name == "minecraft:torch" then
-            local torchCount = inventoryCount(api, "minecraft:torch")
-            if torchCount == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
-            if torchCount > torchQuota then
-                local returned, returnCode = capCurrentStack(api, torchCount, torchQuota)
-                if not returned then return { ok = false, code = returnCode } end
-            end
-        elseif not ItemPolicy.isFuel(detail.name, options.itemConfig) then
-            local returned, returnCode = returnUnwantedSupply(api, amount)
-            if not returned then return { ok = false, code = returnCode } end
-        else
-            local total = inventoryFuelCount(api, options.itemConfig)
-            local returned, returnCode = capCurrentStack(api, total, fuelQuota)
-            if not returned then return { ok = false, code = returnCode } end
-        end
+        -- Surplus and unrelated stacks stay in scratch slots until this scan
+        -- has reached later chest contents.
         onboardFuel = inventoryFuelCount(api, options.itemConfig)
         if onboardFuel == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
     end
@@ -301,7 +271,25 @@ end
 function Resupply.run(options)
     local valid, code = validateOptions(options)
     if not valid then return { ok = false, code = code } end
-    local guarded = SlotGuard.run(options.turtle, function() return runUnsafe(options) end)
+    local guarded = SlotGuard.run(options.turtle, function()
+        local pulledSlots = {}
+        local result = runUnsafe(options, pulledSlots)
+        local inventory = options.itemConfig.inventory or {}
+        local returned, code = returnStagedExcess(options.turtle, options.itemConfig,
+            pulledSlots, inventory.fuelRetainedCount or 0,
+            inventory.torchRetainedCount or options.torchTarget)
+        if not returned then return { ok = false, code = code } end
+        if result.ok then
+            result.torches = inventoryCount(options.turtle, "minecraft:torch")
+            if result.torches == nil then
+                return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" }
+            end
+            if result.torches < options.minimumTorches then
+                return { ok = false, code = "NO_TORCHES" }
+            end
+        end
+        return result
+    end)
     if not guarded.ok then return { ok = false, code = guarded.code, message = guarded.message } end
     return guarded.value
 end

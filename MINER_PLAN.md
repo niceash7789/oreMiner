@@ -506,7 +506,7 @@ Navigation backlog:
 - [x] **MVP / P0** Implement branch-to-junction, junction-to-landing, and landing-to-surface route builders. The active floor runner returns paired shafts to junctions and the main shaft to its recorded landing; `StairRoute.returnToSurface` reverses the recorded landing/stairs/entry route with checked movement, and `resumeToLanding` validates the complete requested route chain before replay. — **AI-2**
 - [x] **MVP / P0** Assert canonical pose at every phase boundary. Navigation route modules compare returned poses with calculated checkpoints, the coordinator verifies landing, floor return, and final origin poses, and the integrated fake-turtle run exercises those boundaries. — **AI-2**
 - [x] **MVP / P0** On an unexpected obstruction in a known-clear return cell, retry within limits and then stop; do not tunnel around it. — **AI-2** `ReturnMove.run` rejects unknown edges and returns `RETURN_BLOCKED` after bounded movement-only retries.
-- [ ] **NEXT / P2** Add an operator-assisted `home` command that is only enabled when pose is known. — **AI-1**
+- [x] **NEXT / P2** Add an operator-assisted `home` command that is only enabled when pose is known. `miner home` follows the durable per-move home breadcrumb from a known saved pose; focused breadcrumb, recovery-status, and persistence tests pass. In-world return remains unverified. — **AI-1**
 - [ ] **LATER / P3** Add constrained detours around obstacles only if a provable inverse route can be retained. — **AI-1**
 
 ## 8. Inventory and base-service design
@@ -792,7 +792,7 @@ Recovery commands:
 - [x] **MVP / P1** `miner` starts a new run only when no active/incomplete state exists; otherwise it prints recovery guidance. `src/persistence/startup.lua` admits only missing or complete snapshots; active/incomplete state prints `miner status`/`miner resume` guidance and uncertain/corrupt/mismatched snapshots stop explicitly. `tests/persistence_startup.lua` passes. — **AI-1**
 - [x] **MVP / P1** `miner status` displays run state, pose, certainty, progress, fuel, inventory pressure, and last error without movement. `RecoveryStatus.display` renders these fields from the validated snapshot, and `tests/recovery_status.lua` runs the command with movement APIs configured to fail if called. — **AI-1**
 - [x] **MVP / P1** `miner resume` resumes only a validated state with known pose. `Recovery.classify` rejects pending/uncertain, corrupt, mismatched, and unsupported snapshots before movement; the coordinator validates recorded-route targets and fuel commitment before restoring supported mining, service, and vein-unwind checkpoints. `tests/persistence_recovery.lua`, `tests/active_baseline_wiring.lua`, and `tests/recovery_status.lua` pass. Physical reboot timing remains an operator check. — **AI-1**
-- [ ] **NEXT / P1** `miner home` returns a known-pose turtle along a valid recorded route. — **AI-1**
+- [x] **NEXT / P1** `miner home` returns a known-pose turtle along a valid recorded route. The command replays the saved breadcrumb through checked route edges and restores origin facing; focused route, breadcrumb, and recovery-status tests pass. In-world return remains unverified. — **AI-1**
 - [ ] **NEXT / P1** `miner reset` requires explicit confirmation and is allowed only at a physically verified origin. — **AI-1**
 - [ ] **NEXT / P1** Add an operator reconciliation flow for a single pending move/turn; never guess automatically. — **AI-3**
 

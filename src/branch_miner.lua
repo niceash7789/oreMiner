@@ -2503,7 +2503,7 @@ local function main(...)
             print("Home stopped safely: " .. tostring(serviceCode or "STATE_WRITE_FAILED"))
             return
         end
-        local reached, returnCode = travelStairRoute(origin)
+        local reached, returnCode = travelRecordedRoute(origin)
         if not reached then
             print("Home stopped safely: " .. tostring(returnCode or "RETURN_FAILED"))
             return
