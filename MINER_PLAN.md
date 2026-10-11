@@ -135,7 +135,7 @@ Cost-control workflow:
 
 ### Overall pattern
 
-The turtle begins on the surface. The initial facing defines the stairs direction. It first travels four level centreline blocks so the stair mouth is clear of the chests. It then mines `stairStepsPerFloor` 3-wide by 4-tall diagonal stair slices to the rear-centre edge of the first floor landing. It carves a flat 3×3 landing with three blocks of clear headroom, advances one level block to the landing centre, completes that floor's shaft grid, returns to the same centre, crosses the front-centre landing cell, and begins the next configured descent. This repeats until `floorCount` floors are complete.
+The turtle begins on the surface. The initial facing defines the stairs direction. It first travels four level centreline blocks so the stair mouth is clear of the chests. It then mines `stairStepsPerFloor + firstFloorDepthOffset` 3-wide by 4-tall diagonal stair slices to the rear-centre edge of the first floor landing. The offset defaults to zero; later floor descents use `stairStepsPerFloor` slices. It carves a flat 3×3 landing with three blocks of clear headroom, advances one level block to the landing centre, completes that floor's shaft grid, returns to the same centre, crosses the front-centre landing cell, and begins the next configured descent. This repeats until `floorCount` floors are complete.
 
 One stair slice is a deterministic excavation sweep:
 
@@ -145,7 +145,7 @@ One stair slice is a deterministic excavation sweep:
 4. Sweep into the right column, clear one block below and two above, and return to centre. If scheduled, place a non-blocking torch into an already-cleared cell in the right column inside the passage; do not dig a torch niche or add a movement. Skip torch placement on a landing slice so the floor entrances remain clear.
 5. Restore the stairs facing and move down into the target slice's centre-bottom checkpoint.
 
-The lateral sweep creates a 3-wide × 4-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the final slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry and four-step example interval, the landing centres are 9 blocks forward/4 blocks down for floor 1 and 15 blocks forward/8 blocks down for floor 2. In general, floor `n` has depth `-n * stairStepsPerFloor` and centreline forward offset `surfaceEntryLength + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
+The lateral sweep creates a 3-wide × 4-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the final slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry, four-step interval, and zero offset example, the landing centres are 9 blocks forward/4 blocks down for floor 1 and 15 blocks forward/8 blocks down for floor 2. In general, floor `n` has depth `-(firstFloorDepthOffset + n * stairStepsPerFloor)` and centreline forward offset `surfaceEntryLength + firstFloorDepthOffset + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
 
 “Right-hand side” is defined by the planned outbound direction of that route, not whichever way the turtle happens to face while returning. Stair torches occupy a cleared right-column cell inside the passage without digging; main-shaft and shaft torches go on the right wall relative to their outbound mining direction. Return and service travel never places torches.
 
@@ -218,7 +218,7 @@ Spacing semantics must be documented precisely. With centreline spacing 3, adjac
 
 - The surface entry is straight and level for exactly four blocks.
 - The staircase is straight, 3 wide, and 4 tall. Each slice restores the turtle to the centre-bottom lane and advances that lane exactly one block forward and down; V1 does not build turns or switchbacks.
-- The first landing is `surfaceEntryLength + stairStepsPerFloor` blocks forward and `stairStepsPerFloor` blocks below base. Later landings add one forward/down displacement per stair slice.
+- The first landing rear cell is `surfaceEntryLength + stairStepsPerFloor + firstFloorDepthOffset` blocks forward and `stairStepsPerFloor + firstFloorDepthOffset` blocks below base; its centre is one block farther forward. Later landings use the normal interval.
 - Every floor has straight, level right and left main shafts from the same landing centre; the right pass finishes and returns before the left pass starts.
 - Every branch is straight, level, and perpendicular to its floor's main tunnel.
 - A floor is considered complete only after every configured pair on both main sides has returned to the landing.
@@ -241,6 +241,7 @@ return {
     floorCount = 4,
     surfaceEntryLength = 4,
     stairStepsPerFloor = 4,
+    firstFloorDepthOffset = 0, -- Extra first-descent slices; total at most 64.
     stairWidth = 3,
     stairHeight = 4,
     floorMainTurn = "right",

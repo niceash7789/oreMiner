@@ -213,6 +213,10 @@ function Loader.normalize(raw)
     if not ok then return invalid(reason) end
 
     local normalized = copy(raw)
+    -- Older schema-version-1 configs retain their original first-floor depth.
+    if normalized.mining.firstFloorDepthOffset == nil then
+        normalized.mining.firstFloorDepthOffset = 0
+    end
     normalized.branch_length = normalized.mining.branchLength
     normalized.num_branches = normalized.mining.branchPairs
     normalized.spacing = normalized.mining.branchSpacing

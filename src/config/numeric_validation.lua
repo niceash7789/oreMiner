@@ -124,6 +124,16 @@ function NumericValidation.validate(config)
             StairGeometry.MIN_STEPS, StairGeometry.MAX_STEPS) then
         return false, "mining.stairStepsPerFloor must be an integer from 4 through 64"
     end
+    if mining.firstFloorDepthOffset ~= nil then
+        if not integerInRange(mining.firstFloorDepthOffset, 0,
+            StairGeometry.MAX_STEPS - StairGeometry.MIN_STEPS) then
+            return false, "mining.firstFloorDepthOffset must be an integer from 0 through 60"
+        end
+        if mining.stairStepsPerFloor ~= nil
+            and mining.stairStepsPerFloor + mining.firstFloorDepthOffset > StairGeometry.MAX_STEPS then
+            return false, "first floor stair steps must not exceed 64"
+        end
+    end
     if mining.floorMainTurn ~= nil and mining.floorMainTurn ~= "right" then
         return false, "mining.floorMainTurn must be right in V1"
     end

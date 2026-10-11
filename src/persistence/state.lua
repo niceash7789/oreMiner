@@ -155,6 +155,10 @@ local function configSnapshotValid(config)
     return (config.floor_count == nil or (integer(config.floor_count) and config.floor_count >= 1))
         and (config.stair_steps_per_floor == nil
             or (integer(config.stair_steps_per_floor) and config.stair_steps_per_floor >= 1))
+        and (config.first_floor_depth_offset == nil
+            or (integer(config.first_floor_depth_offset)
+                and config.first_floor_depth_offset >= 0
+                and config.first_floor_depth_offset <= 60))
         and (config.surface_entry_length == nil
             or (integer(config.surface_entry_length) and config.surface_entry_length == 4))
 end
@@ -526,6 +530,10 @@ function State.load(path, expectedConfig, fsApi, textutilsApi)
             and state.configSnapshot[field] ~= expectedConfig[field] then
             return nil, "CONFIG_MISMATCH"
         end
+    end
+    if (state.configSnapshot.first_floor_depth_offset or 0)
+        ~= (expectedConfig.first_floor_depth_offset or 0) then
+        return nil, "CONFIG_MISMATCH"
     end
     if state.pendingAction ~= nil then
         state.poseCertainty = "uncertain"

@@ -18,6 +18,13 @@ assert(normalized.branch_length == source.mining.branchLength
     and normalized.fuel_reserve == source.fuel.reserve)
 assert(normalized.pave == source.features.paving
     and normalized.vein_mine == source.ore.enabled)
+assert(normalized.mining.firstFloorDepthOffset == 0
+    and source.mining.firstFloorDepthOffset == nil,
+    "older V1 configurations should keep the original first-floor depth")
+local offsetConfig = copy(source)
+offsetConfig.mining.firstFloorDepthOffset = 3
+local offsetNormalized, offsetResult = Loader.normalize(offsetConfig)
+assert(offsetResult.ok and offsetNormalized.mining.firstFloorDepthOffset == 3)
 assert(normalized.inventory.retainedItems["minecraft:cobblestone"]
     == source.inventory.keep["minecraft:cobblestone"])
 assert(normalized.inventory.fuelRetainedCount == source.inventory.keep["minecraft:coal"]
@@ -42,6 +49,12 @@ rejected(function(config) config.fleet = {} end, "V1 runs one turtle")
 rejected(function(config) config.mining = nil end, "mining must be a table")
 rejected(function(config) config.mining.floorCount = 0 end, "floorCount")
 rejected(function(config) config.mining.surfaceEntryLength = 5 end, "surfaceEntryLength")
+rejected(function(config) config.mining.firstFloorDepthOffset = -1 end, "firstFloorDepthOffset")
+rejected(function(config) config.mining.firstFloorDepthOffset = 61 end, "firstFloorDepthOffset")
+rejected(function(config)
+    config.mining.stairStepsPerFloor = 63
+    config.mining.firstFloorDepthOffset = 2
+end, "first floor stair steps")
 rejected(function(config) config.mining.floorMainTurn = nil end, "floorMainTurn")
 rejected(function(config) config.inventory.autoUnload = "yes" end, "autoUnload")
 rejected(function(config) config.inventory.keep["minecraft:torch"] = nil end,

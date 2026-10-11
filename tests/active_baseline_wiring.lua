@@ -51,6 +51,7 @@ fileConfig.mining.branchPairs = 1
 fileConfig.mining.branchSpacing = 3
 fileConfig.mining.floorCount = 4
 fileConfig.mining.stairStepsPerFloor = 4
+fileConfig.mining.firstFloorDepthOffset = 2
 fileConfig.lighting.stairInterval = 2
 fileConfig.lighting.tunnelInterval = 1
 fileConfig.features.torches = true
@@ -504,11 +505,13 @@ local finalState = assert(load("return " .. assert(persistedFiles["oreMiner/stat
 assert(finalState.status == "complete", "the multi-floor run should commit completion at surface origin")
 assert(not finalState.lighting.placed["floor-2-left-shaft-3-1"],
     "failed branch torch placement must not be committed to the lighting ledger")
-assert(finalState.floorLandings[1].landing.y == -4
-    and finalState.floorLandings[1].landing.z == -9,
+assert(finalState.floorLandings[1].steps == 6
+    and finalState.floorLandings[1].landing.y == -6
+    and finalState.floorLandings[1].landing.z == -11,
     "floor 1 landing should be saved at the specified depth and offset")
-assert(finalState.floorLandings[4].landing.y == -16
-    and finalState.floorLandings[4].landing.z == -27,
+assert(finalState.floorLandings[4].steps == 4
+    and finalState.floorLandings[4].landing.y == -18
+    and finalState.floorLandings[4].landing.z == -29,
     "floor 4 landing should be saved at the configured depth and offset")
 assert(finalState.progress.floor == 4,
     "the durable mining cursor should retain the active floor identity")

@@ -104,6 +104,7 @@ local function configSnapshot()
         vein_mine = config.vein_mine,
         floor_count = config.mining.floorCount,
         stair_steps_per_floor = config.mining.stairStepsPerFloor,
+        first_floor_depth_offset = config.mining.firstFloorDepthOffset,
         surface_entry_length = config.mining.surfaceEntryLength,
     }
 end
@@ -1364,7 +1365,8 @@ local function mineBranch(length, branchPair, side, mainOffset, mainSide,
         pose = savedLanding.landing,
     } or nil
     local grid, gridStatus = FloorGrid.new({ x = 0, y = 0, z = 0, facing = 0 }, 0,
-        gridLanding, config.mining.stairStepsPerFloor)
+        gridLanding, config.mining.stairStepsPerFloor,
+        config.mining.firstFloorDepthOffset)
     if not grid then
         print("ERROR: " .. gridStatus.code)
         return false, gridStatus
@@ -1676,11 +1678,16 @@ local function saveStairCursor(context)
 end
 
 local function descendToLanding(floor)
+    local steps = require("src.core.stair_geometry").stepsForFloor(
+        config.mining.stairStepsPerFloor, config.mining.firstFloorDepthOffset, floor)
+    if not steps then
+        return pos, Result.new(false, "INVALID_STAIR_STEPS")
+    end
     stairRouteAction = true
     local landingPose, outcome = StairRoute.descend({
         pose = pos,
         floor = floor,
-        steps = config.mining.stairStepsPerFloor,
+        steps = steps,
         alreadyAtFrontLanding = floor > 1,
         move = checkedMoveForRoute,
         turn = checkedTurnForRoute,

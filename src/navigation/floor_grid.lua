@@ -45,7 +45,7 @@ local function turn(facing, side)
 end
 
 -- Requires the landing record; no floor coordinates are inferred from surface origin.
-function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)
+function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor, firstFloorDepthOffset)
     if not validPose(origin) then
         return nil, failure("INVALID_ORIGIN", "Surface origin must be a valid pose.")
     end
@@ -56,19 +56,19 @@ function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)
         or not validPose(landing.pose) then
         return nil, failure("INVALID_LANDING", "A floor number and recorded landing pose are required.")
     end
-    if not isInteger(stairStepsPerFloor)
-        or stairStepsPerFloor < StairGeometry.MIN_STEPS
-        or stairStepsPerFloor > StairGeometry.MAX_STEPS then
+    firstFloorDepthOffset = firstFloorDepthOffset or 0
+    if not StairGeometry.stepsForFloor(stairStepsPerFloor,
+        firstFloorDepthOffset, landing.floor) then
         return nil, failure("INVALID_STAIR_STEPS", "A validated stair interval is required.")
     end
 
     local expected = copyPose(origin)
-    expected.y = origin.y - landing.floor * stairStepsPerFloor
+    expected.y = origin.y - landing.floor * stairStepsPerFloor - firstFloorDepthOffset
     -- Floor one has four entry moves, the configured slices, and one centre move.
     -- Each later segment crosses the prior landing, adds configured slices, then
     -- moves from stair rear-centre to the new landing centre.
     expected = step(expected, staircaseFacing,
-        3 + landing.floor * (stairStepsPerFloor + 2))
+        3 + landing.floor * (stairStepsPerFloor + 2) + firstFloorDepthOffset)
     if landing.pose.x ~= expected.x or landing.pose.y ~= expected.y
         or landing.pose.z ~= expected.z or landing.pose.facing ~= staircaseFacing then
         return nil, failure("LANDING_MISMATCH", "Recorded landing does not match the fixed V1 origin and stair geometry.")

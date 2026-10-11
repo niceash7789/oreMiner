@@ -93,6 +93,17 @@ config.mining.stairStepsPerFloor = 8
 accepted(config, "larger stair interval should validate")
 config.mining.stairStepsPerFloor = 64
 accepted(config, "maximum stair interval should validate")
+config.mining.firstFloorDepthOffset = 0
+accepted(config, "zero first-floor offset should validate at the stair limit")
+config.mining.firstFloorDepthOffset = 1
+rejected(config, "combined first descent must stay within the stair limit")
+config.mining.stairStepsPerFloor = 4
+config.mining.firstFloorDepthOffset = 60
+accepted(config, "maximum first-floor offset should validate")
+for _, value in ipairs({ -1, 0.5, 61, math.huge, -math.huge, 0 / 0 }) do
+    config.mining.firstFloorDepthOffset = value
+    rejected(config, "first-floor offset must be bounded and integral")
+end
 for _, field in ipairs({ "floorCount", "branchLength", "branchPairs" }) do
     config = activeConfig()
     config.mining = { [field] = 1 }

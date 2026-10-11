@@ -43,6 +43,17 @@ local shortGrid = assert(FloorGrid.new(origin, 0, {
 }, 4))
 assert(shortGrid.landing.pose.y == -8 and shortGrid.landing.pose.z == -15,
     "four-step floors should derive their own landing geometry")
+local offsetGrid = assert(FloorGrid.new(origin, 0, {
+    floor = 2,
+    pose = { x = 0, y = -11, z = -18, facing = 0 },
+}, 4, 3))
+assert(offsetGrid.landing.pose.y == -11 and offsetGrid.landing.pose.z == -18,
+    "first-floor depth offset must carry through later landing geometry")
+local noOffsetGrid, noOffsetStatus = FloorGrid.new(origin, 0, {
+    floor = 2,
+    pose = { x = 0, y = -8, z = -15, facing = 0 },
+}, 4, 3)
+assert(noOffsetGrid == nil and noOffsetStatus.code == "LANDING_MISMATCH")
 
 local missingLanding, missingStatus = FloorGrid.new(origin, 0, { floor = 1 }, 8)
 assert(missingLanding == nil and missingStatus.code == "INVALID_LANDING",

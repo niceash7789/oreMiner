@@ -47,6 +47,21 @@ local route = { home = "0,0,0", edges = { ["0,0,0"] = {} } }
 local absent, absentCode = State.load("fresh.json", config, fs, textutils)
 assert(absent == nil and absentCode == "STATE_MISSING",
     "only an installation with no active or backup snapshot may start as a new run")
+local offsetConfig = {
+    branch_length = 30, num_branches = 20, spacing = 3,
+    pave = false, vein_mine = true, first_floor_depth_offset = 3,
+}
+local offsetState = assert(State.new(offsetConfig, pose, route, "offset-run"))
+assert(State.save(offsetState, "offset.json", fs, textutils))
+local offsetLoaded, offsetCode = State.load("offset.json", offsetConfig, fs, textutils)
+assert(offsetLoaded and offsetCode == "STATE_LOADED")
+local changedOffset = {
+    branch_length = 30, num_branches = 20, spacing = 3,
+    pave = false, vein_mine = true, first_floor_depth_offset = 0,
+}
+local rejectedOffset, offsetMismatch = State.load("offset.json", changedOffset, fs, textutils)
+assert(rejectedOffset == nil and offsetMismatch == "CONFIG_MISMATCH",
+    "changing first-floor depth during a saved run must fail closed")
 local state = assert(State.new(config, pose, route, "run-1"))
 local returnCursor = assert(MiningCursor.branch(1, "left", "branch_upper_return",
     1, 3, "scan_and_return_branch_cell", 1))

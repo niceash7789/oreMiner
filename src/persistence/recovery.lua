@@ -274,7 +274,8 @@ function Recovery.classify(state, loadCode)
         end
         local grid, gridStatus = FloorGrid.new({ x = 0, y = 0, z = 0, facing = 0 }, 0,
             { floor = landing.floor, pose = landing.landing },
-            savedConfig.stair_steps_per_floor)
+            savedConfig.stair_steps_per_floor,
+            savedConfig.first_floor_depth_offset or 0)
         if not grid then return false, "BRANCH_RESUME_UNSUPPORTED" end
         local junction = grid.junction(state.progress.mainOffset,
             state.progress.mainSide or "right")

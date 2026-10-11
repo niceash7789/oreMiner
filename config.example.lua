@@ -6,6 +6,7 @@ return {
         floorCount = 4,
         surfaceEntryLength = 4,
         stairStepsPerFloor = 4,
+        firstFloorDepthOffset = 0, -- Extra stair slices before floor 1; later floors stay 4 apart.
         stairWidth = 3,
         stairHeight = 4,
         floorMainTurn = "right",
