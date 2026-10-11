@@ -66,6 +66,7 @@ local placements = 0
 local torchPlacementFrames = {}
 local torchNicheReady = false
 local torchNicheDigs = 0
+local failedTorchPlace = false
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
@@ -211,6 +212,13 @@ local turtleApi = {
         if selectedSlot == 3 then
             local savedState = persistedFiles["oreMiner/state.json"]
             local progress = savedState and assert(load("return " .. savedState))().progress
+            if not failedTorchPlace and progress and progress.floor == 2
+                and progress.phase == "branch_outbound_lower"
+                and progress.side == "left" then
+                failedTorchPlace = true
+                torchNicheReady = false
+                return false
+            end
             torchPlacementFrames[#torchPlacementFrames + 1] = {
                 x = world.x, y = world.y, z = world.z, facing = world.facing,
                 progress = progress,
@@ -343,6 +351,15 @@ assert(leftShaftTorch and rightShaftTorch,
     "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
 assert(torchNicheDigs >= 2,
     "floor tunnel torches should carve their right-wall niche before placement")
+assert(failedTorchPlace, "the fixture should exercise a failed branch torch placement")
+local warnedAboutTorch = false
+for _, line in ipairs(output) do
+    if line:find("WARNING: Skipped right-wall torch", 1, true) then
+        warnedAboutTorch = true
+        break
+    end
+end
+assert(warnedAboutTorch, "failed branch torch placement should warn and keep mining")
 assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -8
     and firstShaftStart.z == -13 and firstShaftStart.facing == 0,
     "the first shaft should start three blocks along the perpendicular main tunnel")
@@ -367,6 +384,8 @@ assert(world.x == 0 and world.y == 0 and world.z == 0 and world.facing == 0,
     "short branch pair should return to the exact origin pose")
 local finalState = assert(load("return " .. assert(persistedFiles["oreMiner/state.json"]))())
 assert(finalState.status == "complete", "the multi-floor run should commit completion at surface origin")
+assert(not finalState.lighting.placed["floor-2-left-shaft-3-1"],
+    "failed branch torch placement must not be committed to the lighting ledger")
 assert(finalState.floorLandings[1].landing.y == -8
     and finalState.floorLandings[1].landing.z == -13,
     "floor 1 landing should be saved at the specified depth and offset")

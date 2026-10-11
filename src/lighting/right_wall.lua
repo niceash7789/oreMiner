@@ -80,7 +80,8 @@ function Lighting.placeRight(ops)
         local code = type(placed) == "table" and type(placed.code) == "string"
             and placed.code or "TORCH_PLACE_FAILED"
         return Result.new(false, code,
-            type(placed) == "table" and placed.message or nil, { skippable = true })
+            type(placed) == "table" and placed.message or nil,
+            { skippable = code == "TORCH_PLACE_FAILED" })
     end
     return Result.new(true, "TORCH_PLACED")
 end

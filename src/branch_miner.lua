@@ -372,7 +372,7 @@ local function turnRight() return turn("right") end
 -- SAFE DIGGING
 -- ============================================================================
 
-local function digForward()
+local function digForward(optional)
     local digFailure
     local result = DigClear.run({
         detect = turtle.detect,
@@ -389,9 +389,12 @@ local function digForward()
         maxElapsed = itemConfig.safety.digTimeLimit,
         wait = function() sleep(0.5) end,
     })
+    local dugCount = result.dug or 0
     if digFailure then result = digFailure end
-    stats:add("blocks_mined", result.dug)
-    if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
+    if dugCount > 0 then stats:add("blocks_mined", dugCount) end
+    if not result.ok and not optional then
+        print("ERROR: " .. result.code .. " - " .. tostring(result.message))
+    end
     return result
 end
 
@@ -1145,9 +1148,12 @@ local function placeTunnelTorch(outboundFacing, distance, force, routeId)
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
             -- Floor tunnel walls need a niche; the stair passage is already clear.
-            dig = digForward,
+            dig = function() return digForward(true) end,
             place = function()
-                if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
+                local called, placed = pcall(turtle.place)
+                if not called or placed ~= true then
+                    return Result.new(false, "TORCH_PLACE_FAILED")
+                end
                 stats:add("torches_placed", 1)
                 return Result.new(true, "TORCH_PLACED")
             end,
@@ -1211,14 +1217,18 @@ local function placeStairTorch(slicePose)
             end
             if slot then break end
         end
-        if not slot or turtle.select(slot) ~= true then return Result.new(false, "NO_TORCHES") end
+        if not slot then return Result.new(false, "NO_TORCHES", nil, { skippable = true }) end
+        if turtle.select(slot) ~= true then return Result.new(false, "TORCH_SELECT_FAILED") end
         return Lighting.placeRight({
             pose = copyCurrentPose(), outboundFacing = originalFacing,
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
             alreadyClear = true,
             place = function()
-                if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
+                local called, placed = pcall(turtle.place)
+                if not called or placed ~= true then
+                    return Result.new(false, "TORCH_PLACE_FAILED")
+                end
                 stats:add("torches_placed", 1)
                 return Result.new(true, "TORCH_PLACED")
             end,
@@ -1230,7 +1240,16 @@ local function placeStairTorch(slicePose)
         return false
     end
     local placed = selected.ok and type(selected.value) == "table" and selected.value.ok == true
-    if not placed then return false end
+    if not placed then
+        local code = selected.ok and selected.value and selected.value.code or selected.code
+        if selected.ok and type(selected.value) == "table"
+            and selected.value.skippable == true then
+            print("WARNING: Skipped stair torch: " .. tostring(code))
+            return true
+        end
+        print("ERROR: " .. tostring(code or "STAIR_TORCH_FAILED"))
+        return false
+    end
     if checkpoint then
         local saved, saveCode = checkpoint:recordTorchPlacement(key, pos, knownRoute, configSnapshot())
         if not saved then
