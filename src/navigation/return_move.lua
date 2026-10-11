@@ -15,8 +15,13 @@ function ReturnMove.run(options)
         return failure("RETURN_ROUTE_UNKNOWN", "Return step is not a previously cleared route edge", 0)
     end
     for attempt = 1, options.maxAttempts do
-        if options.move() == true then
+        local moved, outcome = options.move()
+        if moved == true then
             return { ok = true, code = "RETURN_MOVE_COMPLETE", attempts = attempt }
+        end
+        if type(outcome) == "table" and outcome.ok == false
+            and outcome.code ~= "MOVE_FAILED" then
+            return outcome
         end
         if options.recover then options.recover(attempt) end
     end

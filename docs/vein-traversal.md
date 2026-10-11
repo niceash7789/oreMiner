@@ -16,7 +16,7 @@ For veins entered from a main-shaft scan, the coordinator calls `MainShaftBackfi
 
 Inventory pressure and failed route-fuel admission both stop further vein discovery and unwind the inverse breadcrumbs before returning a typed outcome. The coordinator can start inventory service only after `INVENTORY_RETURN` confirms the exact checkpoint; `VEIN_FUEL_RETURN` becomes `RETURN_REQUIRED` at that same checkpoint. Any failed inverse move, including back, up, or down, returns fatal `VEIN_RETURN_BLOCKED`, so callers stop without home travel or continued shaft work.
 
-Return-path movement failures are propagated: vein inverse breadcrumbs stop with `VEIN_RETURN_BLOCKED`; the branch upper-scan ascent, per-step return, and descent stop the branch with `BRANCH_RETURN_MOVE_FAILED`; and `safeBack()` reports failure when its fallback turn or movement fails. Pose and known-route edges remain committed only by movement wrappers after the turtle API succeeds.
+Return-path movement failures are propagated after the shared adapter attempts bounded clearing of the planned target cell: vein inverse breadcrumbs stop with `VEIN_RETURN_BLOCKED`; branch return failures stop the branch; and `safeBack()` reports failure when its fallback turn or movement fails. Pose and known-route edges remain committed only by movement wrappers after the turtle API succeeds.
 
 ## Public entry points
 

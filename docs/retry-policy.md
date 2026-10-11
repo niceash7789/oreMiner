@@ -6,7 +6,7 @@ Provide one bounded retry contract for the single turtle's movement, block, and 
 
 ## Implemented behavior
 
-`Retry.run` invokes a typed operation at most its configured attempt limit. It returns immediately on success or a non-retryable outcome. If every attempt is retryable and fails, it returns the caller's exhaustion code with `retryable = false` and the exact attempt count. Invalid limits and malformed outcomes fail closed with typed errors. Dig clearing also caps attempts at 64 and stops on its elapsed-time budget. Forward recovery accepts only boolean move and detection results, retries solid blocks through dig clearing, and makes no more than the configured entity attack/wait attempts.
+`Retry.run` invokes a typed operation at most its configured attempt limit. It returns immediately on success or a non-retryable outcome. If every attempt is retryable and fails, it returns the caller's exhaustion code with `retryable = false` and the exact attempt count. Invalid limits and malformed outcomes fail closed with typed errors. Dig clearing also caps attempts at 64 and stops on its elapsed-time budget. The active movement adapter uses forward recovery for all four directions, retries solid blocks through directional dig clearing, and makes no more than the configured entity attack/wait attempts.
 
 ## Public entry points
 
@@ -25,7 +25,7 @@ Provide one bounded retry contract for the single turtle's movement, block, and 
 
 ## Dependencies and limitations
 
-Pure Lua with no runtime dependencies. `src/safety/dig_clear.lua` applies configured attempt and time bounds to forward/up/down clearing. `src/safety/forward_recovery.lua` integrates checked forward movement with bounded solid-block clearing and entity attack/wait recovery, and the active coordinator supplies these callbacks from `src/branch_miner.lua`. Liquids and unknown non-solid obstructions are not classified here. Focused tests cover attempt/time bounds and typed failure paths.
+Pure Lua with no runtime dependencies. `src/safety/dig_clear.lua` applies configured attempt and time bounds to forward/up/down clearing; rear clearing uses checked temporary turns and the forward dig API. `src/safety/forward_recovery.lua` integrates checked movement with bounded solid-block clearing and entity attack/wait recovery, and the active coordinator supplies the directional callbacks from `src/branch_miner.lua`. Non-diggable blocks, inventory pressure, liquids, and unknown obstructions stop safely. Focused tests cover attempt/time bounds and typed failure paths.
 
 ## Verification
 

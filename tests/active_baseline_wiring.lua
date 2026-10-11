@@ -70,6 +70,15 @@ local failedTorchPlace = false
 local upperObstructionPresent = true
 local upperObstructionDigs = 0
 local upperBlockedMoves = 0
+local rearObstructionPresent = true
+local rearClearFacing
+local rearObstructionDigs = 0
+local aboveObstructionPresent = false
+local aboveInjected = false
+local aboveObstructionDigs = 0
+local belowObstructionPresent = false
+local belowInjected = false
+local belowObstructionDigs = 0
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
@@ -152,6 +161,10 @@ local turtleApi = {
     end,
     back = function()
         recordPhysicalAction("move", "back")
+        if rearObstructionPresent then
+            rearClearFacing = (world.facing + 2) % 4
+            return false
+        end
         world.facing = (world.facing + 2) % 4
         translateForward()
         world.facing = (world.facing + 2) % 4
@@ -159,11 +172,15 @@ local turtleApi = {
     end,
     up = function()
         recordPhysicalAction("move", "up")
+        if not aboveInjected then aboveInjected, aboveObstructionPresent = true, true end
+        if aboveObstructionPresent then return false end
         world.y = world.y + 1
         return true
     end,
     down = function()
         recordPhysicalAction("move", "down")
+        if not belowInjected then belowInjected, belowObstructionPresent = true, true end
+        if belowObstructionPresent then return false end
         world.y = world.y - 1
         return true
     end,
@@ -178,6 +195,7 @@ local turtleApi = {
         return true
     end,
     detect = function()
+        if rearObstructionPresent and rearClearFacing == world.facing then return true end
         local raw = persistedFiles["oreMiner/state.json"]
         local progress = raw and assert(load("return " .. raw))().progress
         if progress and progress.phase == "branch_upper_return"
@@ -194,9 +212,15 @@ local turtleApi = {
         end
         return false
     end,
-    detectUp = function() return false end,
-    detectDown = function() return false end,
+    detectUp = function() return aboveObstructionPresent end,
+    detectDown = function() return belowObstructionPresent end,
     dig = function()
+        if rearObstructionPresent and rearClearFacing == world.facing then
+            recordPhysicalAction("dig", "forward")
+            rearObstructionPresent = false
+            rearObstructionDigs = rearObstructionDigs + 1
+            return true
+        end
         local raw = persistedFiles["oreMiner/state.json"]
         local progress = raw and assert(load("return " .. raw))().progress
         if progress and progress.phase == "branch_upper_return"
@@ -215,10 +239,29 @@ local turtleApi = {
         end
         return false
     end,
-    digUp = function() return false end,
-    digDown = function() return false end,
+    digUp = function()
+        if aboveObstructionPresent then
+            recordPhysicalAction("dig", "up")
+            aboveObstructionPresent = false
+            aboveObstructionDigs = aboveObstructionDigs + 1
+            return true
+        end
+        return false
+    end,
+    digDown = function()
+        if belowObstructionPresent then
+            recordPhysicalAction("dig", "down")
+            belowObstructionPresent = false
+            belowObstructionDigs = belowObstructionDigs + 1
+            return true
+        end
+        return false
+    end,
     attack = function() return false end,
     inspect = function()
+        if rearObstructionPresent and rearClearFacing == world.facing then
+            return true, { name = "minecraft:stone" }
+        end
         if upperObstructionPresent then
             local raw = persistedFiles["oreMiner/state.json"]
             local progress = raw and assert(load("return " .. raw))().progress
@@ -242,8 +285,14 @@ local turtleApi = {
         end
         return false
     end,
-    inspectUp = function() return false end,
-    inspectDown = function() return false end,
+    inspectUp = function()
+        if aboveObstructionPresent then return true, { name = "minecraft:stone" } end
+        return false
+    end,
+    inspectDown = function()
+        if belowObstructionPresent then return true, { name = "minecraft:stone" } end
+        return false
+    end,
     placeDown = function()
         if selectedSlot ~= 2 or pavingCount < 1 then
             return false
@@ -386,6 +435,9 @@ assert(upperBlockedMoves == 1 and upperObstructionDigs == 1
         .. tostring(upperBlockedMoves) .. "/" .. tostring(upperObstructionDigs)
         .. " cursors=" .. table.concat(upperTrace, ",")
         .. " output=" .. table.concat(output, " | "))
+assert(rearObstructionDigs == 1 and aboveObstructionDigs == 1
+    and belowObstructionDigs == 1,
+    "back, up, and down moves should each clear and retry a blocked planned edge")
 assert(failedOneReport, "the test should inject an optional reporting failure")
 assert(ok, runtimeError)
 assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard: "

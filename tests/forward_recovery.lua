@@ -86,6 +86,18 @@ result = ForwardRecovery.run({
 })
 assert(result == digFailure, "dig-clear failure should propagate unchanged")
 
+local attackFailure = Result.new(false, "TURN_FAILED")
+result = ForwardRecovery.run({
+    move = function() return false end,
+    detect = function() return false end,
+    digClear = function() error("entity path must not dig") end,
+    attack = function() return attackFailure end,
+    wait = function() error("failed directional attack must not wait") end,
+    maxMoveRetries = 2,
+    maxEntityRetries = 2,
+})
+assert(result == attackFailure, "directional attack failure must stop recovery")
+
 moves, clears, attacks = 0, 0, 0
 result = ForwardRecovery.run({
     move = function() moves = moves + 1; return false end,

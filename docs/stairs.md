@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Carve one bounded 3-wide by 4-tall descending stairs slice, restore the turtle to the route centreline, and provide the exact non-digging inverse climb.
+Carve one bounded 3-wide by 4-tall descending stairs slice, restore the turtle to the route centreline, and provide the exact inverse climb.
 
 ## Implemented behavior
 
@@ -33,7 +33,7 @@ The deterministic slice test runs the geometry for all four initial facings at a
 - Successful descent preserves the starting facing and has net displacement one forward plus one down.
 - Stair torches occupy an already-cleared right-column passage cell; no torch-specific dig or lateral move is permitted.
 - The service callback runs only at a committed centre-bottom checkpoint; it cannot interrupt a lateral sweep.
-- Inverse climb assumes the recorded centreline route is already clear and never digs.
+- Inverse climb stays on the recorded centreline. Its checked movement callback may dig a block in the target cell and retry within limits.
 - Callers remain responsible for fuel admission, durable movement intent/commit, and bounded block/entity recovery.
 
 ## Dependencies and limitations

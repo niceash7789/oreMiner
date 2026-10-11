@@ -25,6 +25,19 @@ local blocked = ReturnMove.run({
 assert(not blocked.ok and blocked.code == "RETURN_BLOCKED" and blocked.attempts == 3)
 assert(moveCalls == 3, "persistent obstruction must stop after bounded recovery")
 
+local clearFailed = { ok = false, code = "UNBREAKABLE_BLOCK" }
+moveCalls = 0
+local fatal = ReturnMove.run({
+    hasEdge = function() return true end,
+    move = function()
+        moveCalls = moveCalls + 1
+        return false, clearFailed
+    end,
+    maxAttempts = 3,
+})
+assert(fatal == clearFailed and moveCalls == 1,
+    "return travel must not retry a failed obstruction clear")
+
 local unknown = ReturnMove.run({
     hasEdge = function() return false end,
     move = function() error("unknown route must not move") end,

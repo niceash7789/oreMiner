@@ -8,7 +8,7 @@ Recover safely when a forward move fails after the ordinary forward clear has ru
 
 `ForwardRecovery.run` retries a failed move only when the movement wrapper reports a physical `MOVE_FAILED`. It detects a solid obstruction and delegates to the existing attempt and time bounded `DigClear` operation. When no solid block is detected, it performs at most `entityRetries` attack/wait attempts. If supplied, the `warn` callback runs once immediately before the final entity attack/wait attempt; the active coordinator uses it to print a short request for nearby players to move. Exhaustion triggers one protected inspect: block names or tags identifying water/lava return `LIQUID`; absent, unsupported, malformed, or failed inspection returns `UNKNOWN_OBSTRUCTION`. Neither outcome attempts fluid handling. Repeated solid obstructions return `BLOCKED`. Fuel, persistence, and other movement denials propagate immediately without further world actions.
 
-The active coordinator uses this helper in `mineForward`; its checked movement callback continues to own fuel admission and durable intent/pose commits.
+The active coordinator uses this helper in the shared movement adapter for forward, back, up, and down. Directional callbacks detect, dig, or attack only the target cell. Each checked movement attempt owns fuel admission and durable intent/pose commits. A typed directional attack failure stops recovery immediately.
 
 ## Public entry points
 

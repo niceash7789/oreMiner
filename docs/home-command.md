@@ -20,7 +20,7 @@ The shell command cannot interrupt a currently running synchronous mining progra
 
 ## Invariants and assumptions
 
-- The command never digs or creates a shortcut. It uses `travelRecordedRoute` and checked movement over the saved breadcrumb's recorded clear edges. Older valid snapshots without a breadcrumb use the recorded graph.
+- The command follows the saved breadcrumb's recorded edges and never creates a shortcut. The shared checked movement adapter may dig a block obstructing the next recorded cell, subject to inventory and bounded retry limits. Older valid snapshots without a breadcrumb use the recorded graph.
 - Saved pose certainty must be `known` and there must be no pending physical action before departure.
 - A saved vein is unwound before ordinary route travel begins.
 - The paused service record preserves the exact mining cursor, allowing `miner resume` to return to that job after base service.
@@ -28,7 +28,7 @@ The shell command cannot interrupt a currently running synchronous mining progra
 
 ## Dependencies and limitations
 
-Requires the existing local state snapshot, CC:Tweaked filesystem and serialization APIs, a known pose, and a recorded return route. Coordinates are absolute relative to the fixed surface origin, not GPS world coordinates. It cannot interrupt a running program from a separate shell invocation. A blocked route, inadequate fuel, uncertain pose, or persistence failure stops the command at the last committed checkpoint. Software cannot guarantee a physical return across an unconfirmed movement or turn.
+Requires the existing local state snapshot, CC:Tweaked filesystem and serialization APIs, a known pose, and a recorded return route. Coordinates are absolute relative to the fixed surface origin, not GPS world coordinates. It cannot interrupt a running program from a separate shell invocation. An uncleared block, inadequate fuel, inventory pressure, uncertain pose, or persistence failure stops the command at the last committed checkpoint. Software cannot guarantee a physical return across an unconfirmed movement or turn.
 
 ## Verification
 

@@ -421,7 +421,7 @@ local function digUp()
     })
     if digFailure then result = digFailure end
     stats:add("blocks_mined", result.dug or 0)
-    if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
+    if not result.ok then print("ERROR: " .. result.code .. " - " .. tostring(result.message)) end
     return result
 end
 
@@ -444,23 +444,35 @@ local function digDown()
     })
     if digFailure then result = digFailure end
     stats:add("blocks_mined", result.dug or 0)
-    if not result.ok then print("ERROR: " .. result.code .. " - " .. result.message) end
+    if not result.ok then print("ERROR: " .. result.code .. " - " .. tostring(result.message)) end
     return result
 end
 
 local function atRear(callback)
     local originalFacing = pos.facing
+    local function restoreFacing()
+        for _ = 1, 3 do
+            if pos.facing == originalFacing then return true end
+            local turned, outcome = turn("right")
+            if not turned then return false, outcome end
+        end
+        return false, Result.new(false, "POSITION_ERROR", "Rear clearing did not restore facing")
+    end
     for _ = 1, 2 do
         local turned, outcome = turn("right")
-        if not turned then return nil, outcome end
+        if not turned then
+            local restored, restoreOutcome = restoreFacing()
+            return nil, restored and outcome or restoreOutcome
+        end
     end
-    local value = callback()
-    for _ = 1, 2 do
-        local turned, outcome = turn("right")
-        if not turned then return nil, outcome end
+    local ran, value = pcall(callback)
+    local restored, restoreOutcome = restoreFacing()
+    if not restored then return nil, restoreOutcome end
+    if not ran then
+        return nil, Result.new(false, "REAR_ACTION_FAILED", tostring(value))
     end
-    if pos.facing ~= originalFacing then
-        return nil, Result.new(false, "POSITION_ERROR", "Rear clearing changed facing")
+    if value == nil then
+        return nil, Result.new(false, "INVALID_REAR_ACTION_OUTCOME")
     end
     return value
 end
@@ -484,7 +496,11 @@ move = function(movement)
     end
     local function clear()
         if rearFailure then return rearFailure end
-        local pressure, occupied = Pressure.reached(turtle, itemConfig.inventory.returnThreshold)
+        local checked, pressure, occupied = pcall(Pressure.reached,
+            turtle, itemConfig.inventory.returnThreshold)
+        if not checked then
+            return Result.new(false, "INVENTORY_PRESSURE_CHECK_FAILED")
+        end
         if pressure ~= false then
             return Result.new(false, "INVENTORY_CRITICAL",
                 "Blocked route needs digging while inventory is under pressure", { occupied = occupied })

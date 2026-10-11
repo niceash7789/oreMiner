@@ -6,7 +6,7 @@ Move the single turtle from the canonical surface origin to the stairs mouth ove
 
 ## Implemented behavior
 
-`SurfaceEntry.enter` performs exactly four checked level-forward moves while preserving height and facing. `SurfaceEntry.returnToOrigin` accepts only the calculated mouth pose for the recorded origin, then performs exactly four checked back moves without turning or digging. Both operations stop on the first failed or malformed movement result and return the last committed pose.
+`SurfaceEntry.enter` performs exactly four checked level-forward moves while preserving height and facing. `SurfaceEntry.returnToOrigin` accepts only the calculated mouth pose for the recorded origin, then performs exactly four checked back moves. Its movement callback may temporarily turn to clear a blocked rear cell, restore facing, and retry the same back edge. Both operations stop on a failed or malformed checked movement result and return the last committed pose.
 
 ## Public entry points
 
