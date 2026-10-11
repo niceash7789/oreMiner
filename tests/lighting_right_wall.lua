@@ -78,7 +78,8 @@ local failed = Lighting.placeRight({
     dig = function() error("must not dig after failed turn") end,
     place = function() error("must not place after failed turn") end,
 })
-assert(not failed.ok and calls == 1, "failed checked turn must stop before world interaction")
+assert(not failed.ok and failed.skippable ~= true and calls == 1,
+    "failed checked turn must stop before world interaction")
 
 local digCalls = 0
 local current = { x = 0, y = 0, z = 0, facing = 0 }
