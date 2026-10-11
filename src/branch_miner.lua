@@ -7,7 +7,7 @@ local Turn = require("src.navigation.turn")
 local SlotGuard = require("src.inventory.slot_guard")
 local Paving = require("src.inventory.paving")
 local PressureGate = require("src.inventory.pressure_gate")
-local FuelItemValidation = require("src.fuel.item_validation")
+local Refuel = require("src.fuel.refuel")
 local FuelLevel = require("src.fuel.level")
 local ItemPolicy = require("src.config.item_policy")
 local ConfigLoader = require("src.config.loader")
@@ -151,7 +151,9 @@ local function newRun()
             + math.max(0, os.epoch("utc") / 1000 - statisticsStartedAt)
         return snapshot
     end)
-    local ok = persist()
+    local initialCursor = MiningCursor.stairs(1, 0, "enter_surface")
+    local ok = initialCursor and checkpoint:setProgress(
+        initialCursor, pos, knownRoute, configSnapshot())
     return ok
 end
 
@@ -183,61 +185,9 @@ local function fuelToReturn()
     return dist + buffer
 end
 
-local function getFuelNeeded()
-    local moves_per_position =
-        config.spacing + (config.branch_length * 4)
-
-    do
-        moves_per_position = moves_per_position + 4
-    end
-
-    local total_moves =
-        config.num_branches * moves_per_position
-
-    local final_distance =
-        config.num_branches * config.spacing
-
-    local return_trip =
-        final_distance + 50
-
-    return total_moves + return_trip
-end
-
 refuel = function(needed)
-    local level = turtle.getFuelLevel()
-
-    if FuelLevel.isUnlimited(level) then
-        return true
-    end
-
-    if level >= needed then
-        return true
-    end
-
-    local guarded = SlotGuard.run(turtle, function()
-        for slot = 1, 16 do
-            local detail = turtle.getItemDetail(slot)
-            if detail and ItemPolicy.isFuel(detail.name, config) then
-                local usable = FuelItemValidation.verify(turtle, slot, config)
-                if usable then
-                    while turtle.getFuelLevel() < needed
-                        and turtle.getItemCount(slot) > 0 do
-                        if turtle.refuel(1) ~= true then
-                            break
-                        end
-                    end
-
-                    if turtle.getFuelLevel() >= needed then
-                        return true
-                    end
-                end
-            end
-        end
-
-        return turtle.getFuelLevel() >= needed
-    end)
-
-    return guarded.ok and guarded.value == true
+    local ready = Refuel.toTarget(turtle, needed, config)
+    return ready == true
 end
 
 local function tryAutoRefuelCoal()
@@ -251,39 +201,13 @@ local function tryAutoRefuelCoal()
         return
     end
 
-    if level >= config.fuel_reserve then
+    if type(level) == "number" and level >= config.fuel_reserve then
         return
     end
 
-    local guarded = SlotGuard.run(turtle, function()
-        local refueled = false
+    local refueled = Refuel.toTarget(turtle, config.fuel_reserve, config)
 
-        for slot = 1, 16 do
-            local detail = turtle.getItemDetail(slot)
-
-            if detail and ItemPolicy.isFuel(detail.name, config) then
-                local usable = FuelItemValidation.verify(turtle, slot, config)
-                if usable then
-                    while turtle.getFuelLevel() < config.fuel_reserve
-                        and turtle.getItemCount(slot) > 0 do
-                        if turtle.refuel(1) ~= true then
-                            break
-                        end
-                    end
-
-                    refueled = true
-
-                    if turtle.getFuelLevel() >= config.fuel_reserve then
-                        break
-                    end
-                end
-            end
-        end
-
-        return refueled
-    end)
-
-    if guarded.ok and guarded.value then
+    if refueled then
         print(
             string.format(
                 "  [Fuel] Auto-refueled to %s",
@@ -1722,67 +1646,9 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
 
     local startedAt = os.epoch("utc") / 1000
 
-    local fuelLevel =
-        turtle.getFuelLevel()
-
-    local fuelNeeded =
-        getFuelNeeded()
-
     print("=== Fuel Check ===")
-
-    if resumeCursor then
-        print("Fuel: resume route commitment validated; each next move remains route-gated")
-
-    elseif FuelLevel.isUnlimited(fuelLevel) then
-
-        print(
-            "Fuel: unlimited (creative mode)"
-        )
-
-    else
-
-        print(
-            string.format(
-                "Current fuel: %d",
-                fuelLevel
-            )
-        )
-
-        print(
-            string.format(
-                "Estimated needed: %d",
-                fuelNeeded
-            )
-        )
-
-        if fuelLevel < fuelNeeded then
-
-            print("")
-            print(
-                "WARNING: Low fuel! Attempting to refuel..."
-            )
-
-            if not refuel(fuelNeeded) then
-
-                print(
-                    "Could not get enough fuel."
-                )
-
-                print("Stopping before movement: NO_FUEL")
-                persistenceError = "NO_FUEL"
-                return false
-
-            else
-
-                print(
-                string.format(
-                    "Refueled! New level: %s",
-                        FuelLevel.format(turtle.getFuelLevel())
-                    )
-                )
-            end
-        end
-    end
+    print("Current fuel: " .. FuelLevel.format(turtle.getFuelLevel()))
+    print("Each move checks the recorded route home plus reserve.")
 
     print("")
 
@@ -2338,7 +2204,8 @@ local function main(...)
             -- stair route before resuming from the preceding landing.
             local route = saved:floorLanding(snapshot.progress.floor)
             if not route or route.steps < 1
-                or route.entryMoves ~= 1 or route.steps ~= config.mining.stairSteps then
+                or route.entryMoves ~= 1
+                or route.steps ~= config.mining.stairStepsPerFloor then
                 print("Resume stopped safely: LANDING_ROUTE_INVALID")
                 return
             end
@@ -2354,6 +2221,25 @@ local function main(...)
             -- Service replays base -> checkpoint after resupply; its resupply
             -- admission also guarantees a checkpoint -> base return.
             resumeMoves = 2 * #targetHomePath
+        end
+        pos = snapshot.pose
+        knownRoute = snapshot.route
+        checkpoint = saved
+        if snapshot.progress.phase == "surface_entry" and not snapshot.service then
+            local suppliesReady, supplyCode
+            repeat
+                suppliesReady, supplyCode = prepareStartupSupplies()
+                if not suppliesReady and (supplyCode == "NO_FUEL_SUPPLY"
+                    or supplyCode == "NO_TORCHES") then
+                    print("Supply is short. Waiting at base; restock the left chest to resume.")
+                    sleep(5)
+                end
+            until suppliesReady or (supplyCode ~= "NO_FUEL_SUPPLY"
+                and supplyCode ~= "NO_TORCHES")
+            if not suppliesReady then
+                print("Resume stopped safely: " .. tostring(supplyCode))
+                return
+            end
         end
         local fuelTarget, fuelCode = ResumeCommitment.targetFuelForTrips(
             #homePath, resumeMoves, config.fuel_reserve, 1)

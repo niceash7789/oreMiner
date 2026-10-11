@@ -116,14 +116,45 @@ local function firstEmptySlot(api)
     return nil
 end
 
-local function dropCurrentSlot(api)
+local function returnCurrentExcess(api, excess)
+    if excess <= 0 then return true end
     local slot = api.getSelectedSlot()
     local before = type(slot) == "number" and api.getItemCount(slot) or nil
-    if type(before) ~= "number" or before <= 0
-        or api.drop() ~= true or api.getItemCount(slot) ~= 0 then
+    if type(before) ~= "number" or before < excess
+        or api.drop(excess) ~= true or api.getItemCount(slot) ~= before - excess then
         return false, "SUPPLY_RETURN_FAILED"
     end
     return true
+end
+
+local function capCurrentStack(api, total, quota)
+    if type(total) ~= "number" then return false, "SUPPLY_COUNT_UNAVAILABLE" end
+    local count = api.getItemCount(api.getSelectedSlot())
+    if type(count) ~= "number" or count < 0 then
+        return false, "SUPPLY_COUNT_UNAVAILABLE"
+    end
+    return returnCurrentExcess(api, math.min(count, math.max(0, total - quota)))
+end
+
+local function capOnboardFuel(api, config, quota)
+    local total = inventoryFuelCount(api, config)
+    if total == nil then return false, "SUPPLY_COUNT_UNAVAILABLE" end
+    for slot = 16, 1, -1 do
+        if total <= quota then break end
+        local detail = api.getItemDetail(slot)
+        if detail and ItemPolicy.isFuel(detail.name, config) then
+            if api.select(slot) ~= true then return false, "SUPPLY_SELECT_FAILED" end
+            local count = api.getItemCount(slot)
+            if type(count) ~= "number" or count < 0 then
+                return false, "SUPPLY_COUNT_UNAVAILABLE"
+            end
+            local excess = math.min(count, total - quota)
+            local returned, code = returnCurrentExcess(api, excess)
+            if not returned then return false, code end
+            total = total - excess
+        end
+    end
+    return total <= quota, "SUPPLY_RETURN_FAILED"
 end
 
 local function returnUnwantedSupply(api, count)
@@ -161,7 +192,7 @@ local function runUnsafe(options)
                 local torches = inventoryCount(api, "minecraft:torch")
                 if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
                 if torches > torchQuota then
-                    local returned, returnCode = dropCurrentSlot(api)
+                    local returned, returnCode = capCurrentStack(api, torches, torchQuota)
                     if not returned then return { ok = false, code = returnCode } end
                 end
             elseif not detail or not ItemPolicy.isFuel(detail.name, options.itemConfig) then
@@ -174,6 +205,10 @@ local function runUnsafe(options)
         end
     end
     if not fueled then return { ok = false, code = fuelCode or "NO_FUEL_SUPPLY" } end
+
+    local fuelQuota = inventory.fuelRetainedCount or 0
+    local cappedFuel, capCode = capOnboardFuel(api, options.itemConfig, fuelQuota)
+    if not cappedFuel then return { ok = false, code = capCode } end
 
     local torches = inventoryCount(api, "minecraft:torch")
     if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
@@ -199,11 +234,13 @@ local function runUnsafe(options)
         if detail and ItemPolicy.isFuel(detail.name, options.itemConfig) then
             local ok, code = refuelTo(api, options.itemConfig, options.targetFuel)
             if not ok then return { ok = false, code = code } end
+            local capped, fuelCapCode = capOnboardFuel(api, options.itemConfig, fuelQuota)
+            if not capped then return { ok = false, code = fuelCapCode } end
         elseif detail and detail.name == "minecraft:torch" then
             torches = inventoryCount(api, "minecraft:torch")
             if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
             if torches > torchQuota then
-                local returned, returnCode = dropCurrentSlot(api)
+                local returned, returnCode = capCurrentStack(api, torches, torchQuota)
                 if not returned then return { ok = false, code = returnCode } end
             end
         else
@@ -223,12 +260,6 @@ local function runUnsafe(options)
     -- Keep the configured physical emergency fuel quota onboard after filling
     -- the tank. This quota is distinct from the route commitment and may be
     -- consumed later by the movement safety policy.
-    local fuelQuota = type(options.itemConfig.inventory) == "table"
-        and options.itemConfig.inventory.fuelRetainedCount or 0
-    if type(fuelQuota) ~= "number" or fuelQuota < 0
-        or fuelQuota ~= math.floor(fuelQuota) then
-        return { ok = false, code = "INVALID_RESUPPLY_OPTIONS" }
-    end
     local onboardFuel = inventoryFuelCount(api, options.itemConfig)
     if onboardFuel == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
     local fuelPulls = 0
@@ -247,11 +278,15 @@ local function runUnsafe(options)
             local torchCount = inventoryCount(api, "minecraft:torch")
             if torchCount == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
             if torchCount > torchQuota then
-                local returned, returnCode = dropCurrentSlot(api)
+                local returned, returnCode = capCurrentStack(api, torchCount, torchQuota)
                 if not returned then return { ok = false, code = returnCode } end
             end
         elseif not ItemPolicy.isFuel(detail.name, options.itemConfig) then
             local returned, returnCode = returnUnwantedSupply(api, amount)
+            if not returned then return { ok = false, code = returnCode } end
+        else
+            local total = inventoryFuelCount(api, options.itemConfig)
+            local returned, returnCode = capCurrentStack(api, total, fuelQuota)
             if not returned then return { ok = false, code = returnCode } end
         end
         onboardFuel = inventoryFuelCount(api, options.itemConfig)
@@ -267,7 +302,7 @@ function Resupply.run(options)
     local valid, code = validateOptions(options)
     if not valid then return { ok = false, code = code } end
     local guarded = SlotGuard.run(options.turtle, function() return runUnsafe(options) end)
-    if not guarded.ok then return { ok = false, code = guarded.code } end
+    if not guarded.ok then return { ok = false, code = guarded.code, message = guarded.message } end
     return guarded.value
 end
 

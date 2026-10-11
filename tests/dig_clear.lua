@@ -122,4 +122,28 @@ local invalidInspection = DigClear.run({
 })
 assert(not invalidInspection.ok and invalidInspection.code == "INVALID_BLOCK_INSPECTION")
 
+local changingIdentityCalls = 0
+local alternating = DigClear.run({
+    maxAttempts = 1,
+    maxElapsed = 3,
+    detect = function() return true end,
+    inspect = function()
+        return { name = changingIdentityCalls % 2 == 0 and "minecraft:gravel"
+            or "minecraft:sand" }
+    end,
+    dig = function() changingIdentityCalls = changingIdentityCalls + 1; return true end,
+    now = function() return 0 end,
+})
+assert(not alternating.ok and alternating.code == "BLOCKED"
+    and alternating.attempts == 64 and changingIdentityCalls == 64,
+    "changing falling blocks must still obey a global dig bound")
+
+local invalidDetection = DigClear.run({
+    maxAttempts = 2, maxElapsed = 3,
+    detect = function() return nil end,
+    dig = function() error("invalid detection must stop before digging") end,
+    now = function() return 0 end,
+})
+assert(not invalidDetection.ok and invalidDetection.code == "INVALID_DETECTION_OUTCOME")
+
 print("dig_clear: ok")

@@ -54,8 +54,11 @@ local function run(order, torchTarget, minimumTorches, shouldSucceed)
             stacks[selected] = { name = nextItem.name, count = nextItem.count }
             return true
         end,
-        drop = function()
-            stacks[selected] = nil
+        drop = function(amount)
+            local stack = stacks[selected]
+            if not stack then return false end
+            stack.count = stack.count - (amount or stack.count)
+            if stack.count == 0 then stacks[selected] = nil end
             return true
         end,
     }
@@ -75,7 +78,7 @@ local function run(order, torchTarget, minimumTorches, shouldSucceed)
         assert(selected == 11, "failed resupply must restore the selected slot")
         return result
     end
-    assert(result.ok, result.code)
+    assert(result.ok, tostring(result.code) .. ": " .. tostring(result.message))
     assert(result.fuel >= 200 and result.torches >= (minimumTorches or 2))
     local onboardFuel = 0
     for slot = 1, 16 do
@@ -177,8 +180,11 @@ local quotaApi = {
         torchQuotaStacks[quotaSelected] = { name = item.name, count = item.count }
         return true
     end,
-    drop = function()
-        torchQuotaStacks[quotaSelected] = nil
+    drop = function(amount)
+        local stack = torchQuotaStacks[quotaSelected]
+        if not stack then return false end
+        stack.count = stack.count - (amount or stack.count)
+        if stack.count == 0 then torchQuotaStacks[quotaSelected] = nil end
         return true
     end,
 }

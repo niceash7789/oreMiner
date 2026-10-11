@@ -112,20 +112,6 @@ local function managedPath(path)
         or path:match("^src/.+%.lua$") ~= nil
 end
 
-local function activeRunAllowsPull(root)
-    local statePath = combine(root, "oreMiner/state.json")
-    if not fs.exists(statePath) then return true end
-    local raw = readFile(statePath)
-    local ok, state = pcall(textutils.unserialize, raw or "")
-    if not ok or type(state) ~= "table" then
-        return false, "Saved miner state is unreadable; refusing to update"
-    end
-    if state.status ~= "complete" then
-        return false, "A mining run is not complete; stop and recover it before pulling"
-    end
-    return true
-end
-
 local function selectFiles(tree)
     if tree.truncated then return nil, "GitHub tree response was truncated" end
     if type(tree.tree) ~= "table" then return nil, "GitHub tree response is invalid" end
@@ -257,9 +243,6 @@ local function pull()
     if not root then return false, "Not in an oreMiner repository (.git_config missing)" end
     local repository, configError = loadRepository(configPath)
     if not repository then return false, configError end
-    local allowed, stateError = activeRunAllowsPull(root)
-    if not allowed then return false, stateError end
-
     print("Checking " .. repository.repo .. " (" .. repository.branch .. ")...")
     local commit, commitError = request(GITHUB_API .. repository.repo
         .. "/commits/" .. repository.branch)

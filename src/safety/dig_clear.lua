@@ -47,8 +47,15 @@ function DigClear.run(options)
         if options.now() - started >= options.maxElapsed then
             return result(false, "BLOCKED", "Dig-clear time limit reached", attempts, dug)
         end
-        if not detected then
+        if type(detected) ~= "boolean" then
+            return result(false, "INVALID_DETECTION_OUTCOME",
+                "Dig-clear detection returned no boolean", attempts, dug)
+        end
+        if detected == false then
             return result(true, "NO_BLOCK", nil, attempts, dug)
+        end
+        if attempts >= MAX_ATTEMPTS then
+            return result(false, "BLOCKED", "Dig-clear global attempt limit reached", attempts, dug)
         end
 
         if options.inspect then
@@ -69,7 +76,7 @@ function DigClear.run(options)
 
         attempts = attempts + 1
         blockAttempts = blockAttempts + 1
-        if options.dig() then
+        if options.dig() == true then
             dug = dug + 1
             if options.onBlock then options.onBlock(lastBlock, attempts) end
             if options.wait then options.wait() end

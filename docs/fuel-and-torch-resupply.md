@@ -8,6 +8,8 @@ Before a new run leaves the surface, the coordinator faces and verifies the conf
 
 ## Public entry point
 
+The first durable startup snapshot carries a surface-entry cursor. After a reboot during a fuel or torch wait, `miner resume` rechecks the left supply chest before admitting any route move.
+
 - `require("src.inventory.resupply").run(options)` takes the turtle API, item policy, fuel target, torch target, minimum departure torch count, and optional pull limit. It validates finite non-negative integer quotas, a positive finite pull limit, and required API methods before calling the turtle; invalid input returns a structured error without changing selection or inventory. Valid calls return a structured result and restore the prior selected slot.
 - `require("src.fuel.item_validation").verify(api, slot, config)` verifies that a slot contains a configured fuel item, selects it, and requires literal `true` from `refuel(0)` without consuming an item. Active route and automatic reserve refuelling use this check before `refuel(1)`.
 - `require("src.fuel.resume_commitment").targetFuel(routeMoves, reserve, workStepMoves?)` validates and computes the resume fuel target; the default work step costs one move.

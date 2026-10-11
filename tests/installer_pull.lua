@@ -135,7 +135,10 @@ local function runPull(stateStatus)
         textutils = {
             unserialize = function(raw)
                 if raw == "CONFIG" then return repository end
-                if raw == "STATE" then return { status = stateStatus } end
+                if raw == "STATE" then
+                    if stateStatus == "unreadable" then error("invalid saved state") end
+                    return { status = stateStatus }
+                end
                 if raw == "SAVED_CONFIG" then return savedRepository end
                 error("unexpected serialized value")
             end,
@@ -183,10 +186,16 @@ assert(savedRepository.commit == "bbbbbbb" and #savedRepository.files == 5,
     "pull should persist the installed commit and managed file list")
 
 ok, reason, files, savedRepository, httpCalls = runPull("mining")
-assert(not ok and tostring(reason):find("not complete", 1, true),
-    "pull must refuse an incomplete mining run")
-assert(httpCalls == 0, "run-state refusal must happen before network access")
-assert(files["oreMiner/miner.lua"] == "OLD MINER", "refused pull must preserve live code")
+assert(ok, reason)
+assert(httpCalls > 0, "saved run state must not block network access")
+assert(files["oreMiner/oreMiner/state.json"] == "STATE", "pull must preserve incomplete saved state")
+assert(files["oreMiner/src/new.lua"] == 'return "src/new.lua"',
+    "pull must install runtime modules with incomplete saved state")
+
+ok, reason, files = runPull("unreadable")
+assert(ok, reason)
+assert(files["oreMiner/oreMiner/state.json"] == "STATE",
+    "pull must preserve saved state without requiring a valid status")
 
 local fsApi, bootstrapFiles = memoryFs({})
 local ranClient

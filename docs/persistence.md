@@ -42,6 +42,8 @@ Only minimal recovery data is stored: run ID/status, committed pose, known-route
 
 ## Public entry points
 
+Startup saves a `surface_entry / enter_surface` cursor before the first supply check. A reboot while waiting for fuel or torches can therefore be classified and resumed at the known origin. Recovery classifies a supply-short service snapshot by checking its exact mining target as an active cursor; it does not let the temporary supply error bypass route or pose validation. In-slice stair cursors remain unsupported, with a distinct refusal when a saved inverse stack is present.
+
 - `require("src.mining.cursor")` provides `initial`, `mainShaft`, `junction`, `branch`, `stairs`, `withWorkUnit`, and `validate`.
 - `require("src.persistence.physical_action").run(session, kind, direction, pose, route, config, invoke)` persists intent before one move, turn, or dig callback and commits/cancels only on a literal callback result.
 - `State.new(configSnapshot, pose, route, runId)`

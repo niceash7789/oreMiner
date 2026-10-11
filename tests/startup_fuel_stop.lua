@@ -92,5 +92,15 @@ local state = assert(load("return " .. saved))()
 assert(state.status == "mining" and state.pose.x == 0 and state.pose.y == 0
     and state.pose.z == 0 and state.pose.facing == 0,
     "temporary shortage should keep the saved run at its surface origin")
+local resumable, recoveryCode = require("src.persistence.recovery").classify(
+    state, "STATE_LOADED")
+assert(resumable and recoveryCode == "RESUME_SAFE_CHECKPOINT"
+    and state.progress.phase == "surface_entry",
+    "a reboot during startup supply wait must preserve a dispatchable surface cursor")
+local resumeChunk = assert(loadfile("src/branch_miner.lua", "t", environment))
+local resumed, resumeError = pcall(resumeChunk, "resume")
+assert(not resumed and tostring(resumeError):find("STOP_AFTER_FIRST_SUPPLY_WAIT", 1, true)
+    and waits == 2 and routeMoves == 0,
+    "resumed startup shortage must return to supply checks before route travel")
 
 print("startup fuel stop checks passed")

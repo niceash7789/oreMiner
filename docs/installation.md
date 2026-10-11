@@ -33,7 +33,7 @@ git pull
 ## Invariants and assumptions
 
 - Pull never downloads or replaces `config.lua`, `.git_config`, or anything under `oreMiner/`.
-- Pull refuses network access when `oreMiner/state.json` exists with a status other than `complete`, or when that state cannot be decoded.
+- Pull does not inspect `oreMiner/state.json`; it preserves the file even when a run is incomplete.
 - Every downloaded path is restricted to the runtime allowlist and checked for unsafe path components.
 - Every pull is internally consistent: the tree and raw files use one resolved commit SHA even though the test channel follows `main`.
 - There is no push, clean update, daemon, background service, token storage, networking between turtles, or fleet behavior.
@@ -42,7 +42,9 @@ git pull
 
 CC:Tweaked HTTP must be enabled, and the server must permit `api.github.com` and `raw.githubusercontent.com`. The GitHub repository must be public; authentication and private repositories are intentionally unsupported.
 
-This is a test-channel installer and follows `main`; a release should change the bootstrap to a release tag. Updating configuration schema is not automatic. If a newer example adds required fields, compare it with the retained `config.lua` and edit the live file explicitly. The installer cannot prove that no other multishell tab is executing code, so the operator must stop the miner before pulling; the saved-state check is an additional fail-closed guard, not process detection.
+This is a test-channel installer and follows `main`; a release should change the bootstrap to a release tag. Updating configuration schema is not automatic. If a newer example adds required fields, compare it with the retained `config.lua` and edit the live file explicitly. The installer cannot prove that no other multishell tab is executing code, so the operator must stop the miner before pulling.
 
-`tests/installer_pull.lua` supplies deterministic fake filesystem, HTTP, shell, and serialization APIs. It verifies the single bootstrap pull, runtime-only filtering, live config/state preservation, stale managed-file removal, installed-commit recording, and refusal before network access for an incomplete run.
+An installation still running an older `git.lua` may reject its own update when saved state is incomplete. After this change is published, rerun the bootstrap command above from the existing installation directory once to replace that client; it retains `config.lua` and saved state.
+
+`tests/installer_pull.lua` supplies deterministic fake filesystem, HTTP, shell, and serialization APIs. It verifies the single bootstrap pull, runtime-only filtering, live config/state preservation, stale managed-file removal, installed-commit recording, and pulling with an incomplete run state.
 

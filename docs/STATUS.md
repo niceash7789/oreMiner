@@ -1,5 +1,18 @@
 # Implementation status
 
+## Current handoff (2026-10-11)
+
+- Last completed checklist item: the software verification for the 3×4 stair slice and full active baseline has now run; plan rows that require physical geometry and torch confirmation remain open.
+- Next eligible unchecked item: complete the controlled-world stair and right-wall torch checks in `docs/home-test.md`, then record the measured outcome for the open geometry and M08 rows in `MINER_PLAN.md`.
+- This review changed `src/branch_miner.lua`, `src/fuel/refuel.lua`, `src/safety/dig_clear.lua`, `config.example.lua`, the focused startup, recovery, inventory, lighting, dig, and refuel tests, and their concern-specific docs. Other concurrent working-tree edits, including installer changes, were preserved.
+- Verification: 64 deterministic Lua tests passed; `luac -p` passed for 129 Lua files; `git diff --check` should be rerun after the final doc edit. No in-world release gate was performed.
+- Decisions and limitations: startup now saves a surface-entry cursor before supply waits and rechecks supplies on `miner resume`; onboard refuelling has a 1,024-item progress-verified limit; falling-block clearing has a 64-dig global limit. The full coordinator still eagerly loads many modules and is larger than the target module boundary. Its in-world movement, placement, and reboot behavior remains unverified.
+
+## Earlier handoff notes
+
+- Latest user-directed change (2026-10-11): the in-game `git pull` no longer reads or validates saved mining state before fetching an update. Existing `oreMiner/state.json` remains outside the managed file set. Updated `git.lua`, `tests/installer_pull.lua`, and `docs/installation.md`; no MINER_PLAN.md checklist item was changed. Focused test execution is pending Lua 5.4 availability; in-world behavior was not checked. The operator must stop the miner before pulling because this client cannot detect another active tab.
+- Last completed checklist item: unchanged by this pull-client change. Next eligible unchecked item: M08 route and lighting verification noted below. Next action for this change: run `tests/installer_pull.lua` with Lua 5.4, then try `git pull` on a stopped turtle with an incomplete saved state and confirm the state file remains intact.
+
 - Latest user-reported fix: vein traversal now converts the typed result from directional safe-dig helpers into the literal boolean contract it expects. The reference routine's dig helpers returned booleans; without this adapter, the ore was physically dug but the traversal treated the result object as failure and unwound early, leaving adjacent ore behind. `docs/vein-traversal.md` records the boundary. Focused Lua verification is pending runtime availability; no in-world check was performed.
 - Next action: run `tests/vein_traversal.lua` and `tests/active_baseline_wiring.lua` with Lua 5.4, then confirm in-world that adjacent ore is entered and the traversal returns to its exact checkpoint.
 

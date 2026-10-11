@@ -24,6 +24,8 @@ Before vein traversal digs a newly discovered ore candidate, `RoutePolicy.canExp
 
 ## Public entry points
 
+- `require("src.fuel.refuel").toTarget(api, target, config)` consumes only verified configured fuel, restores the selected slot, and requires both a falling stack count and rising tank level after each successful `refuel(1)`. It stops after at most 1,024 consumed items and returns `(ok, code)`. The coordinator uses it for route admission and automatic reserve refuelling.
+
 - `require("src.fuel.known_route").hasEdge(route, fromPose, toPose)`
 - `require("src.fuel.known_route").costHome(state)` returns `(moves, "KNOWN_ROUTE_COST")` or `(nil, reason)`.
 - `require("src.fuel.route_policy").canExplore(options)` for pre-dig vein admission.
