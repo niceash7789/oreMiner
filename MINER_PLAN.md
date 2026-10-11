@@ -35,7 +35,7 @@ The recommended V1 is a deliberately constrained multi-floor shaft miner:
 
 Use this route hierarchy in product requirements, operator messages, and new public APIs:
 
-1. **Stairs** — the 3-wide × 3-tall surface descent/ascent route. This replaces “staircase” and the old “shaft work” label.
+1. **Stairs** — the 3-wide × 4-tall surface descent/ascent route. This replaces “staircase” and the old “shaft work” label.
 2. **Floor** — one mining level reached from a stairs landing.
 3. **Main shaft** — the straight level route that starts at the centre of a floor's 3×3 landing and turns right from the stairs direction. This replaces “floor main tunnel.”
 4. **Shaft** — either paired left/right mining route perpendicular to the main shaft. This replaces “branch” or “branch tunnel.”
@@ -123,7 +123,7 @@ Cost-control workflow:
 
 ### Replace outright
 
-- [x] **MVP / P0** Replace the assumption that `(0,0,0)` is already on a mining floor with the four-block surface entry, 3-wide × 3-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block. `src/branch_miner.lua` runs each floor from a recorded landing centre; `tests/active_baseline_wiring.lua` verifies the configured four-floor descent, landing geometry, action cursors, and exact return to origin. Physical geometry remains an operator check. — **AI-2**
+- [ ] **MVP / P0** Replace the assumption that `(0,0,0)` is already on a mining floor with the four-block surface entry, 3-wide × 4-tall stairs, recorded flat 3×3 landings, and a main shaft that begins at each landing's centre block. `src/branch_miner.lua` runs each floor from a recorded landing centre; rerun `tests/active_baseline_wiring.lua` after the height change. Physical geometry remains an operator check. — **AI-2**
 - [x] **MVP / P0** Replace the single rear-chest service assumption with the required left supply/right primary-output layout and optional rear bulk routing. — **AI-2** The active service verifies exact chest IDs on each configured side and restores canonical facing.
 - [x] **MVP / P0** Replace direct coordinate-axis return from arbitrary positions with hierarchical route unwinding: vein to checkpoint, shaft to junction, main shaft to the landing centre, recorded stairs to surface origin. Veins unwind their breadcrumbs, branch traversal returns to its junction, the recorded known-route graph returns to the landing, and `StairRoute.returnToSurface` climbs recorded landing routes; deterministic route tests verify exact pose and fail-closed movement. — **AI-2**
 - [x] **MVP / P0** Replace recursive call-stack backtracking with an explicit, persisted route stack. `VeinTraversal.run` uses iterative frontier and inverse-route arrays; `src/persistence/checkpoint.lua` atomically stores/updates the vein route, frontier, and committed pose after each successful edge, while bounded local route actions use `ActionStack`. `tests/vein_traversal.lua`, `tests/persistence_state.lua`, and `tests/navigation_action_stack.lua` cover the implementation. Cross-reboot recovery unwinds saved active/unwinding breadcrumbs only when classifier evidence proves each inverse edge and exact checkpoint; entering and pending-action states remain refused under P03.
@@ -135,17 +135,17 @@ Cost-control workflow:
 
 ### Overall pattern
 
-The turtle begins on the surface. The initial facing defines the stairs direction. It first travels four level centreline blocks so the stair mouth is clear of the chests. It then mines eight three-by-three diagonal stair slices to the rear-centre edge of the first floor landing. It carves a flat 3×3 landing with three blocks of clear headroom, advances one level block to the landing centre, completes that floor's shaft grid, returns to the same centre, crosses the front-centre landing cell, and begins the next eight-slice descent. This repeats until `floorCount` floors are complete.
+The turtle begins on the surface. The initial facing defines the stairs direction. It first travels four level centreline blocks so the stair mouth is clear of the chests. It then mines eight 3-wide by 4-tall diagonal stair slices to the rear-centre edge of the first floor landing. It carves a flat 3×3 landing with three blocks of clear headroom, advances one level block to the landing centre, completes that floor's shaft grid, returns to the same centre, crosses the front-centre landing cell, and begins the next eight-slice descent. This repeats until `floorCount` floors are complete.
 
 One stair slice is a deterministic excavation sweep:
 
 1. From the current centre-bottom checkpoint, clear and move forward into the middle of the target slice.
-2. Clear the centre block above and below.
-3. Sweep into the left column, clear its upper and lower blocks, and return to centre.
-4. Sweep into the right column, clear its upper and lower blocks, optionally carve/place a torch in a niche beyond the outer right wall, and return to centre. Skip torch placement on a landing slice so the right-turn floor entrance remains clear.
+2. Clear the centre block below and two blocks above, using a checked up/down move to clear the fourth cell.
+3. Sweep into the left column, clear one block below and two above, and return to centre.
+4. Sweep into the right column, clear one block below and two above, optionally carve/place a torch in a niche beyond the outer right wall, and return to centre. Skip torch placement on a landing slice so the right-turn floor entrance remains clear.
 5. Restore the stairs facing and move down into the target slice's centre-bottom checkpoint.
 
-The lateral sweep creates a 3-wide × 3-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the completed eighth slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry and default interval, the landing centres are 13 blocks forward/8 blocks down for floor 1 and 23 blocks forward/16 blocks down for floor 2. In general, floor `n` has depth `-n * stairStepsPerFloor` and centreline forward offset `surfaceEntryLength + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
+The lateral sweep creates a 3-wide × 4-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the completed eighth slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry and default interval, the landing centres are 13 blocks forward/8 blocks down for floor 1 and 23 blocks forward/16 blocks down for floor 2. In general, floor `n` has depth `-n * stairStepsPerFloor` and centreline forward offset `surfaceEntryLength + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
 
 “Right-hand side” is defined by the planned outbound direction of that route, not whichever way the turtle happens to face while returning. Stair torches go on the outer right wall relative to the descent direction. Main-shaft and shaft torches go on the right wall relative to their outbound mining direction. Return and service travel never places torches.
 
@@ -163,7 +163,7 @@ Surface/base  T____
                                  r-c-f  -> floor 2 landing
 
 The level surface entry is 4 blocks long.
-Each carved stair slice is 3 wide × 3 tall and advances forward/down by 1.
+Each carved stair slice is 3 wide × 4 tall and advances forward/down by 1.
 Each landing floor is exactly 8 blocks below the previous landing.
 r/c/f are the rear-centre, canonical centre, and front-centre cells of a flat 3×3 landing.
 ```
@@ -171,7 +171,7 @@ r/c/f are the rear-centre, canonical centre, and front-centre cells of a flat 3�
 The lifecycle for each floor is:
 
 1. On the first descent, travel `surfaceEntryLength` level blocks from base to the stair mouth.
-2. Descend `stairStepsPerFloor` recorded 3×3 stair slices to the landing's rear-centre cell, carve the flat 3×3 landing, and move level to its centre.
+2. Descend `stairStepsPerFloor` recorded 3×4 stair slices to the landing's rear-centre cell, carve the flat 3×3 landing, and move level to its centre.
 3. Save and assert the centre landing pose, face right, and begin that floor's main shaft from that same centre block.
 4. At each junction, mine one complete shaft and return before starting the other.
 5. Complete every configured shaft pair on that floor.
@@ -199,8 +199,8 @@ Recommended defaults:
 |---|---:|---|
 | Floor count | 4 | Bounded initial multi-floor job; configurable. |
 | Vertical interval | 8 | Matches the requested first floor at depth 8 and provides clear separation between two-high floor tunnels. |
-| Surface entry | 4 level blocks | Keeps the 3×3 stair mouth clear of the base chests. |
-| Stair cross-section | 3 wide × 3 tall | Requested spacious access route, carved by a deterministic slice sweep. |
+| Surface entry | 4 level blocks | Keeps the 3×4 stair mouth clear of the base chests. |
+| Stair cross-section | 3 wide × 4 tall | Requested spacious access route, carved by a deterministic slice sweep. |
 | Stair centreline | Net 1 forward + 1 down per slice | Deterministic and exactly reversible without pathfinding. |
 | Floor main direction | Right from landing | Keeps the branch grid separate from the staircase column and makes every landing identical. |
 | Main tunnel | 1 wide × 2 high | Minimum excavation with safe player/turtle access. |
@@ -218,14 +218,14 @@ Spacing semantics must be documented precisely. With centreline spacing 3, adjac
 ### V1 geometry constraints
 
 - The surface entry is straight and level for exactly four blocks.
-- The staircase is straight, 3 wide, and 3 tall. Each slice restores the turtle to the centre-bottom lane and advances that lane exactly one block forward and down; V1 does not build turns or switchbacks.
+- The staircase is straight, 3 wide, and 4 tall. Each slice restores the turtle to the centre-bottom lane and advances that lane exactly one block forward and down; V1 does not build turns or switchbacks.
 - The first landing is `surfaceEntryLength + stairStepsPerFloor` blocks forward and `stairStepsPerFloor` blocks below base. Later landings add one forward/down displacement per stair slice.
 - Every floor main tunnel turns right from the staircase and is straight and level.
 - Every branch is straight, level, and perpendicular to its floor's main tunnel.
 - A floor is considered complete only after every configured branch pair and the final upper main scan have returned to the landing.
 - Only one active branch excursion exists at a time.
 - The turtle does not route around bedrock, liquids, protected blocks, or player construction.
-- Bounded 3×3 slice sweeps and vein motion are the only non-centreline excursions, and every successful movement records its inverse.
+- Bounded 3×4 slice sweeps and vein motion are the only non-centreline excursions, and every successful movement records its inverse.
 - Home remains the surface pose `(0,0,0)`, between the required left/right chests; the optional bulk chest is behind the turtle's initial facing.
 
 These constraints are features: they make safe return possible without generic pathfinding or GPS.
@@ -243,7 +243,7 @@ return {
     surfaceEntryLength = 4,
     stairStepsPerFloor = 8,
     stairWidth = 3,
-    stairHeight = 3,
+    stairHeight = 4,
     floorMainTurn = "right",
     branchLength = 30,
     branchPairs = 20,
@@ -341,7 +341,7 @@ Configuration rules:
 
 - [x] **MVP / P0** Reject non-integers, non-positive floor/step/branch counts and lengths, spacing below 2, thresholds outside `1..15`, and negative reserves/quotas. `src.config.numeric_validation.validate` checks active and nested-schema settings before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Require `stairStepsPerFloor = 8` in V1. Keep it configurable in the schema for later validation/testing, but do not silently accept a geometry the implementation has not proved. `src.config.numeric_validation.validate` rejects any supplied value other than 8 before run confirmation; deterministic numeric validation tests pass. — **AI-2**
-- [x] **MVP / P0** Require `surfaceEntryLength = 4`, `stairWidth = 3`, and `stairHeight = 3` in V1 rather than pretending the first implementation supports arbitrary stair geometry. `src.config.numeric_validation.validate` rejects any supplied value other than the fixed geometry before run confirmation; deterministic numeric validation tests pass. — **AI-2**
+- [ ] **MVP / P0** Require `surfaceEntryLength = 4`, `stairWidth = 3`, and `stairHeight = 4` in V1 rather than pretending the first implementation supports arbitrary stair geometry. `src.config.numeric_validation.validate` rejects any supplied value other than the fixed geometry before run confirmation; rerun deterministic numeric validation after this geometry change. — **AI-2**
 - [x] **MVP / P0** Require `floorMainTurn = "right"` in V1 so landing orientation and return routes stay canonical. `src.config.numeric_validation.validate` rejects any supplied unsupported value before run confirmation; deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Require supply left, primary output right, and optional bulk output behind relative to the initial surface facing. `src.config.numeric_validation.validate` rejects any supplied unsupported `base` side before run confirmation; omitted fields remain valid during config migration. Deterministic numeric validation tests pass. — **AI-2**
 - [x] **MVP / P0** Require `lighting.side = "right"`; other sides are not supported until their route-frame semantics are tested. `src.config.numeric_validation.validate` rejects any other supplied side before run confirmation; deterministic numeric validation tests pass. — **AI-2**
@@ -432,7 +432,7 @@ State invariants:
 - `progress.workDomain` and `workUnitId` identify the bounded local job. V1 has one executor and never assigns this work to another turtle.
 - `progress.nextAction` describes what has not yet been completed; this avoids duplicating or skipping a stair step, floor, branch, or scan after resume.
 - `landing.pose` is the canonical entry/exit pose for the active floor and never moves while that floor is active.
-- `staircase.landings` and the recorded stair route must agree with the four-block entry and configured 3×3, one-forward/one-down slice geometry.
+- `staircase.landings` and the recorded stairs route must agree with the four-block entry and configured 3×4, one-forward/one-down slice geometry.
 - `oreCandidates` found during a shaft sweep are consumed locally only after the slice reaches its canonical checkpoint.
 - A non-empty `pendingAction` means a crash may have occurred between intent and commit. Automatic movement is prohibited until certainty is restored.
 - A service trip never overwrites the saved mining checkpoint.
@@ -481,7 +481,7 @@ Use two distinct mechanisms rather than a general pathfinder:
 
 Home routing order is mandatory:
 
-1. If in a temporary 3×3 slice sweep, unwind its local movement stack to the last committed centre-bottom staircase checkpoint.
+1. If in a temporary 3×4 slice sweep, unwind its local movement stack to the last committed centre-bottom stairs checkpoint.
 2. If in a vein, unwind the exact excursion route to the saved tunnel checkpoint.
 3. If in a branch, follow its cleared axis to its junction at the correct scan level, then normalise to `y=0` at the junction.
 4. Follow the cleared floor main-tunnel axis to that floor's landing.
@@ -499,7 +499,7 @@ Navigation backlog:
 - [x] **MVP / P0** Implement `face(targetFacing)` using the fewest checked turns. — **AI-2** `Turn.face` uses zero, one, or two checked turns and verifies each resulting facing.
 - [x] **MVP / P0** Implement reversible action records and inverse mapping. `src/navigation/action_stack.lua` records successful local actions, maps all supported inverses, and preserves the failed record when checked LIFO unwind stops. — **AI-2**
 - [x] **MVP / P0** Implement the four-block surface-entry route and its exact reverse. `src.navigation.surface_entry` executes four checked forward moves and accepts only the calculated mouth pose for the four-move, non-digging reverse. — **AI-2**
-- [x] **MVP / P0** Implement a checked 3×3 stair-slice sweep that restores centreline pose before moving down. `src.navigation.stair_slice` clears the nine-cell cross-section through checked callbacks and asserts the canonical end pose. — **AI-2**
+- [ ] **MVP / P0** Implement a checked 3×4 stair-slice sweep that restores centreline pose before moving down. `src.navigation.stair_slice` clears the twelve-cell cross-section through checked callbacks and asserts the canonical end pose; rerun its geometry and failure tests.
 - [x] **MVP / P0** Implement the exact inverse centreline climb: move up, then back, with no new digging on a known-clear staircase. `StairSlice.climb` performs only those two checked moves and is covered by a zero-clear assertion. — **AI-2**
 - [x] **MVP / P0** Treat every lateral carving move as a reversible sub-action and assert centre-bottom pose/facing at the end of each slice. Each left/right excursion uses a strict LIFO action stack and deterministic pose checks. — **AI-2**
 - [x] **MVP / P0** Record and assert every floor landing pose. `StairRoute.descend` asserts the canonical landing centre and `Checkpoint.recordFloorLanding` validates and persists every floor landmark against the route graph; the integrated multi-floor fake-turtle run verifies floor 1 and floor 4 geometry. — **AI-2**
@@ -656,7 +656,7 @@ CC:Tweaked block inspection can provide a block name, state, and tags. Classific
 
 The built-in defaults should be deliberately small. Use common ore tags when present, the `_ore` suffix as a fallback, and explicit overrides. Do not embed a modpack catalogue.
 
-Ore discovery may occur during floor work, but V1 does not scan or mine ore during the stairs descent. For each floor main-shaft cell, inspect its four adjacent faces, queue any classified candidates without digging them, then execute the queue on the same turtle from the unchanged committed cell pose before advancing to the next route cell. This keeps ore work off temporary excursions and gives the queue an exact known-route checkpoint without confusing one-wide floor geometry with the 3×3 stairs sweep. No remote assignment or second turtle exists in V1.
+Ore discovery may occur during floor work, but V1 does not scan or mine ore during the stairs descent. For each floor main-shaft cell, inspect its four adjacent faces, queue any classified candidates without digging them, then execute the queue on the same turtle from the unchanged committed cell pose before advancing to the next route cell. This keeps ore work off temporary excursions and gives the queue an exact known-route checkpoint without confusing one-wide floor geometry with the 3×4 stairs sweep. No remote assignment or second turtle exists in V1.
 
 ### Iterative vein traversal
 
@@ -744,7 +744,7 @@ The default cadence is every four stair slices and every eight floor-tunnel bloc
 
 - [x] **MVP / P0** Implement a route-frame right-side helper independent of current facing. `Lighting.rightSide` returns the adjacent pose and absolute right heading; `tests/lighting_right_wall.lua` covers all route and current facings. — **AI-2**
 - [x] **MVP / P0** Implement right-side torch/niche placement with exact pose/facing restoration. `Lighting.placeRight` restores facing through checked turns and, when supplied, verifies the live committed pose; the coordinator supplies that callback. `tests/lighting_right_wall.lua` covers all headings and injected coordinate drift. Persistent duplicate suppression remains a separate unchecked requirement. — **AI-2**
-- [x] **MVP / P0** Place staircase torches only on the outer right wall, never in the cleared 3×3 passage. `StairSlice` completes the cleared passage before the outer-right placement and unwinds its recorded approach on failure; `tests/navigation_stair_slice.lua` and `tests/active_baseline_wiring.lua` verify geometry and restoration. — **AI-2**
+- [ ] **MVP / P0** Place stair torches only on the outer right wall, never in the cleared 3×4 passage. `StairSlice` completes the cleared passage before the outer-right placement and unwinds its recorded approach on failure; rerun the slice and active-baseline tests after the geometry change.
 - [x] **MVP / P0** Skip torch placement on every landing slice so the right-turn floor entrance remains unobstructed. `StairRoute` suppresses placement on the final slice; `tests/stair_route.lua` verifies cadence and landing exclusion. — **AI-2**
 - [x] **MVP / P0** Place floor-main and branch torches only on their outbound right wall. The coordinator uses each route's fixed outbound frame; `tests/active_baseline_wiring.lua` verifies both branch headings and the main route. — **AI-2**
 - [x] **MVP / P1** Apply the configured stair/tunnel intervals by route distance, not global move count. `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` cover configured cadence. — **AI-1**
@@ -852,7 +852,7 @@ V1 is strictly single-turtle: the same turtle executes every phase in sequence a
 
 Internally, keep these work domains explicit so they can become dedicated roles later:
 
-- **Shaft work:** surface entry, 3×3 staircase slices, landings, and verified climb route.
+- **Stairs route:** surface entry, 3×4 staircase slices, landings, and verified climb route.
 - **Floor work:** level main tunnel, junctions, branches, and floor completion.
 - **Ore-gathering work:** exposed-block classification, bounded vein excursions, and checkpoint unwind.
 - **Hauling/service work:** return routes, chest routing, fuel, torches, and resume delivery.
@@ -894,7 +894,7 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 ### Pattern miner
 
 - [x] **MVP / P1 — M01** Implement the explicit mining phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between main-shaft, junction, branch outbound, turnaround, upper/lower return, and junction restoration phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
-- [x] **MVP / P0 — S01** Implement the 3×3 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2** `src/navigation/stair_slice.lua` sweeps each three-cell column, unwinds lateral moves, and provides a non-digging inverse climb; `tests/navigation_stair_slice.lua` verifies geometry, pose, and failure unwind.
+- [ ] **MVP / P0 — S01** Implement the 3×4 stair-slice sweep, centreline descent, and exact inverse climb. — **AI-2** `src/navigation/stair_slice.lua` sweeps each three-cell column, clears four vertical cells with a checked reversible rise, unwinds lateral moves, and provides a non-digging inverse climb; rerun `tests/navigation_stair_slice.lua`.
 - [x] **MVP / P0 — S02** Move four surface blocks, descend exactly eight slices, then assert and save the first floor landing. `src/navigation/stair_route.lua` composes the fixed surface entry, configured slice count, landing carve, and pose assertions; the active coordinator persists stair cursors and landing routes. `tests/active_baseline_wiring.lua` verifies floor 1 at `(0,-8,-13)` and the configured floor 4 landing. — **AI-2**
 - [x] **MVP / P0 — S03** Return from a landing to the surface using only the recorded staircase. `StairRoute.returnToSurface` follows the recorded segment in reverse with movement-only callbacks; the active coordinator climbs segments from deepest floor to surface, and the full fake-turtle run ends at the exact origin/facing. — **AI-2**
 - [x] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. `StairRoute.resumeToLanding` validates the entire saved route chain before movement, replays only checked clear-centreline moves, and stops on the first failed or inconsistent pose; `tests/stair_resume.lua` covers success, malformed/incomplete routes, and movement failure. Coordinator startup still refuses incomplete snapshots pending the safe resume command/checkpoint integration. — **AI-2**
@@ -966,7 +966,7 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 | F05 bounded recovery | F03 | Recovery acts through the only movement authority. |
 | F06 fuel invariant | F03, route-cost functions | Every move must be gated consistently. |
 | M01 phase machine | F01, F03, F07, F08 | Mining must use stable state and failure contracts. |
-| S01 stair primitive | F03, F05, F06 | Each 3×3 slice is a checked, reversible lateral sweep plus a fuel-gated centreline descent. |
+| S01 stair primitive | F03, F05, F06 | Each 3×4 slice is a checked, reversible lateral and vertical sweep plus a fuel-gated centreline descent. |
 | S02/S03 landings and climb | S01, M01 | Landing identity and the inverse route belong to the phase machine. |
 | M02 floor main tunnel | S02, M01 | A floor may begin only from an asserted landing. |
 | M03/M04 branches | M01, M02 | Branches build on the straight-tunnel primitive. |
@@ -1006,7 +1006,7 @@ V1 is complete only when all of these work together:
 - Exact local pose tracking from a declared origin.
 - Validated file configuration and a CLI usable on a normal grey Mining Turtle.
 - Strictly one turtle executing shaft, floor, ore, and service work sequentially.
-- Surface start, four-block level entry, deterministic 3-wide × 3-tall staircase, and a landing every eight blocks of depth.
+- Surface start, four-block level entry, deterministic 3-wide × 4-tall staircase, and a landing every eight blocks of depth.
 - A configurable bounded number of floors, completed sequentially.
 - On every floor, a right-turn two-high main tunnel and paired two-high branches using the constrained geometry.
 - Main/branch ore scans and bounded iterative vein mining.
@@ -1042,7 +1042,7 @@ V1 is complete only when all of these work together:
 - [x] `face()` chooses and records the correct checked turns. — **AI-1** `src/navigation/turn.lua` sequences the shortest checked turns through the coordinator's persistent turn boundary; `tests/navigation_face.lua` covers all facing pairs, failure stopping, and committed pose tracking.
 - [x] Inverse route mapping and LIFO unwind. — **AI-2** `src/navigation/action_stack.lua` owns the six-action inverse map and removes records only after literal-success LIFO application; `tests/navigation_action_stack.lua` verifies ordering, invalid actions, and resumable failure state.
 - [x] Exact route-home cost for surface entry, stair slice sub-phases, every floor-mining phase, and vein depth. `KnownRoute.costHome` prices the recorded home graph for any phase and validates the active vein inverse route; it also refuses uncertain or pending-action states with `POSITION_UNCERTAIN`. `tests/known_route_fuel.lua` verifies exact costs and uncertainty refusal. — **AI-2**
-- [x] 3×3 stair-slice target coordinates and centre-bottom/facing postcondition for all four staircase facings. `tests/navigation_stair_slice.lua` runs translated poses at all four facings, checks each route-relative target cell and the exact forward/down centre-bottom endpoint, plus existing injected movement failures. — **AI-2**
+- [ ] 3×4 stair-slice target coordinates and centre-bottom/facing postcondition for all four stairs facings. `tests/navigation_stair_slice.lua` checks each route-relative cell and exact forward/down endpoint for all four facings, plus injected movement failures; rerun after the geometry change.
 - [x] Route-frame right-side calculation remains stable during return-facing changes. `Lighting.rightSide` derives the target from the saved outbound frame; `tests/lighting_right_wall.lua` checks all 16 outbound/current-facing combinations and exact pose restoration after placement. — **AI-1**
 - [x] Unlimited-fuel handling never performs numeric comparisons or formatting. — **AI-1**
 - [x] Refuel policy consumes only permitted items and restores selected slot. `FuelItemValidation.verify` requires the configured item ID and literal `refuel(0)` success; active refuel runs under `SlotGuard`, whose success/failure restoration is covered by its focused tests. `tests/fuel_item_validation.lua` and `tests/inventory_slot_guard.lua` pass. — **AI-1**
@@ -1065,9 +1065,9 @@ V1 is complete only when all of these work together:
 ### Mock/simulator tests
 
 - [x] Move four level blocks from base, reverse them, and return to exact origin/facing. `tests/navigation_surface_entry.lua` checks exact four-move entry/reverse for all facings, records route edges, and injects outward/return movement failures without advancing pose.
-- [x] Carve one 3×3 stair slice and verify all nine target cells are clear. `tests/navigation_stair_slice.lua` verifies the nine route-relative cells and exact centre-bottom endpoint for all four facings, plus bounded failure unwinds.
-- [x] Finish each stair-slice sub-phase at the expected pose and restore centre-bottom/facing. `tests/navigation_stair_slice.lua` checks all clear sub-phase poses and headings for each facing, including centre restoration before the next lateral sweep. — **AI-1**
-- [x] Descend eight slices and verify floor 1 landing at depth `y=-8` and forward offset 12 from base. `tests/stair_route.lua` checks the rear and landing centre poses after eight slices plus the fixed entry; `tests/floor_landing.lua` checks the 3×3 landing carve. — **AI-1**
+- [ ] Carve one 3×4 stair slice and verify all twelve target cells are clear. `tests/navigation_stair_slice.lua` verifies the twelve route-relative cells and exact centre-bottom endpoint for all four facings, plus bounded failure unwinds; rerun after the geometry change.
+- [ ] Finish each stair-slice sub-phase at the expected pose and restore centre-bottom/facing. `tests/navigation_stair_slice.lua` checks all clear sub-phase poses and headings for each facing, including centre restoration before the next lateral sweep; rerun after the geometry change.
+- [ ] Descend eight slices and verify floor 1 landing at depth `y=-8` and forward offset 12 from base. `tests/stair_route.lua` checks the rear and landing centre poses after eight slices plus the fixed entry; rerun after the geometry change. — **AI-1**
 - [x] Complete floor 1, descend eight more slices, and verify floor 2 landing at `y=-16` and forward offset 20. `tests/stair_route.lua` checks the second landing from the prior recorded landing, including the crossing and eight-slice segment. — **AI-1**
 - [x] Climb from floors 1 and 2 through the stair centreline and four-block entry to exact base pose. `tests/stair_route.lua` composes the recorded floor 2 and floor 1 returns through the surface entry and asserts exact origin pose/facing; it also stops immediately on an injected inverse movement failure. — **AI-1**
 - [x] Mine a 10-block main tunnel and finish at the expected pose. `tests/navigation_main_shaft.lua` checks the 10-block endpoint and exact canonical landing return for all four stair facings. — **AI-1**
@@ -1098,7 +1098,7 @@ V1 is complete only when all of these work together:
 - [ ] Clear a transient entity and stop on a persistent entity. — **AI-1**
 - [ ] Stop safely on suspected water/lava/unknown non-solid obstruction. — **AI-1**
 - [ ] Place stair, main, and left/right branch torches only on the planned outbound right wall. — **AI-1**
-- [ ] Keep all nine staircase passage cells clear at torch slices and place no torch at a landing slice. — **AI-1**
+- [ ] Keep all twelve stairs passage cells clear at torch slices and place no torch at a landing slice. — **AI-1**
 - [ ] Resume across a torch checkpoint without placing a duplicate. — **AI-1**
 - [ ] Find ore in wall, floor, ceiling, and forward excavation. — **AI-1**
 - [ ] Traverse a branching six-direction vein and restore checkpoint orientation. — **AI-1**
@@ -1117,13 +1117,13 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 
 - [ ] Confirm the physical origin/facing, left fuel/torch chest, right ore/output chest, and optional rear bulk chest. — **AI-1**
 - [ ] Move exactly four blocks forward before beginning any descent. — **AI-1**
-- [ ] Carve a measured 3-wide × 3-tall stair slice without leaving stray blocks in the passage. — **AI-1**
+- [ ] Carve a measured 3-wide × 4-tall stair slice without leaving stray blocks in the passage. — **AI-1**
 - [ ] Reach the first floor exactly eight blocks below the surface, complete it, and reach the second floor exactly eight blocks lower. — **AI-1**
 - [ ] Verify the turtle returns to each floor landing before continuing the staircase. — **AI-1**
 - [ ] Mine a 10-block main tunnel. — **AI-1**
 - [ ] Mine one left branch. — **AI-1**
 - [ ] Mine one right branch. — **AI-1**
-- [ ] Verify floor main/branch tunnels are two blocks high and one block wide; verify only the staircase is 3×3. — **AI-1**
+- [ ] Verify floor main/branch tunnels are two blocks high and one block wide; verify only the stairs route is 3×4. — **AI-1**
 - [ ] Verify spacing 3 produces the intended two solid rows between branch centrelines. — **AI-1**
 - [ ] Return home from main tunnel. — **AI-1**
 - [ ] Return home from left branch lower outbound phase. — **AI-1**
@@ -1156,13 +1156,13 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [ ] Simulate/construct a pending-action state and verify the turtle refuses automatic recovery. — **AI-1**
 - [ ] Encounter water and lava in isolated, controlled tests and verify no blind continuation. — **AI-1**
 - [ ] Verify every placed torch is on the route-defined right wall, including left and right branches. — **AI-1**
-- [ ] Verify stair torches use outer-right niches and never block the 3×3 passage or right-turn floor entrance. — **AI-1**
+- [ ] Verify stair torches use outer-right niches and never block the 3×4 passage or right-turn floor entrance. — **AI-1**
 - [ ] Complete a short job, perform the final main upper scan, and finish at origin. — **AI-1**
 
 ### Release gates
 
 - **Gate A — navigation:** 1,000+ mocked random valid moves/turns with pose equal to the simulated world pose; all injected failures leave pose unchanged.
-- **Gate B — pattern:** the four-block entry, every 3×3 stair slice, two sequential floor landings, and floor phases finish at their asserted canonical poses.
+- **Gate B — pattern:** the four-block entry, every 3×4 stair slice, two sequential floor landings, and floor phases finish at their asserted canonical poses.
 - **Gate C — service loop:** threshold, stair climb, classified unload, fuel/torch resupply, descent, resume, and completion pass for stair/main/left/right/upper checkpoints.
 - **Gate D — vein:** all cap, failure, low-fuel, and mid-vein inventory cases return exactly to checkpoint or stop without claiming success.
 - **Gate E — recovery:** crash injection across every persisted boundary either resumes deterministically or produces a safe certainty/error stop.
@@ -1180,7 +1180,7 @@ Gate A–E are software-verifiable and must pass the deterministic test suite be
 6. **CC:Tweaked/modpack variation.** Tags, chest block IDs, fuel items, and liquid inspection can vary. Configuration and fail-closed behaviour are safer than clever assumptions.
 7. **External world changes.** Players, mobs, flowing blocks, or protection mods can alter a previously clear route. Bounded recovery must not silently create an alternate route.
 8. **State-machine idempotence.** Persisting “current offset” without defining whether that step is completed causes duplicated or skipped work. Store `nextAction` and test every reboot boundary.
-9. **3×3 stair-slice complexity.** Each net depth step requires a lateral excavation sweep and exact centreline restoration. Every sweep sub-phase needs its own failure/restart test.
+9. **3×4 stair-slice complexity.** Each net depth step requires lateral excavation and a reversible vertical clearance move, with exact centreline restoration. Every sweep sub-phase needs its own failure/restart test.
 10. **Mixed fuel/torch supply ordering.** Basic `suck` cannot request a specific chest slot. V1 needs a strict two-category chest contract, bounded extraction attempts, and safe base stop when a quota is unreachable.
 11. **Multi-floor fuel growth.** Travel cost rises by at least 16 centreline moves per completed floor segment, plus four surface-entry moves and the active floor route. Deep-floor departure checks must include the full round trip.
 12. **Torch-frame mistakes.** “Right” must come from the route's outbound frame, not current facing, or return passes will place torches on alternating sides.
@@ -1198,7 +1198,7 @@ This should be the first implementation milestone and the first approval boundar
 - [x] Implement checked movement/turn wrappers. — **AI-1**
 - [x] Implement bounded forward clearing/entity recovery. `ForwardRecovery` retries only physical forward failures, uses the bounded dig-clear policy for solid blocks, and stops with `ENTITY_BLOCKED` after the entity retry budget; `tests/forward_recovery.lua` covers the bounds and denial paths. — **AI-1**
 - [x] Implement route-cost fuel checks. — **AI-2**
-- [x] Implement and prove one complete 3×3 stair-slice sweep, centreline restoration, and inverse climb in tests. `tests/navigation_stair_slice.lua` verifies all nine cells, exact forward/down displacement, lateral failure unwind, and the non-digging up/back inverse. — **AI-1**
+- [ ] Implement and prove one complete 3×4 stair-slice sweep, centreline restoration, and inverse climb in tests. `tests/navigation_stair_slice.lua` verifies all twelve cells, exact forward/down displacement, lateral and vertical failure unwind, and the non-digging up/back inverse; rerun after the geometry change.
 - [x] Prove the four-block surface entry and return-to-origin route entirely in tests. `tests/navigation_surface_entry.lua` checks exact mouth/origin poses for all facings and immediate stops on outward and return movement failures. — **AI-1**
 - [x] Do not implement veins, unloading, or full mining loops yet. Milestone 1 remains limited to navigation safety modules and deterministic tests. — **AI-1**
 
@@ -1208,7 +1208,7 @@ Exit criterion: injected movement failures, low fuel, and obstructions can never
 
 - [x] Add validated configuration. `tests/config_loader.lua` covers full-schema validation/normalization and `tests/config_startup.lua` proves invalid configuration stops before every turtle API. — **AI-1**
 - [x] Add the explicit phase state machine. `src/mining/phase_machine.lua` defines immutable, validated transitions between the active baseline phases; `tests/mining_phase_machine.lua` verifies valid and invalid events plus cursor immutability. — **AI-1**
-- [x] Descend eight 3×3 slices to floor 1, save the landing, and later continue to floor 2. `StairRoute.descend` composes surface entry, eight checked slices, landing preparation, durable landing recording, and repeated-floor descent; `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` verify exact poses and saved routes. — **AI-1**
+- [ ] Descend eight 3×4 slices to floor 1, save the landing, and later continue to floor 2. `StairRoute.descend` composes surface entry, eight checked slices, landing preparation, durable landing recording, and repeated-floor descent; rerun `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` after the geometry change.
 - [x] Mine floor main/left/right geometry with canonical-pose assertions. Verified by M02–M05 geometry and active wiring checks above. — **AI-1**
 - [x] Return each completed floor to its exact landing before descending again. The active coordinator checks the recorded landing pose/facing before it advances; `tests/active_baseline_wiring.lua` checks four floors and exact surface return. — **AI-1**
 - [x] Add interval torch placement on the route-defined right wall. Focused lighting, stair-cadence, and active-baseline tests pass; physical placement remains an operator check. — **AI-1**
@@ -1271,7 +1271,7 @@ None of these items should add networking code, multiple active workers, or flee
 
 - [x] Approve branch length 30, 20 branch pairs, and centreline spacing 3. The 30-block default preserves the active/reference baseline; validated configuration may select another supported positive length. — **AI-1**
 - [ ] Approve paired left/right branches and the two-level scan route. — **AI-1**
-- [ ] Approve a four-block level surface entry followed by a 3-wide × 3-tall diagonal staircase. — **AI-1**
+- [ ] Approve a four-block level surface entry followed by a 3-wide × 4-tall diagonal staircase. — **AI-1**
 - [ ] Approve one-forward/one-down centreline progress and a floor landing every eight blocks of depth. — **AI-1**
 - [ ] Approve four floors as the initial bounded default. — **AI-1**
 - [x] Approve paving off by default while retaining a separate configurable cobblestone reserve for mandatory main-shaft backfill. — **AI-1**

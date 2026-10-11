@@ -17,7 +17,7 @@ function Startup.newRunDecision(existing, stateCode)
     if existing and existing:status() ~= "complete" then
         return {
             start = false,
-            message = "ACTIVE_STATE_PRESENT: new run refused. Run `miner status` to inspect state, then `miner resume` if the saved pose is known; pending actions require manual reconciliation.",
+            message = "ACTIVE_STATE_PRESENT: new run refused. Run `miner status` to inspect state, then `miner home` to return or `miner resume` to continue if the saved pose is known; pending actions require manual reconciliation.",
         }
     end
     return { start = true }

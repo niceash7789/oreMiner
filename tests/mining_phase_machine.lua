@@ -7,7 +7,7 @@ local function transition(cursor, event, updates)
     return nextCursor
 end
 
-local source = assert(Cursor.mainShaft(2, 2, 1))
+local source = assert(Cursor.mainShaft(2, 2, 3))
 local mainNext = transition(source, "main_cell_complete", { offset = 2 })
 assert(mainNext.phase == "main_shaft" and mainNext.offset == 2)
 assert(source.phase == "main_shaft" and source.offset == 1,

@@ -1,4 +1,4 @@
--- One deterministic 3-wide by 3-tall descending stairs slice.
+-- One deterministic 3-wide by 4-tall descending stairs slice.
 -- Callers provide bounded clear operations and checked, persisted navigation
 -- callbacks. This module owns only the slice geometry and local unwind.
 local ActionStack = require("src.navigation.action_stack")
@@ -123,6 +123,18 @@ local function enter(excursion, navigation, action)
     return ActionStack.record(excursion, action)
 end
 
+local function clearFourHigh(navigation)
+    local outcome = navigation.clear("up")
+    if not outcome.ok then return outcome end
+    local upperCell = ActionStack.new()
+    outcome = enter(upperCell, navigation, "up")
+    if outcome.ok then outcome = navigation.clear("up") end
+    local restored = unwind(upperCell, navigation)
+    if not restored.ok then return restored end
+    if not outcome.ok then return outcome end
+    return navigation.clear("down")
+end
+
 local function sweepColumn(navigation, turnAction)
     local excursion = ActionStack.new()
     local outcome = enter(excursion, navigation, turnAction)
@@ -130,8 +142,7 @@ local function sweepColumn(navigation, turnAction)
 
     outcome = navigation.clear("forward")
     if outcome.ok then outcome = enter(excursion, navigation, "forward") end
-    if outcome.ok then outcome = navigation.clear("up") end
-    if outcome.ok then outcome = navigation.clear("down") end
+    if outcome.ok then outcome = clearFourHigh(navigation) end
 
     local restored = unwind(excursion, navigation)
     if not restored.ok then return restored end
@@ -150,8 +161,7 @@ function StairSlice.descend(options)
 
     local outcome = navigation.clear("forward")
     if outcome.ok then outcome = enter(approach, navigation, "forward") end
-    if outcome.ok then outcome = navigation.clear("up") end
-    if outcome.ok then outcome = navigation.clear("down") end
+    if outcome.ok then outcome = clearFourHigh(navigation) end
     if outcome.ok then outcome = sweepColumn(navigation, "turnLeft") end
     if outcome.ok then outcome = sweepColumn(navigation, "turnRight") end
     if not outcome.ok then
@@ -168,7 +178,7 @@ function StairSlice.descend(options)
     end
 
     -- The right column has been cleared and the turtle is back at centre.
-    -- Place only into the niche beyond the passage's outer-right wall.
+    -- The caller may place a non-blocking torch in that passage cell.
     outcome = navigation.placeOuterRightTorch()
     if not outcome.ok then
         local restored = unwind(approach, navigation)

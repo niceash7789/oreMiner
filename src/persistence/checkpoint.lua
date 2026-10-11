@@ -341,6 +341,22 @@ function Session.markFatal(self, code, pose, route, configSnapshot)
     return self:save(pose, route, configSnapshot)
 end
 
+function Session.markPaused(self, pose, route, configSnapshot)
+    local previous = self.state.status
+    self.state.status = "paused"
+    local ok, code = self:save(pose, route, configSnapshot)
+    if not ok then self.state.status = previous end
+    return ok, code
+end
+
+function Session.markMining(self, pose, route, configSnapshot)
+    local previous = self.state.status
+    self.state.status = "mining"
+    local ok, code = self:save(pose, route, configSnapshot)
+    if not ok then self.state.status = previous end
+    return ok, code
+end
+
 function Session.markComplete(self, pose, route, configSnapshot)
     self.state.status = "complete"
     if type(self.state.progress) == "table" and self.state.progress.origin ~= nil then

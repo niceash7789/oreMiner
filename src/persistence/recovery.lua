@@ -28,7 +28,7 @@ end
 
 local function matchesJunctionPose(pose, landing, mainOffset)
     if type(pose) ~= "table" or type(landing) ~= "table"
-        or type(mainOffset) ~= "number" or mainOffset < 1 then
+        or type(mainOffset) ~= "number" or mainOffset < 0 then
         return false
     end
     local facing = (landing.facing + 1) % 4
@@ -46,7 +46,8 @@ function Recovery.classify(state, loadCode)
     end
     local recoverableServiceError = type(state) == "table" and state.status == "error"
         and state.error == "NO_SUPPLY_CHEST" and state.service ~= nil
-    if type(state) ~= "table" or (state.status ~= "mining" and not recoverableServiceError)
+    if type(state) ~= "table" or (state.status ~= "mining" and state.status ~= "paused"
+        and not recoverableServiceError)
         or state.poseCertainty ~= "known" or state.pendingAction ~= nil
         or not Cursor.validate(state.progress)
         or type(state.pose) ~= "table"
@@ -171,8 +172,11 @@ function Recovery.classify(state, loadCode)
     elseif state.progress.phase == "main_shaft" or state.progress.phase == "junction" then
         local resume = state.resumeCheckpoint
         local landing = state.floorLandings and state.floorLandings[state.progress.floor]
+        local savedConfig = state.configSnapshot
+        local spacing = savedConfig and savedConfig.spacing
         if not resume or not resume.pose or not sameCursor(resume.progress, state.progress)
             or state.progress.floor < 1
+            or type(spacing) ~= "number" or spacing < 1
             or (state.progress.phase == "main_shaft" and state.progress.nextAction ~= "mine_main_cell")
             or (state.progress.phase == "junction"
                 and state.progress.nextAction ~= "turn_to_left_branch"
@@ -182,9 +186,15 @@ function Recovery.classify(state, loadCode)
             return false, state.progress.phase == "junction"
                 and "JUNCTION_RESUME_UNSUPPORTED" or "MAIN_SHAFT_RESUME_UNSUPPORTED"
         end
-        if state.progress.phase == "junction"
-            and (state.progress.branchPair ~= state.progress.mainOffset
-                or not matchesJunctionPose(state.pose, landing.landing, state.progress.mainOffset)) then
+        if state.progress.phase == "main_shaft" then
+            local mainOffset = (state.progress.branchPair - 1) * spacing
+            local cellOffset = mainOffset + state.progress.offset
+            if state.progress.mainOffset ~= mainOffset or state.progress.offset >= spacing
+                or not matchesJunctionPose(state.pose, landing.landing, cellOffset) then
+                return false, "MAIN_SHAFT_RESUME_UNSUPPORTED"
+            end
+        elseif state.progress.branchPair * spacing ~= state.progress.mainOffset
+            or not matchesJunctionPose(state.pose, landing.landing, state.progress.mainOffset) then
             return false, "JUNCTION_RESUME_UNSUPPORTED"
         end
         local homePath = RouteHome.path(state.route, state.pose, nil,

@@ -127,7 +127,7 @@ function NumericValidation.validate(config)
     local fixedGeometry = {
         { "surfaceEntryLength", 4 },
         { "stairWidth", 3 },
-        { "stairHeight", 3 },
+        { "stairHeight", 4 },
     }
     for _, item in ipairs(fixedGeometry) do
         local value = mining[item[1]]

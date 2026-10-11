@@ -1219,12 +1219,6 @@ local function placeStairTorch(slicePose)
     end
     local function restoreCenter()
         local current = copyCurrentPose()
-        if current.x == sideCell.x and current.y == sideCell.y and current.z == sideCell.z
-            and current.facing == sideHeading then
-            local moved, outcome = checkedMoveForRoute("back")
-            if not moved then return false, outcome end
-            current = copyCurrentPose()
-        end
         if current.x ~= slicePose.x or current.y ~= slicePose.y or current.z ~= slicePose.z then
             return false, Result.new(false, "LIGHTING_POSE_MISMATCH")
         end
@@ -1235,25 +1229,12 @@ local function placeStairTorch(slicePose)
         return copyCurrentPose().facing == originalFacing, Result.new(true, "STAIR_TORCH_RESTORED")
     end
 
-    local function clearTorchNiche()
-        local dug = digForward()
-        if dug.ok == true or dug.code == "NO_BLOCK" then return Result.new(true, "NICHE_CLEAR") end
-        return dug
+    local function alreadyClearTorchCell()
+        -- The adjacent right-column passage cell was cleared by this slice.
+        -- Place the non-blocking torch there without carving a wall niche.
+        return Result.new(true, "TORCH_CELL_ALREADY_CLEAR")
     end
 
-    if not turnRight() then return false end
-    -- Enter the already-cleared rightmost passage column before carving the
-    -- niche beyond its outer wall; the three-wide route stays unobstructed.
-    local movedIntoColumn, columnMoveResult = checkedMoveForRoute("forward")
-    if not movedIntoColumn then
-        local restored, restoreResult = restoreCenter()
-        if not restored then
-            print("ERROR: " .. tostring(restoreResult and restoreResult.code or "STAIR_TORCH_RESTORE_FAILED"))
-            return false
-        end
-        print("ERROR: " .. tostring(columnMoveResult and columnMoveResult.code or "STAIR_TORCH_MOVE_FAILED"))
-        return false
-    end
     local selected = SlotGuard.run(turtle, function()
         local slot
         for index = 1, 16 do
@@ -1273,7 +1254,7 @@ local function placeStairTorch(slicePose)
             pose = copyCurrentPose(), outboundFacing = originalFacing,
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
-            dig = clearTorchNiche,
+            dig = alreadyClearTorchCell,
             place = function()
                 if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
                 stats:add("torches_placed", 1)
@@ -1798,10 +1779,12 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
         local branchResumeHere = resumeStart and branch == firstBranch
             and resumeStart.phase ~= "main_shaft" and resumeStart.phase ~= "junction"
         local firstStep = resumeStart and branch == firstBranch and resumeStart.step or 1
+        local mainOffsetBeforePair = (branch - 1) * config.spacing
         if not branchResumeHere then
         for step = firstStep, config.spacing do
 
-            local mainCursor = MiningCursor.mainShaft(branch, step, branch - 1, activeFloor)
+            local mainCursor = MiningCursor.mainShaft(
+                branch, step, mainOffsetBeforePair, activeFloor)
             if not persistMiningCursor(mainCursor) then return false end
 
             if not serviceInventoryIfFull() then
@@ -1821,15 +1804,8 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
                 return false
             end
 
-            if not placeTunnelTorch(pos.facing, step, false, "main-" .. branch) then return false end
-
-            -- Preserve the baseline's canonical junction pose without
-            -- advancing the branch grid: each spacing cell is scanned from
-            -- the cell just entered, then the checked edge is retraced.
-            if step < config.spacing and not safeBack() then
-                print("ERROR: MAIN_SCAN_RETURN_MOVE_FAILED")
-                return false
-            end
+            local mainDistance = mainOffsetBeforePair + step
+            if not placeTunnelTorch(pos.facing, mainDistance, false, "main") then return false end
 
             if not serviceInventoryIfFull() then
                 return false
@@ -1843,7 +1819,9 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
         local resumedRight = branchResumeHere and resumeStart.side == "right"
         if not resumedRight then
             if not resumedLeft then
-                local leftJunctionCursor = MiningCursor.junction(branch, branch, "turn_to_left_branch", activeFloor)
+                local junctionOffset = branch * config.spacing
+                local leftJunctionCursor = MiningCursor.junction(
+                    branch, junctionOffset, "turn_to_left_branch", activeFloor)
                 if not persistMiningCursor(leftJunctionCursor) then return false end
                 if turnLeft() ~= true then
                     print("ERROR: LEFT_BRANCH_TURN_FAILED")
@@ -1852,7 +1830,7 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             end
 
             local leftMined, leftFailure = mineBranch(config.branch_length, branch, "left",
-                branch, resumedLeft and resumeStart.distance or nil,
+                branch * config.spacing, resumedLeft and resumeStart.distance or nil,
                 resumedLeft and resumeStart.phase or nil)
             if not leftMined then
                 print("ERROR: Left branch mining failed ("
@@ -1876,7 +1854,7 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             config.branch_length,
             branch,
             "right",
-            branch,
+            branch * config.spacing,
             resumedRight and resumeStart.distance or nil,
             resumedRight and resumeStart.phase or nil
         )
@@ -1892,7 +1870,8 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             return false
         end
 
-        local mainFacingCursor = MiningCursor.junction(branch, branch, "restore_main_facing", activeFloor)
+        local mainFacingCursor = MiningCursor.junction(
+            branch, branch * config.spacing, "restore_main_facing", activeFloor)
         if not persistMiningCursor(mainFacingCursor) then return false end
 
         stats:add("branches_completed", 1)
@@ -2341,6 +2320,12 @@ local function main(...)
             print("Resume stopped safely: " .. tostring(fuelCode or "NO_FUEL"))
             return
         end
+        local miningStatusSaved, miningStatusCode = saved:markMining(
+            snapshot.pose, snapshot.route, configSnapshot())
+        if not miningStatusSaved then
+            print("Resume stopped safely: " .. tostring(miningStatusCode or "STATE_WRITE_FAILED"))
+            return
+        end
         pos = snapshot.pose
         knownRoute = snapshot.route
         checkpoint = saved
@@ -2516,6 +2501,87 @@ local function main(...)
             return
         end
         print("Resume restored the committed checkpoint; active cursor restart is not supported yet")
+        return
+    elseif args[1] == "home" then
+        if type(fsApi) ~= "table" or type(textutilsApi) ~= "table"
+            or type(fsApi.combine) ~= "function" then
+            print("Home unavailable: persistence API missing")
+            return
+        end
+        statePath = fsApi.combine("oreMiner", "state.json")
+        local saved, loadCode = Checkpoint.load(statePath, configSnapshot(), fsApi, textutilsApi)
+        local snapshot = saved and saved:snapshotState() or nil
+        if type(snapshot) ~= "table" or snapshot.poseCertainty ~= "known"
+            or snapshot.pendingAction ~= nil then
+            print("Home stopped safely: " .. tostring(loadCode == "STATE_LOADED"
+                and "POSITION_UNCERTAIN" or loadCode or "RESUME_STATE_UNSAFE"))
+            return
+        end
+        local origin = { x = 0, y = 0, z = 0, facing = 0 }
+        if snapshot.status == "complete" and snapshot.pose.x == origin.x
+            and snapshot.pose.y == origin.y and snapshot.pose.z == origin.z then
+            print("Already home; the saved job is complete.")
+            return
+        end
+        pos = snapshot.pose
+        knownRoute = snapshot.route
+        checkpoint = saved
+        activeFloor = snapshot.progress and snapshot.progress.floor or nil
+        local paused, pauseCode = checkpoint:markPaused(pos, knownRoute, configSnapshot())
+        if not paused then
+            print("Home stopped safely: " .. tostring(pauseCode or "STATE_WRITE_FAILED"))
+            return
+        end
+        if snapshot.vein then
+            local unwind = VeinTraversal.unwindSaved(snapshot.vein, {
+                pose = function() return pos end,
+                turn = function(direction) return turn(direction) end,
+                move = function(direction)
+                    deferVeinMovementCommit = true
+                    local moved = move(direction)
+                    deferVeinMovementCommit = false
+                    return moved == true
+                end,
+            }, function(veinState)
+                local savedVein, saveCode = checkpoint:commitVeinAction(
+                    pos, knownRoute, configSnapshot(), veinState)
+                if not savedVein then persistenceError = saveCode end
+                return savedVein
+            end)
+            if not unwind.ok then
+                print("Home stopped safely: " .. tostring(unwind.code))
+                return
+            end
+        end
+        if not snapshot.service then
+            local homePath, pathCode = RouteHome.path(knownRoute, pos, nil, origin)
+            if not homePath then
+                print("Home stopped safely: " .. tostring(pathCode))
+                return
+            end
+        end
+        local serviceSaved, serviceCode = checkpoint:setService({
+            stage = "returning", checkpoint = origin,
+            resumeProgress = snapshot.progress,
+        }, pos, knownRoute, configSnapshot())
+        if not serviceSaved then
+            print("Home stopped safely: " .. tostring(serviceCode or "STATE_WRITE_FAILED"))
+            return
+        end
+        local reached, returnCode = travelStairRoute(origin)
+        if not reached then
+            print("Home stopped safely: " .. tostring(returnCode or "RETURN_FAILED"))
+            return
+        end
+        local parked, parkedCode = checkpoint:setService({
+            stage = "at_base", checkpoint = origin,
+            resumeProgress = snapshot.progress,
+        }, pos, knownRoute, configSnapshot())
+        if not parked then
+            print("Home reached, but pause state could not be saved: " .. tostring(parkedCode))
+            return
+        end
+        print("Home reached. Run `miner resume` to continue the saved job.")
         return
     end
 

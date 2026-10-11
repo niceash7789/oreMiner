@@ -123,6 +123,16 @@ assert(statisticsSession:save(pose, route, config))
 local savedStats = assert(Checkpoint.load("stats.json", config, fs, textutils))
 assert(savedStats:statistics().blocks_mined == 7,
     "regular checkpoint writes must include the live statistics provider")
+
+local pausedSession = assert(Checkpoint.create(config, pose, route, "paused-run", "paused.json", fs, textutils))
+assert(pausedSession:markPaused(pose, route, config))
+local pausedReloaded, pausedCode = Checkpoint.load("paused.json", config, fs, textutils)
+assert(pausedCode == "STATE_LOADED" and pausedReloaded:status() == "paused",
+    "operator home must persist a resumable paused state")
+local pausedAllowed, pausedReason = Recovery.classify(
+    pausedReloaded:snapshotState(), pausedCode)
+assert(pausedAllowed and pausedReason == "RESUME_SAFE_CHECKPOINT",
+    "a known paused checkpoint at surface must remain resumable")
 -- A temp left by a crash during initial creation is recoverable when no active
 -- or backup snapshot exists.
 local replacementSnapshot = assert(State.new(config, pose, route, "run-after-temp-crash"))

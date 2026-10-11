@@ -22,7 +22,7 @@ function Resume.start(cursor, branchCount, spacing, branchLength)
         or type(cursor.branchPair) ~= "number" or cursor.branchPair ~= math.floor(cursor.branchPair)
         or type(branchCount) ~= "number" or branchCount ~= math.floor(branchCount)
         or cursor.branchPair > branchCount or cursor.branchPair < 1
-        or cursor.mainOffset ~= cursor.branchPair
+        or cursor.mainOffset ~= cursor.branchPair * spacing
         or type(spacing) ~= "number" or spacing ~= math.floor(spacing) or spacing < 1
         or not validLength
         or type(cursor.offset) ~= "number" or cursor.offset ~= math.floor(cursor.offset)

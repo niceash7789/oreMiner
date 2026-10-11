@@ -34,7 +34,8 @@ local displayed, outputCode = RecoveryStatus.display(state, "STATE_LOADED", 120,
     function() error("terminal unavailable") end)
 assert(not displayed and outputCode == "STATUS_OUTPUT_FAILED")
 
-local function runCommand(command, stateCode)
+local function runCommand(command, stateCode, commandState)
+    commandState = commandState or state
     local captured = {}
     local fakeFs = {
         combine = function(_, file) return file end,
@@ -53,7 +54,7 @@ local function runCommand(command, stateCode)
                 pending.poseCertainty = "uncertain"
                 return pending
             end
-            return state
+            return commandState
         end,
     }
     local fakeTurtle = {
@@ -76,8 +77,19 @@ local function runCommand(command, stateCode)
             load = function()
                 if stateCode == "STATE_MISSING" then return nil, "STATE_MISSING" end
                 return {
-                    status = function() return state.status end,
-                    snapshotState = function() return state end,
+                    status = function() return commandState.status end,
+                    snapshotState = function() return commandState end,
+                    floorLandings = function() return {} end,
+                    markPaused = function(_, pose)
+                        commandState.status = "paused"
+                        commandState.pose = pose
+                        return true
+                    end,
+                    setService = function(_, service, pose)
+                        commandState.service = service
+                        commandState.pose = pose
+                        return true
+                    end,
                 }, stateCode
             end,
         },
@@ -97,6 +109,9 @@ local function runCommand(command, stateCode)
         modules[name] = {}
     end
     modules["src.navigation.pose"] = require("src.navigation.pose")
+    modules["src.navigation.route_home"] = require("src.navigation.route_home")
+    modules["src.navigation.turn"] = require("src.navigation.turn")
+    modules["src.safety.result"] = require("src.safety.result")
     modules["src.fuel.known_route"] = require("src.fuel.known_route")
     modules["src.inventory.service"] = require("src.inventory.service")
     modules["src.reporting.safe"] = require("src.reporting.safe")
@@ -127,5 +142,15 @@ local missingLines = runCommand("status", "STATE_MISSING")
 assert(missingLines[1] == "Run: STATE_MISSING")
 local resumeLines = runCommand("resume", "STATE_LOADED")
 assert(resumeLines[1]:find("Resume stopped safely", 1, true))
+
+local homeState = {}
+for key, value in pairs(state) do homeState[key] = value end
+homeState.pose = { x = 0, y = 0, z = 0, facing = 0 }
+homeState.resumeCheckpoint = { pose = homeState.pose, progress = progress }
+homeState.route = { home = "0,0,0", edges = { ["0,0,0"] = {} } }
+local homeLines = runCommand("home", "STATE_LOADED", homeState)
+assert(homeLines[#homeLines] == "Home reached. Run `miner resume` to continue the saved job.")
+assert(homeState.status == "paused" and homeState.service.stage == "at_base",
+    "home must park a resumable checkpoint at base without asking for confirmation")
 
 print("recovery status tests passed")

@@ -11,7 +11,7 @@ function Resume.start(cursor, branchCount, spacing)
         or type(cursor.offset) ~= "number" or cursor.offset ~= math.floor(cursor.offset)
         or cursor.offset < 0 or type(spacing) ~= "number"
         or spacing ~= math.floor(spacing) or spacing < 1 or cursor.offset >= spacing
-        or cursor.mainOffset ~= cursor.branchPair - 1 then
+        or cursor.mainOffset ~= (cursor.branchPair - 1) * spacing then
         return nil, "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
     end
     return { branch = cursor.branchPair, step = cursor.offset + 1 }

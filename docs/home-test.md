@@ -11,7 +11,7 @@ Install from the turtle shell using [in-game installation and pull](installation
 ## Test sequence
 
 1. Run `miner status`; verify it is read-only. Start the short job and confirm the turtle advances four blocks before descending.
-2. Pause after a stair slice. Measure the 3×3 passage and centreline position; repeat through floor 1 and verify the landing is eight blocks below the surface. Confirm floor work returns to the landing before any next descent.
+2. Pause after a stair slice. Measure the 3-wide × 4-tall passage and centreline position; repeat through floor 1 and verify the landing is eight blocks below the surface. Confirm floor work returns to the landing before any next descent.
 3. Mine a short main shaft and one left/right pair. Measure the 1×2 passages and the two solid rows between paired shafts. Confirm the final upper scan returns to origin.
 4. Run a separate service job that reaches the configured inventory threshold. Observe output routing, fuel/torch refill, and exact cursor restoration. Repeat once with a missing or full required chest and verify a safe stop at base.
 5. Place a small connected ore vein in a replaceable wall, then trigger inventory service during a larger vein. Confirm exact vein unwind before travel.

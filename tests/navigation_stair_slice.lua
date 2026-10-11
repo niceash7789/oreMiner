@@ -108,11 +108,11 @@ assertPose(descended, { x = 0, y = -1, z = -1, facing = 0 },
     "one slice must advance one block forward/down and restore facing")
 assertPose(harness.pose(), descended, "reported pose must match the simulated world")
 for x = -1, 1 do
-    for y = -1, 1 do
-        assert(harness.isClear(x, y, -1), "slice must clear all nine passage cells")
+    for y = -1, 2 do
+        assert(harness.isClear(x, y, -1), "slice must clear all twelve passage cells")
     end
 end
-assert(harness.clearCount() == 9, "one solid slice should issue nine bounded clears")
+assert(harness.clearCount() == 12, "one solid slice should issue twelve bounded clears")
 assert(torchCalls == 1, "optional torch callback runs once after passage clearing")
 
 -- Each centre and lateral sweep sub-phase must issue its clears from the
@@ -126,9 +126,15 @@ local function assertClearTrace(trace, origin, forwardX, forwardZ, rightX, right
     local centreRight = { x = middle.x, y = middle.y, z = middle.z, facing = right.facing }
     local expected = {
         { origin, "forward" },
-        { middle, "up" }, { middle, "down" },
-        { centreLeft, "forward" }, { left, "up" }, { left, "down" },
-        { centreRight, "forward" }, { right, "up" }, { right, "down" },
+        { middle, "up" },
+        { { x = middle.x, y = middle.y + 1, z = middle.z, facing = middle.facing }, "up" },
+        { middle, "down" },
+        { centreLeft, "forward" }, { left, "up" },
+        { { x = left.x, y = left.y + 1, z = left.z, facing = left.facing }, "up" },
+        { left, "down" },
+        { centreRight, "forward" }, { right, "up" },
+        { { x = right.x, y = right.y + 1, z = right.z, facing = right.facing }, "up" },
+        { right, "down" },
     }
     assert(#trace == #expected, "slice clear trace must contain three complete columns")
     for index, entry in ipairs(expected) do
@@ -169,16 +175,16 @@ for facing = 1, 3 do
     elseif facing == 2 then rightX, rightZ = -1, 0
     else rightX, rightZ = 0, -1 end
     for lateral = -1, 1 do
-        for height = -1, 1 do
+        for height = -1, 2 do
             assert(rotatedHarness.isClear(
                 rotatedStart.x + dx + lateral * rightX,
                 rotatedStart.y + height,
                 rotatedStart.z + dz + lateral * rightZ),
-                "slice must clear the route-relative 3x3 cells facing " .. facing)
+                "slice must clear the route-relative 3x4 cells facing " .. facing)
         end
     end
-    assert(rotatedHarness.clearCount() == 9,
-        "slice must clear exactly nine target cells facing " .. facing)
+    assert(rotatedHarness.clearCount() == 12,
+        "slice must clear exactly twelve target cells facing " .. facing)
     assertClearTrace(rotatedHarness.clearPoseTrace(), rotatedStart, dx, dz, rightX, rightZ)
 end
 

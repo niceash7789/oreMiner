@@ -26,23 +26,23 @@ assert(crossing.floor == 2 and crossing.stairSegment == 1 and Cursor.validate(cr
 assert(not Cursor.stairs(0, 0, "enter_surface"), "route cursors require a positive floor")
 assert(not Cursor.stairs(1, 9, "unknown_action"), "route cursors reject unknown actions")
 
-local main = assert(Cursor.mainShaft(3, 2, 2))
-assert(main.branchPair == 3 and main.offset == 1 and main.mainOffset == 2)
+local main = assert(Cursor.mainShaft(3, 2, 6))
+assert(main.branchPair == 3 and main.offset == 1 and main.mainOffset == 6)
 assert(main.side == "none" and main.nextAction == "mine_main_cell")
-local floorTwoMain = assert(Cursor.mainShaft(3, 2, 2, 2))
+local floorTwoMain = assert(Cursor.mainShaft(3, 2, 6, 2))
 assert(floorTwoMain.floor == 2 and floorTwoMain.workUnitId:find("floor-2-", 1, true),
     "mining work-unit IDs should remain distinct across floors")
 
-local outbound = assert(Cursor.branch(3, "left", "branch_outbound_lower", 4, 3,
+local outbound = assert(Cursor.branch(3, "left", "branch_outbound_lower", 4, 9,
     "mine_branch_cell"))
 assert(outbound.workUnitId == "surface-pair-3-left-branch_outbound_lower-4")
 assert(Cursor.validate(outbound), "branch cursor should be valid")
 
-local upperReturn = assert(Cursor.branch(3, "right", "branch_upper_return", 7, 3,
+local upperReturn = assert(Cursor.branch(3, "right", "branch_upper_return", 7, 9,
     "scan_and_return_branch_cell"))
 assert(Cursor.validate(upperReturn), "upper-return cursor should be valid")
 
-local invalid, invalidCode = Cursor.branch(3, "none", "branch_outbound_lower", 0, 3,
+local invalid, invalidCode = Cursor.branch(3, "none", "branch_outbound_lower", 0, 9,
     "mine_branch_cell")
 assert(invalid == nil and invalidCode == "INVALID_MINING_CURSOR",
     "branch phases require a left or right side")

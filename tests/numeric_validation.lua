@@ -117,7 +117,7 @@ for _, value in ipairs({ 1, 7, 9, 16 }) do
     assert(reason == "mining.stairStepsPerFloor must be 8 in V1", "unexpected stair count error")
 end
 config = activeConfig()
-config.mining = { surfaceEntryLength = 4, stairWidth = 3, stairHeight = 3 }
+config.mining = { surfaceEntryLength = 4, stairWidth = 3, stairHeight = 4 }
 accepted(config, "V1 fixed surface entry and stair geometry should validate")
 config = activeConfig()
 config.mining = { floorMainTurn = "right" }
@@ -131,7 +131,7 @@ end
 for _, item in ipairs({
     { "surfaceEntryLength", 4, { 0, 3, 5, 4.5 } },
     { "stairWidth", 3, { 0, 2, 4, 3.5 } },
-    { "stairHeight", 3, { 0, 2, 4, 3.5 } },
+    { "stairHeight", 4, { 0, 2, 3, 3.5 } },
 }) do
     for _, value in ipairs(item[3]) do
         config = activeConfig()

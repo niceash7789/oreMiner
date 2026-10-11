@@ -9,7 +9,7 @@ function Resume.start(cursor, branchCount, spacing)
         or branchCount ~= math.floor(branchCount) or branchCount < 1
         or cursor.branchPair > branchCount
         or type(spacing) ~= "number" or spacing ~= math.floor(spacing) or spacing < 1
-        or type(cursor.mainOffset) ~= "number" or cursor.mainOffset ~= cursor.branchPair
+        or type(cursor.mainOffset) ~= "number" or cursor.mainOffset ~= cursor.branchPair * spacing
         or cursor.offset ~= 0 or cursor.side ~= "none"
         or (cursor.nextAction ~= "turn_to_left_branch"
             and cursor.nextAction ~= "restore_main_facing") then
