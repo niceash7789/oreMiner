@@ -7,7 +7,7 @@ local function copy(value)
     return result
 end
 
-local source = require("config")
+local source = require("tests.config_fixture")
 local normalized, result = Loader.normalize(source)
 assert(result.ok and result.code == "CONFIG_VALID")
 assert(normalized ~= source and normalized.mining ~= source.mining,

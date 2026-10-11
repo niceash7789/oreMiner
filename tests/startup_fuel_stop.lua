@@ -1,6 +1,7 @@
 local files = {}
 local moves = 0
 local selected = 1
+require("tests.config_fixture")
 
 local turtleApi = {
     getFuelLevel = function() return 0 end,

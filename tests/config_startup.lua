@@ -1,4 +1,4 @@
-local source = require("config")
+local source = require("tests.config_fixture")
 local originalSchemaVersion = source.schemaVersion
 source.schemaVersion = 2
 

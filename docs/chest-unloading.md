@@ -24,6 +24,7 @@ When bulk separation is disabled, the service does not inspect or require a rear
 - Fuel, torches, and the mandatory cobblestone reserve remain according to their quotas. Ores and unknown items have no implicit keep rule and route right.
 - A successful partial transfer is not completion. Count mismatches stop the operation.
 - Inventory service restores the original selected slot and canonical home facing.
+- Required chest presence is checked only after the turtle reaches canonical base. A missing or unaccepted chest restores canonical home facing and stops at base without replaying the mining route.
 - Service travel uses recorded cleared route edges only; missing route or travel failure stops service before chest interaction or return-to-work.
 
 ## Dependencies and limitations

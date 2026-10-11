@@ -6,7 +6,7 @@ Give an operator a short, repeatable path through the software MVP's physical ga
 
 ## Setup and assumptions
 
-Use a replaceable, flat gallery in a CC:Tweaked world with coordinates visible, no protected blocks, no liquids, abundant fuel, and a backed-up world. Configure the smallest supported job: one floor, short main shaft, one shaft pair, short shaft length, and a low service threshold only if the configuration validator permits it. Start at the documented origin facing north. Put fuel and torches in the left supply chest, the ore/output chest on the right, and the optional bulk chest behind.
+Install from the turtle shell using [in-game installation and pull](installation.md), then edit the generated `config.lua`. Use a replaceable, flat gallery in a CC:Tweaked world with coordinates visible, no protected blocks, no liquids, abundant fuel, and a backed-up world. Configure the smallest supported job: one floor, short main shaft, one shaft pair, short shaft length, and a low service threshold only if the configuration validator permits it. Start at the documented origin facing north. Put fuel and torches in the left supply chest, the ore/output chest on the right, and the optional bulk chest behind.
 
 ## Test sequence
 

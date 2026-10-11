@@ -2,7 +2,7 @@ local Pose = require("src.navigation.pose")
 local SlotGuard = require("src.inventory.slot_guard")
 local ItemPolicy = require("src.config.item_policy")
 local defaults = require("src.config.defaults")
-local fileConfig = require("config")
+local fileConfig = require("tests.config_fixture")
 
 local poseMoves = 0
 local guardedOperations = 0

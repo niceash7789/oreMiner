@@ -1,5 +1,5 @@
--- V1 single-turtle job configuration. The runtime validates and copies this
--- table before any movement or inventory action.
+-- V1 single-turtle example configuration. install.lua copies this to the
+-- untracked config.lua only when no live configuration exists.
 return {
     schemaVersion = 1,
     mining = {

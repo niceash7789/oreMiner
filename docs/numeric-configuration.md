@@ -6,7 +6,7 @@ Load one versioned V1 job configuration, reject invalid or incomplete settings b
 
 ## Implemented behavior
 
-Root `config.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It rejects top-level `workers`, `workerCount`, `turtleCount`, and `fleet` fields so unsupported multi-turtle settings cannot be silently accepted. The coordinator uses one local sequential executor and one persisted mining cursor. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
+Tracked `config.example.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. The installer copies it to the untracked live `config.lua` only when that file is absent, so a pull can update the example without overwriting operator settings. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It rejects top-level `workers`, `workerCount`, `turtleCount`, and `fleet` fields so unsupported multi-turtle settings cannot be silently accepted. The coordinator uses one local sequential executor and one persisted mining cursor. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
 
 The coordinator loads and normalizes this file before constructing a run, shows a read-only summary, and asks only for start confirmation. Branch dimensions, paving, and ore behavior are no longer changed interactively. Invalid configuration raises `CONFIG_INVALID` before persistence setup, movement, digging, refuelling, or inventory actions.
 
@@ -14,7 +14,7 @@ The coordinator loads and normalizes this file before constructing a run, shows 
 
 ## Public entry points
 
-- `require("config")` returns the operator-edited V1 configuration table.
+- Installed `config.lua` returns the operator-edited V1 configuration table; `config.example.lua` is the tracked template.
 - `require("src.config.loader").normalize(config)` returns `normalized, outcome`.
 - `require("src.config.numeric_validation").validate(config)` remains available for lower-level numeric/fixed-geometry checks.
 
@@ -31,4 +31,4 @@ The coordinator loads and normalizes this file before constructing a run, shows 
 
 The loader depends on the numeric validator and shared structured-result helper. It uses only CC:Tweaked-compatible Lua features and does not dynamically execute configuration text beyond normal `require` loading.
 
-`tests/config_loader.lua` verifies the shipped file, copy/normalization behavior, required fields, lists, flags, patterns, representative invalid values, and rejection of worker/fleet settings. `tests/config_startup.lua` proves the active coordinator rejects an invalid schema with zero turtle calls. `tests/numeric_validation.lua` retains exhaustive numeric boundary coverage, and `tests/active_baseline_wiring.lua` exercises a short run using file-backed values. No in-world verification has been performed.
+`tests/config_loader.lua` verifies the tracked example, copy/normalization behavior, required fields, lists, flags, patterns, representative invalid values, and rejection of worker/fleet settings. `tests/config_startup.lua` proves the active coordinator rejects an invalid schema with zero turtle calls. `tests/numeric_validation.lua` retains exhaustive numeric boundary coverage, and `tests/active_baseline_wiring.lua` exercises a short run using the example as its live-config fixture. No in-world verification has been performed.

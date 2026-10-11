@@ -69,7 +69,7 @@ local function runCommand(command, stateCode)
     }
     local originalRequire, originalPrint = require, print
     local modules = {
-        ["config"] = require("config"),
+        ["config"] = require("tests.config_fixture"),
         ["src.config.loader"] = require("src.config.loader"),
         ["src.reporting.recovery_status"] = RecoveryStatus,
         ["src.persistence.checkpoint"] = {

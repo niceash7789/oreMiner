@@ -36,37 +36,29 @@ function Service.new(deps)
         return true
     end
 
-    local function verifyChest(facing, missingCode)
+    local function verifyChest(facing, missingCode, failureFacing)
         local faced, faceCode = face(facing)
         if not faced then return false, faceCode end
         local hasBlock, block = deps.turtle.inspect()
         if not hasBlock or not block or not Chest.acceptsBlock(block.name, deps.config.base) then
+            if failureFacing ~= nil then
+                local restored, restoreCode = face(failureFacing)
+                if not restored then return false, restoreCode end
+            end
             return false, missingCode
         end
         return true
     end
 
-    local function verifyDepartureChests(homeFacing)
-        if deps.config.base.separateBulk ~= true then return true, "CHESTS_VERIFIED" end
-        local faced, faceCode = face((homeFacing + 2) % 4)
-        if not faced then return false, faceCode end
-        local hasBlock, block = deps.turtle.inspect()
-        if not hasBlock or not block
-            or not Chest.acceptsBlock(block.name, deps.config.base) then
-            return false, "NO_BULK_CHEST"
-        end
-        local restored, restoreCode = face(homeFacing)
-        if not restored then return false, restoreCode end
-        return true, "CHESTS_VERIFIED"
-    end
-
     local function routeInventory(homeFacing)
         local guarded = SlotGuard.run(deps.turtle, function()
-            local supplyOk, supplyCode = verifyChest((homeFacing + 3) % 4, "NO_SUPPLY_CHEST")
+            local supplyOk, supplyCode = verifyChest(
+                (homeFacing + 3) % 4, "NO_SUPPLY_CHEST", homeFacing)
             if not supplyOk then return { ok = false, code = supplyCode } end
 
             if deps.config.base.separateBulk == true then
-                local bulkOk, bulkCode = verifyChest((homeFacing + 2) % 4, "NO_BULK_CHEST")
+                local bulkOk, bulkCode = verifyChest(
+                    (homeFacing + 2) % 4, "NO_BULK_CHEST", homeFacing)
                 if not bulkOk then return { ok = false, code = bulkCode } end
                 local bulk = Chest.unloadBulk(deps.turtle, deps.itemConfig)
                 if not bulk.ok then
@@ -75,7 +67,8 @@ function Service.new(deps)
                 end
             end
 
-            local outputOk, outputCode = verifyChest((homeFacing + 1) % 4, "NO_OUTPUT_CHEST")
+            local outputOk, outputCode = verifyChest(
+                (homeFacing + 1) % 4, "NO_OUTPUT_CHEST", homeFacing)
             if not outputOk then return { ok = false, code = outputCode } end
             local output = Chest.unload(deps.turtle, deps.itemConfig)
             if not output.ok then
@@ -120,11 +113,6 @@ function Service.new(deps)
         end
         local homeFacing = deps.homeFacing or 0
         local homePose = { x = 0, y = 0, z = 0, facing = homeFacing }
-        local verified, verifyCode = verifyDepartureChests(homeFacing)
-        if not verified then
-            deps.reportError("Configured bulk output chest is unavailable (" .. tostring(verifyCode) .. ").")
-            return false, verifyCode
-        end
         savedService, saveCode = persist("returning", homePose)
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
         local travelled, travelCode = deps.travel(homePose)
@@ -148,19 +136,20 @@ function Service.new(deps)
         savedService, saveCode = persist("at_base", homePose)
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
 
-            if type(deps.resupply) == "function" then
-                local supplyOk, supplyCode = verifyChest((homeFacing + 3) % 4, "NO_SUPPLY_CHEST")
-                if not supplyOk then return false, supplyCode end
-                local supplied = deps.resupply(saved, deps.route())
-                if type(supplied) ~= "table" or supplied.ok ~= true then
-                    local code = type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
-                    deps.reportError("Supply service failed (" .. tostring(code) .. ").")
-                    return false, code
-                end
-                local restored, restoreCode = face(homeFacing)
-                if not restored then return false, restoreCode end
-                deps.report("[Inventory] Fuel and torches verified for departure.")
+        if type(deps.resupply) == "function" then
+            local supplyOk, supplyCode = verifyChest(
+                (homeFacing + 3) % 4, "NO_SUPPLY_CHEST", homeFacing)
+            if not supplyOk then return false, supplyCode end
+            local supplied = deps.resupply(saved, deps.route())
+            if type(supplied) ~= "table" or supplied.ok ~= true then
+                local code = type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
+                deps.reportError("Supply service failed (" .. tostring(code) .. ").")
+                return false, code
             end
+            local restored, restoreCode = face(homeFacing)
+            if not restored then return false, restoreCode end
+            deps.report("[Inventory] Fuel and torches verified for departure.")
+        end
 
         savedService, saveCode = persist("resuming", homePose)
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end

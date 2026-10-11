@@ -15,6 +15,7 @@ Completed modules are wired immediately when they replace behavior the active ba
 ## Public entry point
 
 - Run `miner.lua` on a CC:Tweaked mining turtle with the repository directory structure intact. Supported recovery command names are `status` and `resume`.
+- See [in-game installation and pull](installation.md) for the test bootstrap and manual update command.
 
 ## Invariants and assumptions
 

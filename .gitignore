@@ -1,0 +1,7 @@
+config.lua
+.git_config
+.oreminer-bootstrap-git
+.oreminer-pull/
+.oreminer-pull-backup/
+oreMiner/
+

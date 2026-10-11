@@ -158,11 +158,15 @@ assert(#recoveryTravel == 2 and recoveryTravel[1].y == 0
 assert(recoveryStages[1] == "returning" and recoveryStages[#recoveryStages] == "clear",
     "service recovery must preserve stage checkpoints and clear only after exact return")
 
--- A configured rear chest must be available before a service trip begins.
+-- A configured rear chest is verified after the turtle reaches base; it
+-- cannot be inspected remotely from the mining checkpoint.
+pose.x, pose.y, pose.z, pose.facing = 0, -8, -13, 1
+local missingBulkTravel = 0
 local missingBulkService = InventoryService.new({
     turtle = api,
     config = { inventory = { returnThreshold = 1 }, base = {
         supply = "left", primaryOutput = "right", bulkOutput = "back", separateBulk = true,
+        acceptedChestBlockIds = defaults.base.acceptedChestBlockIds,
     } },
     itemConfig = defaults,
     pose = function() return pose end,
@@ -171,16 +175,23 @@ local missingBulkService = InventoryService.new({
     route = function() return {} end,
     configSnapshot = function() return {} end,
     turnToFacing = function(facing) pose.facing = facing; return true end,
-    travel = function() error("must not travel when configured rear chest is missing") end,
+    travel = function(target)
+        missingBulkTravel = missingBulkTravel + 1
+        pose.x, pose.y, pose.z, pose.facing = target.x, target.y, target.z, target.facing
+        return true, "ROUTE_TARGET_REACHED"
+    end,
     report = function() end,
     reportError = function() end,
 })
 rearChestAvailable = false
-local beforeMissingBulkTravel = travelCalls
 local missingBulkOk, missingBulkCode = missingBulkService.serviceIfNeeded(true)
 assert(not missingBulkOk and missingBulkCode == "NO_BULK_CHEST"
-    and travelCalls == beforeMissingBulkTravel,
-    "missing configured rear chest must stop before leaving the mining checkpoint")
+    and missingBulkTravel == 1 and pose.x == 0 and pose.y == 0 and pose.z == 0
+    and pose.facing == 0,
+    "missing configured rear chest must stop at canonical base without replay: code="
+        .. tostring(missingBulkCode) .. " trips=" .. tostring(missingBulkTravel)
+        .. " pose=" .. tostring(pose.x) .. "," .. tostring(pose.y) .. ","
+        .. tostring(pose.z) .. " f" .. tostring(pose.facing))
 rearChestAvailable = true
 assert(recoveryDestinations[1].y == recoveryTarget.y
     and recoveryDestinations[#recoveryDestinations].y == recoveryTarget.y,
@@ -193,6 +204,8 @@ local function verifyMissingChest(expectedCode, absentFacing, separateBulk)
     local chestPose = { x = 0, y = -8, z = -13, facing = 1 }
     local homeTravelCount = 0
     local missingApi = {
+        getSelectedSlot = function() return 1 end,
+        select = function() return true end,
         inspect = function()
             if chestPose.facing == absentFacing then return false end
             return true, { name = "minecraft:chest" }
@@ -205,6 +218,7 @@ local function verifyMissingChest(expectedCode, absentFacing, separateBulk)
             separateBulk = separateBulk,
         } },
         itemConfig = defaults,
+        homeFacing = 1,
         pose = function() return chestPose end,
         turnToFacing = function(facing) chestPose.facing = facing; return true end,
         travel = function(target)
@@ -220,7 +234,10 @@ local function verifyMissingChest(expectedCode, absentFacing, separateBulk)
     assert(not ok and code == expectedCode, "missing chest should return " .. expectedCode)
     assert(homeTravelCount == 1 and chestPose.x == 0 and chestPose.y == 0
         and chestPose.z == 0 and chestPose.facing == 1,
-        "missing chest should stop at canonical base without mining-route replay")
+        "missing chest should stop at canonical base without mining-route replay: trips="
+            .. tostring(homeTravelCount) .. " pose=" .. tostring(chestPose.x) .. ","
+            .. tostring(chestPose.y) .. "," .. tostring(chestPose.z) .. " f"
+            .. tostring(chestPose.facing))
     assert(savedPose.y == -8, "fixture must begin at a mining checkpoint")
 end
 
