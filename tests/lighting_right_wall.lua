@@ -95,6 +95,48 @@ local digFailure = Lighting.placeRight({
 assert(not digFailure.ok and digFailure.code == "DIG_BLOCKED" and digCalls == 1,
     "failed niche clear must restore facing and avoid placement")
 
+local nichePose = { x = 0, y = 0, z = 0, facing = 0 }
+local nicheDigs, nichePlaces = 0, 0
+local nicheResult = Lighting.placeRight({
+    pose = nichePose, outboundFacing = 0,
+    turn = function(direction)
+        local updated, outcome = Pose.afterTurn(nichePose, direction, true)
+        nichePose = updated
+        return updated, outcome
+    end,
+    dig = function()
+        nicheDigs = nicheDigs + 1
+        return Result.new(true, "CLEARED")
+    end,
+    place = function()
+        assert(nicheDigs == 1, "niche must be cleared before torch placement")
+        nichePlaces = nichePlaces + 1
+        return Result.new(false, "TORCH_PLACE_FAILED")
+    end,
+    poseNow = function() return nichePose end,
+})
+assert(not nicheResult.ok and nicheResult.skippable == true
+    and nicheResult.code == "TORCH_PLACE_FAILED" and nichePlaces == 1,
+    "failed placement after a cut niche should be skippable")
+assert(nichePose.x == 0 and nichePose.y == 0 and nichePose.z == 0 and nichePose.facing == 0,
+    "a skipped torch must restore the exact mining pose")
+
+local blockedPose = { x = 0, y = 0, z = 0, facing = 0 }
+local blockedNiche = Lighting.placeRight({
+    pose = blockedPose, outboundFacing = 0,
+    turn = function(direction)
+        local updated, outcome = Pose.afterTurn(blockedPose, direction, true)
+        blockedPose = updated
+        return updated, outcome
+    end,
+    dig = function() return Result.new(false, "UNBREAKABLE_BLOCK") end,
+    place = function() error("must not place into an uncleared niche") end,
+    poseNow = function() return blockedPose end,
+})
+assert(not blockedNiche.ok and blockedNiche.skippable == true
+    and blockedNiche.code == "UNBREAKABLE_BLOCK" and blockedPose.facing == 0,
+    "an unbreakable optional niche should leave the route pose intact")
+
 local clearDigCalls, clearPlaceCalls = 0, 0
 local clearPose = { x = 4, y = -4, z = -8, facing = 0 }
 local alreadyClear = Lighting.placeRight({

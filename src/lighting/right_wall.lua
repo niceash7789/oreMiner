@@ -32,6 +32,18 @@ local function samePose(left, right)
         and left.z == right.z and left.facing == right.facing
 end
 
+local function restoredOutcome(facing, start, ops)
+    local restored, restoreResult = Turn.face(facing, start.facing, ops.turn)
+    if not restoreResult.ok then
+        return Result.new(false, "LIGHTING_RESTORE_FAILED", nil, { cause = restoreResult.code })
+    end
+    if not samePose(restored, start) then return Result.new(false, "LIGHTING_POSE_MISMATCH") end
+    if type(ops.poseNow) == "function" and not samePose(ops.poseNow(), start) then
+        return Result.new(false, "LIGHTING_POSE_MISMATCH")
+    end
+    return Result.new(true, "LIGHTING_RESTORED")
+end
+
 function Lighting.placeRight(ops)
     if type(ops) ~= "table" or type(ops.pose) ~= "table"
         or not validFacing(ops.outboundFacing)
@@ -50,26 +62,25 @@ function Lighting.placeRight(ops)
     if ops.alreadyClear ~= true then
         local dug = ops.dig()
         if type(dug) ~= "table" or dug.ok ~= true then
-            local restored, restoreResult = Turn.face(facing, start.facing, ops.turn)
-            if not restoreResult.ok then return Result.new(false, "LIGHTING_RESTORE_FAILED", nil, { cause = restoreResult.code }) end
-            return type(dug) == "table" and dug or Result.new(false, "LIGHTING_DIG_FAILED")
+            local restored = restoredOutcome(facing, start, ops)
+            if not restored.ok then return restored end
+            local code = type(dug) == "table" and type(dug.code) == "string"
+                and dug.code or "LIGHTING_DIG_FAILED"
+            local skippable = code == "DIG_FAILED" or code == "UNBREAKABLE_BLOCK"
+                or code == "BLOCKED"
+            return Result.new(false, code, type(dug) == "table" and dug.message or nil,
+                { skippable = skippable })
         end
     end
 
     local placed = ops.place()
-    local restored, restoreResult = Turn.face(facing, start.facing, ops.turn)
-    if not restoreResult.ok then
-        return Result.new(false, "LIGHTING_RESTORE_FAILED", nil, { cause = restoreResult.code })
-    end
-    if not samePose(restored, start) then return Result.new(false, "LIGHTING_POSE_MISMATCH") end
-    if type(ops.poseNow) == "function" then
-        local actual = ops.poseNow()
-        if not samePose(actual, start) then
-            return Result.new(false, "LIGHTING_POSE_MISMATCH")
-        end
-    end
+    local restored = restoredOutcome(facing, start, ops)
+    if not restored.ok then return restored end
     if type(placed) ~= "table" or placed.ok ~= true then
-        return type(placed) == "table" and placed or Result.new(false, "TORCH_PLACE_FAILED")
+        local code = type(placed) == "table" and type(placed.code) == "string"
+            and placed.code or "TORCH_PLACE_FAILED"
+        return Result.new(false, code,
+            type(placed) == "table" and placed.message or nil, { skippable = true })
     end
     return Result.new(true, "TORCH_PLACED")
 end

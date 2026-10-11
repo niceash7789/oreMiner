@@ -1136,14 +1136,16 @@ local function placeTunnelTorch(outboundFacing, distance, force, routeId)
             end
         end
         if not slot or turtle.select(slot) ~= true then
-            return Result.new(false, "NO_TORCHES")
+            if not slot then return Result.new(false, "NO_TORCHES", nil, { skippable = true }) end
+            return Result.new(false, "TORCH_SELECT_FAILED")
         end
         return Lighting.placeRight({
             pose = copyCurrentPose(),
             outboundFacing = outboundFacing,
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
-            alreadyClear = true,
+            -- Floor tunnel walls need a niche; the stair passage is already clear.
+            dig = digForward,
             place = function()
                 if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
                 stats:add("torches_placed", 1)
@@ -1153,6 +1155,11 @@ local function placeTunnelTorch(outboundFacing, distance, force, routeId)
     end)
     if not selected.ok or type(selected.value) ~= "table" or selected.value.ok ~= true then
         local code = selected.ok and selected.value and selected.value.code or selected.code
+        if selected.ok and type(selected.value) == "table"
+            and selected.value.skippable == true then
+            print("WARNING: Skipped right-wall torch: " .. tostring(code))
+            return true
+        end
         print("ERROR: " .. tostring(code or "LIGHTING_FAILED"))
         return false
     end

@@ -64,6 +64,8 @@ local pavingCount = 16
 local coalCount = 64
 local placements = 0
 local torchPlacementFrames = {}
+local torchNicheReady = false
+local torchNicheDigs = 0
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
@@ -164,10 +166,28 @@ local turtleApi = {
         world.facing = (world.facing + 1) % 4
         return true
     end,
-    detect = function() return false end,
+    detect = function()
+        if selectedSlot == 3 then
+            local raw = persistedFiles["oreMiner/state.json"]
+            local progress = raw and assert(load("return " .. raw))().progress
+            if progress and (progress.phase == "main_shaft"
+                or progress.phase == "branch_outbound_lower") then
+                return not torchNicheReady
+            end
+        end
+        return false
+    end,
     detectUp = function() return false end,
     detectDown = function() return false end,
-    dig = function() return false end,
+    dig = function()
+        if selectedSlot == 3 then
+            recordPhysicalAction("dig", "forward")
+            torchNicheReady = true
+            torchNicheDigs = torchNicheDigs + 1
+            return true
+        end
+        return false
+    end,
     digUp = function() return false end,
     digDown = function() return false end,
     attack = function() return false end,
@@ -195,6 +215,7 @@ local turtleApi = {
                 x = world.x, y = world.y, z = world.z, facing = world.facing,
                 progress = progress,
             }
+            torchNicheReady = false
             return true
         end
         return false
@@ -320,6 +341,8 @@ for _, torchPose in ipairs(torchPlacementFrames) do
 end
 assert(leftShaftTorch and rightShaftTorch,
     "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
+assert(torchNicheDigs >= 2,
+    "floor tunnel torches should carve their right-wall niche before placement")
 assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -8
     and firstShaftStart.z == -13 and firstShaftStart.facing == 0,
     "the first shaft should start three blocks along the perpendicular main tunnel")
