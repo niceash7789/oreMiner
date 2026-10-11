@@ -10,7 +10,7 @@ return {
         stairHeight = 4,
         floorMainTurn = "right",
         branchLength = 30,
-        branchPairs = 20,
+        branchPairs = 2, -- Test run: two left and two right branches per floor.
         branchSpacing = 3,
         tunnelHeight = 2,
         scanMainTunnel = true,

@@ -6,7 +6,7 @@ Load one versioned V1 job configuration, reject invalid or incomplete settings b
 
 ## Implemented behavior
 
-The tracked example sets `mining.stairHeight = 4`, matching the fixed V1 validator and the 3×4 passage geometry. Existing installed `config.lua` files are retained by the installer and must be checked separately.
+The tracked example sets `mining.stairHeight = 4`, matching the fixed V1 validator and the 3×4 passage geometry. It sets `mining.branchPairs = 2` for a short test run: two left and two right branches per floor. This differs from the plan's 20-pair production example; the validated pair count is configurable. Existing installed `config.lua` files are retained by the installer and must be checked separately.
 
 Tracked `config.example.lua` returns the complete schema-version-1 table from `MINER_PLAN.md`. The installer copies it to the untracked live `config.lua` only when that file is absent, so a pull can update the example without overwriting operator settings. `src.config.loader.normalize(config)` first applies the existing numeric/fixed-geometry rules, then requires every V1 section and validates booleans, item-ID lists, quota maps, ore mode and Lua patterns, retry/time limits, feature flags, and the canonical route/chest sides. It rejects top-level `workers`, `workerCount`, `turtleCount`, and `fleet` fields so unsupported multi-turtle settings cannot be silently accepted. The coordinator uses one local sequential executor and one persisted mining cursor. It deep-copies the input and adds the compatibility fields consumed by the current coordinator; it never mutates the loaded table.
 

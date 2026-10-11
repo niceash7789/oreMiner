@@ -12,7 +12,7 @@ local normalized, result = Loader.normalize(source)
 assert(result.ok and result.code == "CONFIG_VALID")
 assert(normalized ~= source and normalized.mining ~= source.mining,
     "normalization must not mutate the loaded config table")
-assert(normalized.branch_length == 30 and normalized.num_branches == 20
+assert(normalized.branch_length == 30 and normalized.num_branches == 2
     and normalized.spacing == 3 and normalized.fuel_reserve == 100)
 assert(normalized.pave == false and normalized.vein_mine == true)
 assert(normalized.inventory.retainedItems["minecraft:cobblestone"] == 64)
