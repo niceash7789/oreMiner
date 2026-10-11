@@ -13,7 +13,7 @@ The recommended V1 is a deliberately constrained multi-floor shaft miner:
 - It moves forward four level centreline blocks before the first descending stair step.
 - It mines three-block-wide, four-block-tall diagonal stairs. Each completed slice advances the centreline one block forward and one block down.
 - After the configured downward steps it carves a flat 3×3 landing with three blocks of clear headroom. Each later floor is the same configured depth lower; the example uses four steps per floor.
-- The stairs enter the rear-centre of the landing, the canonical landing pose is its centre block, and the floor's main shaft starts from that centre by turning right.
+- The stairs enter the rear-centre of the landing. From its canonical centre block, mine a main shaft to the right, return to the centre, then mine an equal main shaft to the left.
 - At every landing it mines a complete one-block-wide, two-block-high shaft-mining floor.
 - When a floor is complete, it returns to that floor's landing centre, restores the stairs-facing orientation, and descends to the next floor from the front-centre edge.
 - Paired left and right shafts at each junction.
@@ -37,7 +37,7 @@ Use this route hierarchy in product requirements, operator messages, and new pub
 
 1. **Stairs** — the 3-wide × 4-tall surface descent/ascent route. This replaces “staircase” and the old “shaft work” label.
 2. **Floor** — one mining level reached from a stairs landing.
-3. **Main shaft** — the straight level route that starts at the centre of a floor's 3×3 landing and turns right from the stairs direction. This replaces “floor main tunnel.”
+3. **Main shaft** — either straight level route extending right or left from the centre of a floor's 3×3 landing. Mine the right side first, then the left. This replaces “floor main tunnel.”
 4. **Shaft** — either paired left/right mining route perpendicular to the main shaft. This replaces “branch” or “branch tunnel.”
 
 The preserved filenames `reference/branch_miner_phase1.lua` and `src/branch_miner.lua` retain their historical names. Existing code identifiers that still use `staircase`, `mainTunnel`, or `branch` are migration targets; do not treat those legacy names as new product terminology.
@@ -142,14 +142,14 @@ One stair slice is a deterministic excavation sweep:
 1. From the current centre-bottom checkpoint, clear and move forward into the middle of the target slice.
 2. Clear the centre block below and two blocks above, using a checked up/down move to clear the fourth cell.
 3. Sweep into the left column, clear one block below and two above, and return to centre.
-4. Sweep into the right column, clear one block below and two above, and return to centre. If scheduled, place a non-blocking torch into an already-cleared cell in the right column inside the passage; do not dig a torch niche or add a movement. Skip torch placement on a landing slice so the right-turn floor entrance remains clear.
+4. Sweep into the right column, clear one block below and two above, and return to centre. If scheduled, place a non-blocking torch into an already-cleared cell in the right column inside the passage; do not dig a torch niche or add a movement. Skip torch placement on a landing slice so the floor entrances remain clear.
 5. Restore the stairs facing and move down into the target slice's centre-bottom checkpoint.
 
 The lateral sweep creates a 3-wide × 4-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the final slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry and four-step example interval, the landing centres are 9 blocks forward/4 blocks down for floor 1 and 15 blocks forward/8 blocks down for floor 2. In general, floor `n` has depth `-n * stairStepsPerFloor` and centreline forward offset `surfaceEntryLength + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
 
 “Right-hand side” is defined by the planned outbound direction of that route, not whichever way the turtle happens to face while returning. Stair torches occupy a cleared right-column cell inside the passage without digging; main-shaft and shaft torches go on the right wall relative to their outbound mining direction. Return and service travel never places torches.
 
-At each landing centre, the floor's main shaft turns right relative to the stairs direction. With the documented facing convention, northbound stairs produce an eastbound main shaft. Paired shafts therefore run north/south and do not occupy the stairs centreline.
+At each landing centre, mine the right main shaft first and the mirrored left main shaft second. Return to the exact landing centre between passes. With the documented facing convention, northbound stairs produce eastbound and westbound main shafts. Each main shaft has its own complete set of paired north/south shafts at the configured spacing; no shaft enters the stairs centreline.
 
 ```text
 Side view of stairs (centreline)
@@ -157,7 +157,7 @@ Side view of stairs (centreline)
 Surface/base  T____
                    \_
                      \_
-                       r-c-f  -> floor 1 landing; main shaft exits right from c
+                       r-c-f  -> floor 1 landing; main shafts exit both sides from c
                          \_
                            \_
                                  r-c-f  -> floor 2 landing
@@ -172,12 +172,11 @@ The lifecycle for each floor is:
 
 1. On the first descent, travel `surfaceEntryLength` level blocks from base to the stair mouth.
 2. Descend `stairStepsPerFloor` recorded 3×4 stair slices to the landing's rear-centre cell, carve the flat 3×3 landing, and move level to its centre.
-3. Save and assert the centre landing pose, face right, and begin that floor's main shaft from that same centre block.
-4. At each junction, mine one complete shaft and return before starting the other.
-5. Complete every configured shaft pair on that floor.
-6. Use the final main-shaft trip back to scan the upper level, sealing main-shaft ore openings flush with cobblestone after each vein unwind.
-7. Return to the exact landing centre at `y=0` relative to the floor, face the stairs direction, and commit `floorComplete`.
-8. Cross the front-centre landing cell and descend the next stair segment, or climb the recorded stairs and reverse the four-block surface entry if the job is complete.
+3. Save and assert the centre landing pose, face right, and mine every configured pair along the right main shaft.
+4. Return along recorded cells to the exact landing centre and restore the stairs-facing orientation.
+5. Face left and mine every configured pair along the left main shaft with the same spacing, length, scan, lighting, and fuel rules.
+6. Return to the exact landing centre at `y=0` relative to the floor, face the stairs direction, and commit `floorComplete` only after both passes.
+7. Cross the front-centre landing cell and descend the next stair segment, or climb the recorded stairs and reverse the four-block surface entry if the job is complete.
 
 Paired left/right shafts remain preferable to alternating a single side because every completed pair ends at an unambiguous canonical pose on that floor's main-shaft centreline.
 
@@ -202,7 +201,7 @@ Recommended defaults:
 | Surface entry | 4 level blocks | Keeps the 3×4 stair mouth clear of the base chests. |
 | Stair cross-section | 3 wide × 4 tall | Requested spacious access route, carved by a deterministic slice sweep. |
 | Stair centreline | Net 1 forward + 1 down per slice | Deterministic and exactly reversible without pathfinding. |
-| Floor main direction | Right from landing | Keeps the branch grid separate from the staircase column and makes every landing identical. |
+| Floor main directions | Right, then left from landing | Mines both sides of each landing with separate paired-shaft grids and one canonical return between passes. |
 | Main tunnel | 1 wide × 2 high | Minimum excavation with safe player/turtle access. |
 | Branch tunnel | 1 wide × 2 high | Matches the baseline's efficient lower-outbound/upper-return scan. |
 | Branch length | 30 | Preserves the proven reference baseline and bounds each recovery leg; configuration validation may accept other safe positive integers. |
@@ -220,9 +219,9 @@ Spacing semantics must be documented precisely. With centreline spacing 3, adjac
 - The surface entry is straight and level for exactly four blocks.
 - The staircase is straight, 3 wide, and 4 tall. Each slice restores the turtle to the centre-bottom lane and advances that lane exactly one block forward and down; V1 does not build turns or switchbacks.
 - The first landing is `surfaceEntryLength + stairStepsPerFloor` blocks forward and `stairStepsPerFloor` blocks below base. Later landings add one forward/down displacement per stair slice.
-- Every floor main tunnel turns right from the staircase and is straight and level.
+- Every floor has straight, level right and left main shafts from the same landing centre; the right pass finishes and returns before the left pass starts.
 - Every branch is straight, level, and perpendicular to its floor's main tunnel.
-- A floor is considered complete only after every configured branch pair and the final upper main scan have returned to the landing.
+- A floor is considered complete only after every configured pair on both main sides has returned to the landing.
 - Only one active branch excursion exists at a time.
 - The turtle does not route around bedrock, liquids, protected blocks, or player construction.
 - Bounded 3×4 slice sweeps and vein motion are the only non-centreline excursions, and every successful movement records its inverse.
@@ -737,7 +736,7 @@ Safe V1 behaviour is to stop. Turtles cannot reliably solve every flowing-water/
 
 Torch placement is an MVP requirement. A route carries a fixed outbound frame, so “right” remains stable even when the turtle later faces home.
 
-- Staircase: from the centreline, place into the already-cleared right-column passage cell. Do not dig a torch niche or move laterally for placement. Never place on a landing slice, because the floor main tunnel exits to that side.
+- Staircase: from the centreline, place into the already-cleared right-column passage cell. Do not dig a torch niche or move laterally for placement. Never place on a landing slice, because both floor main shafts exit beside the landing.
 - Floor main tunnel: at the configured height, carve a one-block torch niche in the right wall and place into it.
 - Branch: carve the same right-side niche relative to that branch's outbound direction.
 - Return, unwind, climb, and service travel: never place torches.
@@ -747,7 +746,7 @@ The example cadence is every two stair slices and every eight floor-tunnel block
 - [x] **MVP / P0** Implement a route-frame right-side helper independent of current facing. `Lighting.rightSide` returns the adjacent pose and absolute right heading; `tests/lighting_right_wall.lua` covers all route and current facings. — **AI-2**
 - [x] **MVP / P0** Implement right-side torch/niche placement with exact pose/facing restoration. `Lighting.placeRight` restores facing through checked turns and, when supplied, verifies the live committed pose; the coordinator supplies that callback. `tests/lighting_right_wall.lua` covers all headings and injected coordinate drift. Persistent duplicate suppression remains a separate unchecked requirement. — **AI-2**
 - [ ] **MVP / P0** Place stair torches in an already-cleared right-column cell inside the passage without digging or extra movement. `StairSlice` completes the passage before placement; verify that the active callback uses no dig or lateral move and still restores facing.
-- [x] **MVP / P0** Skip torch placement on every landing slice so the right-turn floor entrance remains unobstructed. `StairRoute` suppresses placement on the final slice; `tests/stair_route.lua` verifies cadence and landing exclusion. — **AI-2**
+- [x] **MVP / P0** Skip torch placement on every landing slice so both floor entrances remain unobstructed. `StairRoute` suppresses placement on the final slice; `tests/stair_route.lua` verifies cadence and landing exclusion. — **AI-2**
 - [x] **MVP / P0** Place floor-main and branch torches only on their outbound right wall. The coordinator uses each route's fixed outbound frame; `tests/active_baseline_wiring.lua` verifies both branch headings and the main route. — **AI-2**
 - [x] **MVP / P1** Apply the configured stair/tunnel intervals by route distance, not global move count. `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` cover configured cadence. — **AI-1**
 - [x] **MVP / P1** Count and persist torches placed so restart does not duplicate the same placement checkpoint. `Checkpoint` stores route-distance placement keys; `tests/persistence_state.lua` verifies persistence and distinct placements. — **AI-1**
@@ -903,6 +902,7 @@ Choose only dependency-ready work. Within that set, complete P0 safety/correctne
 - [x] **MVP / P0 — S04** Resume from the surface to the exact active landing without digging. `StairRoute.resumeToLanding` validates the entire saved route chain before movement, replays only checked clear-centreline moves, and stops on the first failed or inconsistent pose; `tests/stair_resume.lua` covers success, malformed/incomplete routes, and movement failure. Coordinator startup still refuses incomplete snapshots pending the safe resume command/checkpoint integration. — **AI-2**
 - [x] **MVP / P1 — S05** Advance the floor index only after the prior floor returns to its landing and commits complete. The coordinator verifies exact landing pose/facing and persists a `floor_complete / advance_floor` cursor before recording completion or starting another descent; focused cursor and active-wiring checks cover the durable contract. — **AI-1**
 - [x] **MVP / P1 — M02** From the landing, turn right and mine a two-high straight floor main-tunnel segment. `src/branch_miner.lua` turns right from each recorded landing, mines configured two-high cells through `mineForward`, and returns over the recorded clear route to the exact landing before floor completion; `src/navigation/main_shaft.lua` provides the bounded canonical segment geometry, verified for all facings. Physical tunnel dimensions remain an in-world check. — **AI-1**
+- [ ] **MVP / P1 — M02b** Mine the same complete main-shaft and paired-shaft grid on the opposite side of every landing after returning from the right side. Persist the active main side and its landing-return phase; resume must reject a cursor or pose on the wrong side. Verify both sides in geometry, recovery, and a full fake-turtle run before marking complete. Physical dimensions remain an in-world check.
 - [x] **MVP / P1 — M03** Mine a left branch outbound/lower and return/upper. `src/branch_miner.lua` performs the two-level return even when ore scanning is disabled; upper-lane movement is committed through the checked fuel-aware wrapper, and optional scans stay inside the route frame. The shared movement recovery clears a blocked planned upper cell in place. `tests/active_baseline_wiring.lua` verifies both return cursors and blocked forward/back/up/down edges. — **AI-1**
 - [x] **MVP / P1 — M04** Mirror the same branch logic for the right side without duplicate algorithms. Both sides use the shared `mineBranch` executor with side-derived turns and route geometry; active wiring verifies both. — **AI-1**
 - [x] **MVP / P1 — M05** Assert canonical junction pose after each side and canonical forward pose after each pair. Branch execution verifies lower junction coordinates and restored main facing; the active multi-floor run verifies return to each exact landing and origin. — **AI-1**
@@ -1011,7 +1011,7 @@ V1 is complete only when all of these work together:
 - Strictly one turtle executing shaft, floor, ore, and service work sequentially.
 - Surface start, four-block level entry, deterministic 3-wide × 4-tall staircase, and a landing every configured stair interval (four in the example).
 - A configurable bounded number of floors, completed sequentially.
-- On every floor, a right-turn two-high main tunnel and paired two-high branches using the constrained geometry.
+- On every floor, right and left two-high main shafts, each with paired two-high shafts using the constrained geometry.
 - Main/branch ore scans and bounded iterative vein mining.
 - Threshold-based inventory service at 14 occupied slots.
 - Required left fuel/torch chest, required right ore/output chest, and optional configured rear bulk chest.
@@ -1159,7 +1159,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [ ] Simulate/construct a pending-action state and verify the turtle refuses automatic recovery. — **AI-1**
 - [ ] Encounter water and lava in isolated, controlled tests and verify no blind continuation. — **AI-1**
 - [ ] Verify every placed torch is on the route-defined right wall, including left and right branches. — **AI-1**
-- [ ] Verify stair torches occupy a cleared passage cell without digging and never block the right-turn floor entrance. — **AI-1**
+- [ ] Verify stair torches occupy a cleared passage cell without digging and never block either floor entrance. — **AI-1**
 - [ ] Complete a short job, perform the final main upper scan, and finish at origin. — **AI-1**
 
 ### Release gates

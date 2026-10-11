@@ -19,6 +19,17 @@ assert(left.origin.x == junction.x and left.origin.y == junction.y and left.orig
 assert(left.facing == 0, "left branch should face north")
 assert(right.facing == 2, "right branch should face south")
 
+local opposite = assert(grid.junction(3, "left"))
+assert(opposite.x == -3 and opposite.y == -8 and opposite.z == -13
+    and opposite.facing == 3, "the opposite main shaft should leave the same landing")
+local oppositeLeft = assert(grid.branch(opposite, "left"))
+local oppositeRight = assert(grid.branch(opposite, "right"))
+assert(oppositeLeft.facing == 2 and oppositeRight.facing == 0
+    and oppositeLeft.junctionFacing == 3 and oppositeRight.junctionFacing == 3,
+    "paired shafts must turn relative to the opposite main heading")
+local invalidSide, invalidSideStatus = grid.junction(3, "back")
+assert(invalidSide == nil and invalidSideStatus.code == "INVALID_MAIN_SIDE")
+
 local secondGrid = assert(FloorGrid.new(origin, 0, {
     floor = 2,
     pose = { x = 0, y = -16, z = -23, facing = 0 },

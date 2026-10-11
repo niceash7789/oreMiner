@@ -71,8 +71,10 @@ function PhaseMachine.transition(progress, event, Cursor, updates)
             nextProgress[key] = value
         end
     end
-    nextProgress.workUnitId = string.format("surface-pair-%d-%s-%s-%d",
-        nextProgress.branchPair, nextProgress.side, nextProgress.phase, nextProgress.offset)
+    nextProgress.workUnitId = string.format("surface-pair-%d-%s%s-%s-%d",
+        nextProgress.branchPair,
+        nextProgress.mainSide == "left" and "left-main-" or "",
+        nextProgress.side, nextProgress.phase, nextProgress.offset)
     local valid = Cursor.validate(nextProgress)
     if not valid then return nil, "INVALID_PHASE_TRANSITION" end
     return nextProgress

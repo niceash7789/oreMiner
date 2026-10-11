@@ -8,6 +8,9 @@ assert(start and start.branch == 3 and start.step == 2 and code == nil,
 start = assert(Resume.start(assert(Cursor.mainShaft(1, 1, 0, 1)), 8, 3))
 assert(start.branch == 1 and start.step == 1,
     "the first cell cursor must resume at the first branch and step")
+start = assert(Resume.start(assert(Cursor.mainShaft(1, 2, 0, 1, "left")), 8, 3))
+assert(start.mainSide == "left" and start.step == 2,
+    "the opposite main shaft must preserve its side and next cell")
 
 local invalid = assert(Cursor.mainShaft(3, 2, 6, 1))
 invalid.mainOffset = 0

@@ -15,7 +15,8 @@ end
 local function sameCursor(left, right)
     if type(left) ~= "table" or type(right) ~= "table" then return false end
     for _, field in ipairs({ "workDomain", "workUnitId", "floor", "stairSegment",
-        "stairStep", "branchPair", "side", "phase", "offset", "mainOffset", "nextAction" }) do
+        "stairStep", "branchPair", "side", "mainSide", "phase", "offset",
+        "mainOffset", "nextAction" }) do
         if left[field] ~= right[field] then return false end
     end
     return true

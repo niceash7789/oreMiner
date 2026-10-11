@@ -16,9 +16,11 @@ function Resume.start(cursor, branchCount, spacing)
         return nil, "JUNCTION_CURSOR_OUT_OF_RANGE"
     end
     if cursor.nextAction == "turn_to_left_branch" then
-        return { branch = cursor.branchPair, step = spacing + 1, action = cursor.nextAction }
+        return { branch = cursor.branchPair, step = spacing + 1,
+            action = cursor.nextAction, mainSide = cursor.mainSide or "right" }
     end
-    return { branch = cursor.branchPair + 1, step = 1, action = cursor.nextAction }
+    return { branch = cursor.branchPair + 1, step = 1,
+        action = cursor.nextAction, mainSide = cursor.mainSide or "right" }
 end
 
 return Resume

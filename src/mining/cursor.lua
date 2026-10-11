@@ -8,7 +8,9 @@ local PHASE_ACTIONS = {
         descend_stair_slice = true,
         prepare_landing = true,
     },
+    main_side_start = { turn_into_main = true },
     main_shaft = { mine_main_cell = true },
+    main_side_return = { return_to_landing = true },
     junction = { turn_to_left_branch = true, restore_main_facing = true },
     branch_outbound_lower = { mine_branch_cell = true },
     branch_turnaround = { prepare_branch_return = true },
@@ -97,6 +99,8 @@ function Cursor.validate(progress)
         or not nonNegativeInteger(progress.offset)
         or not nonNegativeInteger(progress.mainOffset)
         or (progress.side ~= "none" and progress.side ~= "left" and progress.side ~= "right")
+        or (progress.mainSide ~= nil and progress.mainSide ~= "left"
+            and progress.mainSide ~= "right")
         or type(progress.phase) ~= "string"
         or type(progress.nextAction) ~= "string" then
         return false
@@ -110,7 +114,8 @@ function Cursor.validate(progress)
             and progress.side == "none"
     end
     if progress.workDomain ~= "floor" then return false end
-    if progress.phase == "main_shaft" or progress.phase == "junction" then
+    if progress.phase == "main_side_start" or progress.phase == "main_side_return"
+        or progress.phase == "main_shaft" or progress.phase == "junction" then
         return progress.side == "none"
     end
     if progress.phase == "floor_complete" then
@@ -119,7 +124,7 @@ function Cursor.validate(progress)
     return progress.side == "left" or progress.side == "right"
 end
 
-local function create(branchPair, side, phase, offset, mainOffset, nextAction, suffix, floor)
+local function create(branchPair, side, phase, offset, mainOffset, nextAction, suffix, floor, mainSide)
     if not integer(branchPair) or branchPair < 1
         or type(side) ~= "string"
         or type(phase) ~= "string"
@@ -127,19 +132,22 @@ local function create(branchPair, side, phase, offset, mainOffset, nextAction, s
         or not nonNegativeInteger(mainOffset)
         or type(nextAction) ~= "string"
         or type(suffix) ~= "string"
-        or (floor ~= nil and not nonNegativeInteger(floor)) then
+        or (floor ~= nil and not nonNegativeInteger(floor))
+        or (mainSide ~= nil and mainSide ~= "left" and mainSide ~= "right") then
         return nil, "INVALID_MINING_CURSOR"
     end
+    local unitSuffix = mainSide == "left" and "left-main-" .. suffix or suffix
     local progress = {
         workDomain = "floor",
         workUnitId = floor and floor > 0
-            and string.format("floor-%d-pair-%d-%s", floor, branchPair, suffix)
-            or string.format("surface-pair-%d-%s", branchPair, suffix),
+            and string.format("floor-%d-pair-%d-%s", floor, branchPair, unitSuffix)
+            or string.format("surface-pair-%d-%s", branchPair, unitSuffix),
         floor = floor or 0,
         stairSegment = floor and math.max(0, floor - 1) or 0,
         stairStep = 0,
         branchPair = branchPair,
         side = side,
+        mainSide = mainSide or "right",
         phase = phase,
         offset = offset,
         mainOffset = mainOffset,
@@ -156,6 +164,21 @@ end
 function Cursor.floorComplete(floor)
     if not integer(floor) or floor < 1 then return nil, "INVALID_MINING_CURSOR" end
     return create(1, "none", "floor_complete", 0, 0, "advance_floor", "complete", floor)
+end
+
+function Cursor.mainSideStart(floor, mainSide)
+    if not integer(floor) or floor < 1 then return nil, "INVALID_MINING_CURSOR" end
+    return create(1, "none", "main_side_start", 0, 0,
+        "turn_into_main", "start", floor, mainSide)
+end
+
+function Cursor.mainSideReturn(floor, mainSide, branchCount, mainOffset)
+    if not integer(floor) or floor < 1 or not integer(branchCount)
+        or branchCount < 1 or not nonNegativeInteger(mainOffset) then
+        return nil, "INVALID_MINING_CURSOR"
+    end
+    return create(branchCount, "none", "main_side_return", 0, mainOffset,
+        "return_to_landing", "return", floor, mainSide)
 end
 
 -- Route cursor used before surface entry and before each bounded stair/landing
@@ -185,25 +208,25 @@ function Cursor.stairs(floor, stairStep, nextAction)
     return progress
 end
 
-function Cursor.mainShaft(branchPair, step, mainOffset, floor)
+function Cursor.mainShaft(branchPair, step, mainOffset, floor, mainSide)
     if not integer(step) or step < 1 then return nil, "INVALID_MINING_CURSOR" end
     return create(branchPair, "none", "main_shaft", step - 1, mainOffset,
-        "mine_main_cell", "main-" .. step, floor)
+        "mine_main_cell", "main-" .. step, floor, mainSide)
 end
 
-function Cursor.junction(branchPair, mainOffset, nextAction, floor)
+function Cursor.junction(branchPair, mainOffset, nextAction, floor, mainSide)
     if type(nextAction) ~= "string" then return nil, "INVALID_MINING_CURSOR" end
     return create(branchPair, "none", "junction", 0, mainOffset, nextAction,
-        "junction-" .. nextAction, floor)
+        "junction-" .. nextAction, floor, mainSide)
 end
 
-function Cursor.branch(branchPair, side, phase, offset, mainOffset, nextAction, floor)
+function Cursor.branch(branchPair, side, phase, offset, mainOffset, nextAction, floor, mainSide)
     if type(side) ~= "string" or type(phase) ~= "string"
         or not nonNegativeInteger(offset) then
         return nil, "INVALID_MINING_CURSOR"
     end
     return create(branchPair, side, phase, offset, mainOffset, nextAction,
-        string.format("%s-%s-%d", side, phase, offset), floor)
+        string.format("%s-%s-%d", side, phase, offset), floor, mainSide)
 end
 
 -- Advance the durable cursor only after its named unit has completed.

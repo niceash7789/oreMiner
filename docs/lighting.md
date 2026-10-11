@@ -11,7 +11,7 @@ Provide a small helper for placing a torch in the right cell of a route's fixed 
 - `src/navigation/stair_slice.lua` accepts optional `placeOuterRightTorch(pose)` after all passage cells are clear and before the downward step.
 - `src/navigation/stair_route.lua` accepts `stairTorchInterval` and `placeStairTorch(pose, step)`; cadence uses one-based slice distance and skips the final slice.
 - `src/branch_miner.lua` selects a configured torch item under the inventory slot guard and calls the helper at stair, main-shaft, and branch intervals. Branch placement uses the immutable outbound heading from the branch route; stair placement uses the slice's recorded outbound facing.
-- `Checkpoint.hasTorchPlacement(key)` checks the saved ledger; `Checkpoint.recordTorchPlacement(key, pose, route, config)` commits a successful placement. Main segments and left/right shaft routes have separate keys.
+- `Checkpoint.hasTorchPlacement(key)` checks the saved ledger; `Checkpoint.recordTorchPlacement(key, pose, route, config)` commits a successful placement. Each main side and each paired shaft route has a distinct key. Right-side keys retain their previous names for saved runs; left-main keys carry a `left-main` prefix.
 
 ## Invariants and assumptions
 

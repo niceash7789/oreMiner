@@ -31,6 +31,11 @@ local restored = transition(descend, "junction_reached")
 assert(restored.phase == "junction" and restored.nextAction == "restore_main_facing")
 local main = transition(restored, "main_facing_restored")
 assert(main.phase == "main_shaft" and main.side == "none")
+local mirrored = transition(assert(Cursor.mainShaft(2, 2, 3, 1, "left")),
+    "main_segment_complete")
+assert(mirrored.mainSide == "left"
+    and mirrored.workUnitId ~= junction.workUnitId,
+    "phase transitions must retain the main side and its distinct ID")
 
 local lower = transition(turnaround, "lower_return_started")
 assert(lower.phase == "branch_lower_return")

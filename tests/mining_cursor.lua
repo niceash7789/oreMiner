@@ -32,6 +32,11 @@ assert(main.side == "none" and main.nextAction == "mine_main_cell")
 local floorTwoMain = assert(Cursor.mainShaft(3, 2, 6, 2))
 assert(floorTwoMain.floor == 2 and floorTwoMain.workUnitId:find("floor-2-", 1, true),
     "mining work-unit IDs should remain distinct across floors")
+local leftMain = assert(Cursor.mainShaft(3, 2, 6, 2, "left"))
+assert(leftMain.mainSide == "left" and leftMain.workUnitId ~= floorTwoMain.workUnitId,
+    "mirrored main-shaft work units must have distinct durable IDs")
+assert(Cursor.validate(assert(Cursor.mainSideStart(2, "left"))))
+assert(Cursor.validate(assert(Cursor.mainSideReturn(2, "left", 3, 9))))
 
 local outbound = assert(Cursor.branch(3, "left", "branch_outbound_lower", 4, 9,
     "mine_branch_cell"))

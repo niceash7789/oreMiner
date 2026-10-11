@@ -250,6 +250,7 @@ local function resumeCheckpointValid(checkpoint, progress)
         and checkpoint.progress.stairStep == progress.stairStep
         and checkpoint.progress.branchPair == progress.branchPair
         and checkpoint.progress.side == progress.side
+        and checkpoint.progress.mainSide == progress.mainSide
         and checkpoint.progress.phase == progress.phase
         and checkpoint.progress.offset == progress.offset
         and checkpoint.progress.mainOffset == progress.mainOffset
@@ -283,6 +284,7 @@ local function serviceValid(service, progress)
         and service.resumeProgress.stairStep == progress.stairStep
         and service.resumeProgress.branchPair == progress.branchPair
         and service.resumeProgress.side == progress.side
+        and service.resumeProgress.mainSide == progress.mainSide
         and service.resumeProgress.phase == progress.phase
         and service.resumeProgress.offset == progress.offset
         and service.resumeProgress.mainOffset == progress.mainOffset

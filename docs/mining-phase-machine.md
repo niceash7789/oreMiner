@@ -19,6 +19,7 @@ Define legal logical phase changes for the active single-turtle surface-level mi
 - The input cursor remains unchanged; callers persist the returned cursor before starting its named next action.
 - The machine changes logical progress only. It does not move the turtle, inspect the world, persist state, or infer that a physical action succeeded.
 - A branch entry from the junction must supply `updates.side` as `left` or `right`.
+- `mainSide` identifies which landing-side main shaft owns the pair. Transitions preserve it, and left-main work-unit IDs remain distinct from right-main IDs. The coordinator directly saves `main_side_start` and `main_side_return` at the landing/pass boundaries.
 - The phase sequence describes the currently implemented surface-level baseline. It does not imply staircase, multi-floor, service, resume, or vein phases are implemented.
 
 ## Dependencies and limitations

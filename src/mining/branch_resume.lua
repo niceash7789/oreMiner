@@ -35,6 +35,7 @@ function Resume.start(cursor, branchCount, spacing, branchLength)
         phase = cursor.phase,
         branch = cursor.branchPair,
         side = cursor.side,
+        mainSide = cursor.mainSide or "right",
         distance = cursor.offset,
         action = cursor.nextAction,
     }

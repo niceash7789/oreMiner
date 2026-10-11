@@ -23,7 +23,9 @@ function MainShaft.new(landingPose, mainFacing, length)
         or not isInteger(landingPose.y) or not isInteger(landingPose.z)
         or not isInteger(landingPose.facing) or landingPose.facing < 0
         or landingPose.facing > 3 or not isInteger(mainFacing)
-        or mainFacing < 0 or mainFacing > 3 or (mainFacing - landingPose.facing) % 4 ~= 1 then
+        or mainFacing < 0 or mainFacing > 3
+        or ((mainFacing - landingPose.facing) % 4 ~= 1
+            and (mainFacing - landingPose.facing) % 4 ~= 3) then
         return nil, failure("INVALID_MAIN_SHAFT_ORIGIN")
     end
     if not isInteger(length) or length < 1 then return nil, failure("INVALID_MAIN_SHAFT_LENGTH") end

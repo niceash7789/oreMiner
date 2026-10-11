@@ -14,7 +14,8 @@ function Resume.start(cursor, branchCount, spacing)
         or cursor.mainOffset ~= (cursor.branchPair - 1) * spacing then
         return nil, "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
     end
-    return { branch = cursor.branchPair, step = cursor.offset + 1 }
+    return { branch = cursor.branchPair, step = cursor.offset + 1,
+        mainSide = cursor.mainSide or "right" }
 end
 
 return Resume

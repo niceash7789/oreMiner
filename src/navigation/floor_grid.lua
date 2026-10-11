@@ -81,29 +81,40 @@ function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)
         mainFacing = turn(staircaseFacing, "right"),
     }
 
-    function grid.junction(mainOffset)
+    function grid.mainFacingFor(mainSide)
+        if mainSide ~= "right" and mainSide ~= "left" then
+            return nil, failure("INVALID_MAIN_SIDE", "Main shaft side must be left or right.")
+        end
+        return turn(staircaseFacing, mainSide), { ok = true, code = "MAIN_FACING" }
+    end
+
+    function grid.junction(mainOffset, mainSide)
         if not isInteger(mainOffset) or mainOffset < 0 then
             return nil, failure("INVALID_MAIN_OFFSET", "Main-tunnel offset must be a non-negative integer.")
         end
-        return step(grid.landing.pose, grid.mainFacing, mainOffset), { ok = true, code = "JUNCTION_POSE" }
+        local facing, status = grid.mainFacingFor(mainSide or "right")
+        if not facing then return nil, status end
+        return step(grid.landing.pose, facing, mainOffset), { ok = true, code = "JUNCTION_POSE" }
     end
 
     function grid.branch(junctionPose, side)
         if side ~= "left" and side ~= "right" then
             return nil, failure("INVALID_BRANCH_SIDE", "Branch side must be left or right.")
         end
+        local rightFacing = grid.mainFacing
+        local leftFacing = turn(staircaseFacing, "left")
         if not validPose(junctionPose) or junctionPose.y ~= grid.landing.pose.y
-            or junctionPose.facing ~= grid.mainFacing then
+            or (junctionPose.facing ~= rightFacing and junctionPose.facing ~= leftFacing) then
             return nil, failure("INVALID_JUNCTION", "Branch must start at a lower-level junction facing along this floor's main tunnel.")
         end
-        local branchFacing = turn(grid.mainFacing, side)
+        local branchFacing = turn(junctionPose.facing, side)
         local branchOrigin = copyPose(junctionPose)
         branchOrigin.facing = branchFacing
         return {
             side = side,
             origin = branchOrigin,
             facing = branchFacing,
-            junctionFacing = grid.mainFacing,
+            junctionFacing = junctionPose.facing,
         },
             { ok = true, code = "BRANCH_GRID_CREATED" }
     end

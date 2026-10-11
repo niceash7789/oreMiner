@@ -473,6 +473,67 @@ allowed, code = Recovery.classify(activeMain, "STATE_LOADED")
 assert(allowed and code == "RESUME_SAFE_CHECKPOINT",
     "a committed main-shaft cursor with its floor landing is restartable")
 
+local oppositeRoute = { home = mainRoute.home, edges = {} }
+for key, neighbors in pairs(mainRoute.edges) do
+    oppositeRoute.edges[key] = {}
+    for neighbor, connected in pairs(neighbors) do
+        oppositeRoute.edges[key][neighbor] = connected
+    end
+end
+for offset = 1, 3 do
+    local from = string.format("%d,-8,-13", -(offset - 1))
+    local to = string.format("%d,-8,-13", -offset)
+    oppositeRoute.edges[from] = oppositeRoute.edges[from] or {}
+    oppositeRoute.edges[to] = oppositeRoute.edges[to] or {}
+    oppositeRoute.edges[from][to] = true
+    oppositeRoute.edges[to][from] = true
+end
+local opposite = {}
+for key, value in pairs(activeMain) do opposite[key] = value end
+opposite.route = oppositeRoute
+opposite.configSnapshot = {
+    branch_length = 30, num_branches = 1, spacing = 3,
+    stair_steps_per_floor = 8, pave = false, vein_mine = true,
+}
+opposite.floorLandings = { [1] = {
+    floor = 1, landing = { x = 0, y = -8, z = -13, facing = 0 },
+} }
+opposite.progress = assert(Cursor.mainSideStart(1, "left"))
+opposite.pose = landingPose
+opposite.resumeCheckpoint = { pose = landingPose, progress = opposite.progress }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(allowed, "left-side start must resume from the landing: " .. tostring(code))
+opposite.progress = assert(Cursor.mainShaft(1, 2, 0, 1, "left"))
+opposite.pose = { x = -1, y = -8, z = -13, facing = 3 }
+opposite.resumeCheckpoint = { pose = opposite.pose, progress = opposite.progress }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(allowed, "left main-shaft cell must resume on its own side: " .. tostring(code))
+opposite.progress = assert(Cursor.mainSideReturn(1, "left", 1, 3))
+opposite.resumeCheckpoint = {
+    pose = { x = -3, y = -8, z = -13, facing = 3 }, progress = opposite.progress,
+}
+opposite.pose = { x = -1, y = -8, z = -13, facing = 1 }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(allowed, "left return must resume at a committed intermediate cell: " .. tostring(code))
+opposite.pose = { x = 1, y = -8, z = -13, facing = 1 }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(not allowed and code == "MAIN_SIDE_RETURN_RESUME_UNSUPPORTED",
+    "left return must reject a pose on the right side of the landing")
+oppositeRoute.edges["-3,-8,-13"]["-3,-8,-12"] = true
+oppositeRoute.edges["-3,-8,-12"] = { ["-3,-8,-13"] = true }
+opposite.progress = assert(Cursor.branch(1, "left", "branch_outbound_lower",
+    1, 3, "mine_branch_cell", 1, "left"))
+opposite.pose = { x = -3, y = -8, z = -12, facing = 2 }
+opposite.resumeCheckpoint = { pose = opposite.pose, progress = opposite.progress }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(allowed, "left-main paired shaft must resume on mirrored geometry: " .. tostring(code))
+opposite.progress = assert(Cursor.branch(1, "left", "branch_outbound_lower",
+    1, 3, "mine_branch_cell", 1, "right"))
+opposite.resumeCheckpoint = { pose = opposite.pose, progress = opposite.progress }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(not allowed and code == "BRANCH_RESUME_UNSUPPORTED",
+    "a mirrored shaft pose must not resume under the right-main cursor")
+
 local junctionPose = { x = 6, y = -8, z = -13, facing = 1 }
 local junctionRoute = { home = "0,0,0", edges = {
     ["6,-8,-13"] = { ["5,-8,-13"] = true },

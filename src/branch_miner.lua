@@ -1356,7 +1356,8 @@ local function placeStairTorch(slicePose)
     return true
 end
 
-local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, resumePhase)
+local function mineBranch(length, branchPair, side, mainOffset, mainSide,
+    resumeDistance, resumePhase)
     local savedLanding = checkpoint:floorLanding(activeFloor)
     local gridLanding = savedLanding and {
         floor = savedLanding.floor,
@@ -1368,7 +1369,7 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
         print("ERROR: " .. gridStatus.code)
         return false, gridStatus
     end
-    local junctionPose = grid.junction(mainOffset)
+    local junctionPose = grid.junction(mainOffset, mainSide)
     local branch, branchStatus = grid.branch(junctionPose, side)
     if not branch then
         print("ERROR: " .. branchStatus.code)
@@ -1393,13 +1394,14 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
     end
     if not resumePose or pos.x ~= resumePose.x or pos.y ~= resumePose.y
         or pos.z ~= resumePose.z or pos.facing ~= resumePose.facing then
-        return false, { ok = false, code = "BRANCH_RESUME_POSE_MISMATCH" }
+        return false, { ok = false, code = "BRANCH_RESUME_POSE_MISMATCH",
+            actual = copyCurrentPose(), expected = resumePose }
     end
     local outboundResult = resumePhase and resumePhase ~= "branch_outbound_lower"
         and { ok = true, code = "BRANCH_OUTBOUND_ALREADY_COMPLETE", completed = length, requested = length }
         or BranchProgress.run(length, function(i)
         local cursor = MiningCursor.branch(branchPair, side, "branch_outbound_lower",
-            i - 1, mainOffset, "mine_branch_cell", activeFloor)
+            i - 1, mainOffset, "mine_branch_cell", activeFloor, mainSide)
         if not persistMiningCursor(cursor) then
             return { ok = false, code = persistenceError or "STATE_WRITE_FAILED",
                 message = "Unable to save branch outbound cursor" }
@@ -1434,7 +1436,9 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
 
         -- The shaft's right side is defined by its outbound heading, even
         -- though the same helper is also used later while facing back home.
-        if not placeTunnelTorch(branch.facing, i, false, side .. "-shaft-" .. mainOffset) then
+        local torchRoute = (mainSide == "right" and "" or "left-main-")
+            .. side .. "-shaft-" .. mainOffset
+        if not placeTunnelTorch(branch.facing, i, false, torchRoute) then
             return { ok = false, code = "BRANCH_TORCH_FAILED",
                 message = "Unable to place the scheduled right-wall torch" }
         end
@@ -1453,7 +1457,7 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
 
     if not resumePhase or resumePhase == "branch_outbound_lower" then
         local turnaroundCursor = MiningCursor.branch(branchPair, side, "branch_turnaround",
-            length, mainOffset, "prepare_branch_return", activeFloor)
+            length, mainOffset, "prepare_branch_return", activeFloor, mainSide)
         if not persistMiningCursor(turnaroundCursor) then return false end
     end
 
@@ -1497,7 +1501,8 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
         for i = firstReturnIndex, lastReturnIndex do
 
             local returnCursor = MiningCursor.branch(branchPair, side, "branch_upper_return",
-                length - i + 1, mainOffset, "scan_and_return_branch_cell", activeFloor)
+                length - i + 1, mainOffset, "scan_and_return_branch_cell",
+                activeFloor, mainSide)
             if not persistMiningCursor(returnCursor) then return false end
 
             if not serviceInventoryIfFull() then
@@ -1532,7 +1537,8 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
 
         if not resumePhase or resumePhase ~= "branch_return_to_junction" then
             local junctionCursor = MiningCursor.branch(branchPair, side,
-                "branch_return_to_junction", 0, mainOffset, "descend_to_junction", activeFloor)
+                "branch_return_to_junction", 0, mainOffset, "descend_to_junction",
+                activeFloor, mainSide)
             if not persistMiningCursor(junctionCursor) then return false end
         end
 
@@ -1737,12 +1743,27 @@ end
 -- MAIN MINING PATTERN
 -- ============================================================================
 
-local function executeMining(returnTarget, deferSummary, resumeCursor)
+local function executeMining(returnTarget, deferSummary, resumeCursor, requestedMainSide)
+
+    local mainSide = requestedMainSide or (resumeCursor and resumeCursor.mainSide) or "right"
+    if mainSide ~= "right" and mainSide ~= "left" then
+        persistenceError = "INVALID_MAIN_SIDE"
+        return false
+    end
+    if resumeCursor and (resumeCursor.mainSide or "right") ~= mainSide then
+        persistenceError = "MAIN_SIDE_CURSOR_MISMATCH"
+        return false
+    end
 
     local resumeStart
     if resumeCursor then
         local code
-        if resumeCursor.phase == "main_shaft" then
+        if resumeCursor.phase == "main_side_start" then
+            resumeStart = { branch = 1, step = 1, mainSide = mainSide }
+        elseif resumeCursor.phase == "main_side_return" then
+            resumeStart = { branch = config.num_branches + 1, step = 1,
+                mainSide = mainSide }
+        elseif resumeCursor.phase == "main_shaft" then
             local MainShaftResume = require("src.mining.main_shaft_resume")
             resumeStart, code = MainShaftResume.start(
                 resumeCursor, config.num_branches, config.spacing)
@@ -1764,6 +1785,31 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             persistenceError = code or "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
             return false
         end
+    end
+
+    if not resumeCursor or resumeCursor.phase == "main_side_start" then
+        if pos.x ~= returnTarget.x or pos.y ~= returnTarget.y
+            or pos.z ~= returnTarget.z then
+            persistenceError = "MAIN_SIDE_START_POSE_MISMATCH"
+            return false
+        end
+        if not resumeCursor then
+            local startCursor = MiningCursor.mainSideStart(activeFloor, mainSide)
+            if not persistMiningCursor(startCursor) then return false end
+        end
+        local targetFacing = (returnTarget.facing + (mainSide == "right" and 1 or 3)) % 4
+        if pos.facing == returnTarget.facing then
+            local turned = mainSide == "right" and turnRight() or turnLeft()
+            if turned ~= true then
+                persistenceError = "FLOOR_MAIN_TURN_FAILED"
+                return false
+            end
+        elseif pos.facing ~= targetFacing then
+            persistenceError = "MAIN_SIDE_START_POSE_MISMATCH"
+            return false
+        end
+        local firstCursor = MiningCursor.mainShaft(1, 1, 0, activeFloor, mainSide)
+        if not persistMiningCursor(firstCursor) then return false end
     end
 
     local startedAt = os.epoch("utc") / 1000
@@ -1793,17 +1839,19 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
     local firstBranch = resumeStart and resumeStart.branch or 1
     for branch = firstBranch, config.num_branches do
 
-        print(Status.phase("MAIN", branch, config.num_branches, "main"))
+        print(Status.phase("MAIN", branch, config.num_branches, mainSide .. " main"))
 
         local branchResumeHere = resumeStart and branch == firstBranch
-            and resumeStart.phase ~= "main_shaft" and resumeStart.phase ~= "junction"
+            and resumeCursor.phase ~= "main_shaft"
+            and resumeCursor.phase ~= "junction"
+            and resumeCursor.phase ~= "main_side_start"
         local firstStep = resumeStart and branch == firstBranch and resumeStart.step or 1
         local mainOffsetBeforePair = (branch - 1) * config.spacing
         if not branchResumeHere then
         for step = firstStep, config.spacing do
 
             local mainCursor = MiningCursor.mainShaft(
-                branch, step, mainOffsetBeforePair, activeFloor)
+                branch, step, mainOffsetBeforePair, activeFloor, mainSide)
             if not persistMiningCursor(mainCursor) then return false end
 
             if not serviceInventoryIfFull() then
@@ -1824,15 +1872,17 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             end
 
             local mainDistance = mainOffsetBeforePair + step
-            if not placeTunnelTorch(pos.facing, mainDistance, false, "main") then return false end
+            if not placeTunnelTorch(pos.facing, mainDistance, false,
+                mainSide == "right" and "main" or "left-main") then return false end
 
             local nextMainCursor
             if step < config.spacing then
                 nextMainCursor = MiningCursor.mainShaft(
-                    branch, step + 1, mainOffsetBeforePair, activeFloor)
+                    branch, step + 1, mainOffsetBeforePair, activeFloor, mainSide)
             else
                 nextMainCursor = MiningCursor.junction(
-                    branch, branch * config.spacing, "turn_to_left_branch", activeFloor)
+                    branch, branch * config.spacing, "turn_to_left_branch",
+                    activeFloor, mainSide)
             end
             if not persistMiningCursor(nextMainCursor) then return false end
 
@@ -1850,7 +1900,7 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             if not resumedLeft then
                 local junctionOffset = branch * config.spacing
                 local leftJunctionCursor = MiningCursor.junction(
-                    branch, junctionOffset, "turn_to_left_branch", activeFloor)
+                    branch, junctionOffset, "turn_to_left_branch", activeFloor, mainSide)
                 if not persistMiningCursor(leftJunctionCursor) then return false end
                 if turnLeft() ~= true then
                     print("ERROR: LEFT_BRANCH_TURN_FAILED")
@@ -1859,7 +1909,8 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             end
 
             local leftMined, leftFailure = mineBranch(config.branch_length, branch, "left",
-                branch * config.spacing, resumedLeft and resumeStart.distance or nil,
+                branch * config.spacing, mainSide,
+                resumedLeft and resumeStart.distance or nil,
                 resumedLeft and resumeStart.phase or nil)
             if not leftMined then
                 print("ERROR: Left branch mining failed ("
@@ -1884,6 +1935,7 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
             branch,
             "right",
             branch * config.spacing,
+            mainSide,
             resumedRight and resumeStart.distance or nil,
             resumedRight and resumeStart.phase or nil
         )
@@ -1900,7 +1952,8 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
         end
 
         local mainFacingCursor = MiningCursor.junction(
-            branch, branch * config.spacing, "restore_main_facing", activeFloor)
+            branch, branch * config.spacing, "restore_main_facing", activeFloor,
+            mainSide)
         if not persistMiningCursor(mainFacingCursor) then return false end
 
         stats:add("branches_completed", 1)
@@ -1918,6 +1971,11 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
         print("")
     end
 
+    if not resumeCursor or resumeCursor.phase ~= "main_side_return" then
+        local returnCursor = MiningCursor.mainSideReturn(activeFloor, mainSide,
+            config.num_branches, config.num_branches * config.spacing)
+        if not persistMiningCursor(returnCursor) then return false end
+    end
     local homeReached, homeOutcome = returnToKnownHome(returnTarget)
     if not homeReached then
         persistenceError = homeOutcome.code or "RETURN_FAILED"
@@ -2100,6 +2158,14 @@ end
 local function executeFloors(firstFloor, resumeCursor)
     local startedAt = os.epoch("utc") / 1000
     firstFloor = firstFloor or 1
+    local function mineBothSides(landingPose, cursor)
+        local mainSide = cursor and (cursor.mainSide or "right") or "right"
+        if not executeMining(landingPose, true, cursor, mainSide) then return false end
+        if mainSide == "right" then
+            return executeMining(landingPose, true, nil, "left")
+        end
+        return true
+    end
     for floor = firstFloor, config.mining.floorCount do
         activeFloor = floor
         local landingPose
@@ -2117,11 +2183,7 @@ local function executeFloors(firstFloor, resumeCursor)
                 persistenceError = stairOutcome.code or "STAIR_DESCENT_FAILED"
                 return false
             end
-            if turnRight() ~= true then
-                persistenceError = "FLOOR_MAIN_TURN_FAILED"
-                return false
-            end
-            if not executeMining(landingPose, true) then return false end
+            if not mineBothSides(landingPose) then return false end
             resumeCursor = nil
         elseif resumeCursor and floor == firstFloor then
             local landing = checkpoint:floorLanding(floor)
@@ -2130,7 +2192,9 @@ local function executeFloors(firstFloor, resumeCursor)
                 return false
             end
             landingPose = landing.landing
-            if (resumeCursor.phase ~= "main_shaft" and resumeCursor.phase ~= "junction"
+            if (resumeCursor.phase ~= "main_side_start"
+                and resumeCursor.phase ~= "main_side_return"
+                and resumeCursor.phase ~= "main_shaft" and resumeCursor.phase ~= "junction"
                 and resumeCursor.phase ~= "branch_outbound_lower"
                 and resumeCursor.phase ~= "branch_turnaround"
                 and resumeCursor.phase ~= "branch_upper_return"
@@ -2144,7 +2208,7 @@ local function executeFloors(firstFloor, resumeCursor)
                     or "MAIN_SHAFT_CURSOR_OUT_OF_RANGE"
                 return false
             end
-            if not executeMining(landingPose, true, resumeCursor) then return false end
+            if not mineBothSides(landingPose, resumeCursor) then return false end
             resumeCursor = nil
         else
             print(string.format("=== Floor %d/%d: stairs descent ===", floor, config.mining.floorCount))
@@ -2155,11 +2219,7 @@ local function executeFloors(firstFloor, resumeCursor)
                 print("ERROR: " .. tostring(persistenceError))
                 return false
             end
-            if turnRight() ~= true then
-                persistenceError = "FLOOR_MAIN_TURN_FAILED"
-                return false
-            end
-            if not executeMining(landingPose, true) then return false end
+            if not mineBothSides(landingPose) then return false end
         end
         if pos.x ~= landingPose.x or pos.y ~= landingPose.y
             or pos.z ~= landingPose.z or pos.facing ~= landingPose.facing then
@@ -2254,14 +2314,19 @@ local function main(...)
             return
         end
         local snapshot = saved:snapshotState()
-        if snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
+        if snapshot.progress.phase == "main_side_start"
+            or snapshot.progress.phase == "main_side_return"
+            or snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
             or snapshot.progress.phase == "branch_outbound_lower"
             or snapshot.progress.phase == "branch_turnaround"
             or snapshot.progress.phase == "branch_upper_return"
             or snapshot.progress.phase == "branch_return_to_junction" then
             local MainShaftResume = require("src.mining.main_shaft_resume")
             local start, startCode
-            if snapshot.progress.phase == "main_shaft" then
+            if snapshot.progress.phase == "main_side_start"
+                or snapshot.progress.phase == "main_side_return" then
+                start = { mainSide = snapshot.progress.mainSide or "right" }
+            elseif snapshot.progress.phase == "main_shaft" then
                 start, startCode = MainShaftResume.start(
                     snapshot.progress, config.num_branches, config.spacing)
             elseif snapshot.progress.phase == "junction" then
@@ -2279,6 +2344,11 @@ local function main(...)
             end
         end
         local target = snapshot.resumeCheckpoint.pose
+        if snapshot.progress.phase == "main_side_return" and not snapshot.service then
+            -- The return cursor spans already recorded main-shaft edges.
+            -- Continue from the last committed cell, including a service trip.
+            target = snapshot.pose
+        end
         if snapshot.progress.phase == "stairs"
             and snapshot.progress.nextAction == "cross_landing" then
             -- This cursor covers the complete crossing/descent unit. Recovery
@@ -2488,7 +2558,7 @@ local function main(...)
             end
             pos = reached
         end
-        local savedPose = snapshot.resumeCheckpoint.pose
+        local savedPose = target
         if pos.x ~= savedPose.x or pos.y ~= savedPose.y or pos.z ~= savedPose.z
             or pos.facing ~= savedPose.facing then
             print("Resume stopped safely: RESUME_POSE_MISMATCH")
@@ -2510,7 +2580,9 @@ local function main(...)
             print("Resume completed the remaining floors and returned to surface origin.")
             return
         end
-        if snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
+        if snapshot.progress.phase == "main_side_start"
+            or snapshot.progress.phase == "main_side_return"
+            or snapshot.progress.phase == "main_shaft" or snapshot.progress.phase == "junction"
             or snapshot.progress.phase == "branch_outbound_lower"
             or snapshot.progress.phase == "branch_turnaround"
             or snapshot.progress.phase == "branch_upper_return"

@@ -86,6 +86,7 @@ local persistedFiles = {}
 local physicalActionProgress = {}
 local firstShaftStart
 local firstMainTunnelTrace = {}
+local firstLeftMainTrace = {}
 local firstMainTunnelBackMoves = 0
 
 local function recordPhysicalAction(kind, direction)
@@ -101,10 +102,12 @@ local function recordPhysicalAction(kind, direction)
     if kind == "move" and state.service == nil and state.progress.phase == "main_shaft"
         and state.progress.floor == 1 and state.progress.branchPair == 1 then
         if direction == "forward" then
-            firstMainTunnelTrace[#firstMainTunnelTrace + 1] = {
+            local trace = state.progress.mainSide == "left"
+                and firstLeftMainTrace or firstMainTunnelTrace
+            trace[#trace + 1] = {
                 cursorOffset = state.progress.offset, x = world.x,
             }
-        elseif direction == "back" then
+        elseif direction == "back" and state.progress.mainSide ~= "left" then
             firstMainTunnelBackMoves = firstMainTunnelBackMoves + 1
         end
     end
@@ -461,9 +464,7 @@ assert(leftShaftTorch and rightShaftTorch,
     "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
 assert(torchNicheDigs >= 2,
     "floor tunnel torches should carve their right-wall niche before placement")
-assert(failedTorchPlace, "the fixture should exercise a failed branch torch placement: "
-    .. table.concat(output, " | ") .. string.format(" world=(%d,%d,%d,%d)",
-        world.x, world.y, world.z, world.facing))
+assert(failedTorchPlace, "the fixture should exercise a failed branch torch placement")
 local warnedAboutTorch = false
 for _, line in ipairs(output) do
     if line:find("WARNING: Skipped right-wall torch", 1, true) then
@@ -480,6 +481,11 @@ assert(#firstMainTunnelTrace == 3 and firstMainTunnelBackMoves == 0
     and firstMainTunnelTrace[2].cursorOffset == 1 and firstMainTunnelTrace[2].x == 1
     and firstMainTunnelTrace[3].cursorOffset == 2 and firstMainTunnelTrace[3].x == 2,
     "the first main tunnel must advance continuously for three cells before its shaft")
+assert(#firstLeftMainTrace == 3
+    and firstLeftMainTrace[1].cursorOffset == 0 and firstLeftMainTrace[1].x == 0
+    and firstLeftMainTrace[2].cursorOffset == 1 and firstLeftMainTrace[2].x == -1
+    and firstLeftMainTrace[3].cursorOffset == 2 and firstLeftMainTrace[3].x == -2,
+    "the opposite main shaft must advance continuously from the landing")
 local torchLocations = {}
 for _, frame in ipairs(torchPlacementFrames) do
     torchLocations[#torchLocations + 1] = string.format("(%d,%d,%d,%d:%s)",
@@ -513,9 +519,21 @@ assert(finalState.progress.completionStatus == "complete",
     "the terminal work unit must persist its completion status")
 
 local seenCursor = {}
+local firstFloorShafts = {}
+local firstFloorReturns = {}
 for _, progress in ipairs(physicalActionProgress) do
     seenCursor[progress.phase .. ":" .. progress.side .. ":" .. progress.nextAction] = true
+    if progress.floor == 1 and progress.phase == "branch_outbound_lower" then
+        firstFloorShafts[(progress.mainSide or "right") .. ":" .. progress.side] = true
+    elseif progress.floor == 1 and progress.phase == "main_side_return" then
+        firstFloorReturns[progress.mainSide or "right"] = true
+    end
 end
+assert(firstFloorShafts["right:left"] and firstFloorShafts["right:right"]
+    and firstFloorShafts["left:left"] and firstFloorShafts["left:right"],
+    "each main side must mine both of its paired shafts")
+assert(firstFloorReturns.right and firstFloorReturns.left,
+    "both main sides must return through a saved landing route")
 assert(seenCursor["main_shaft:none:mine_main_cell"],
     "main-shaft movement should carry its saved logical cursor")
 assert(seenCursor["branch_outbound_lower:left:mine_branch_cell"]
@@ -534,8 +552,8 @@ for _, progress in ipairs(physicalActionProgress) do
 end
 assert(leftJunctionCursor and rightJunctionCursor,
     "each side should persist junction descent before its inverse movement")
-assert(seenCursor["junction:none:restore_main_facing"],
-    "junction-facing restoration should carry its saved logical cursor")
+assert(seenCursor["main_side_return:none:return_to_landing"],
+    "each completed main side should carry a return-to-landing cursor")
 local seenStairAction = false
 for _, progress in ipairs(physicalActionProgress) do
     if progress.workDomain == "shaft" and progress.floor == 4

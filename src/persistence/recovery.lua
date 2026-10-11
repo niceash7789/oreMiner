@@ -18,7 +18,7 @@ local function sameCursor(left, right)
     if not Cursor.validate(left) or not Cursor.validate(right) then return false end
     local fields = {
         "workDomain", "workUnitId", "floor", "stairSegment", "stairStep",
-        "branchPair", "side", "phase", "offset", "mainOffset", "nextAction",
+        "branchPair", "side", "mainSide", "phase", "offset", "mainOffset", "nextAction",
     }
     for _, field in ipairs(fields) do
         if left[field] ~= right[field] then return false end
@@ -26,18 +26,34 @@ local function sameCursor(left, right)
     return true
 end
 
-local function matchesJunctionPose(pose, landing, mainOffset)
+local function matchesJunctionPose(pose, landing, mainOffset, mainSide)
     if type(pose) ~= "table" or type(landing) ~= "table"
         or type(mainOffset) ~= "number" or mainOffset < 0 then
         return false
     end
-    local facing = (landing.facing + 1) % 4
+    local facing = (landing.facing + (mainSide == "left" and 3 or 1)) % 4
     local x, z = landing.x, landing.z
     if facing == 0 then z = z - mainOffset
     elseif facing == 1 then x = x + mainOffset
     elseif facing == 2 then z = z + mainOffset
     else x = x - mainOffset end
     return pose.x == x and pose.y == landing.y and pose.z == z and pose.facing == facing
+end
+
+local function onMainReturn(pose, landing, mainOffset, mainSide)
+    if type(pose) ~= "table" or type(landing) ~= "table"
+        or type(mainOffset) ~= "number" or mainOffset < 0 then return false end
+    local facing = (landing.facing + (mainSide == "left" and 3 or 1)) % 4
+    local reverse = (facing + 2) % 4
+    if pose.y ~= landing.y or (pose.facing ~= facing and pose.facing ~= reverse
+        and not (samePose(pose, landing) and pose.facing == landing.facing)) then
+        return false
+    end
+    for offset = 0, mainOffset do
+        local cell = { x = pose.x, y = pose.y, z = pose.z, facing = facing }
+        if matchesJunctionPose(cell, landing, offset, mainSide) then return true end
+    end
+    return false
 end
 
 function Recovery.classify(state, loadCode)
@@ -174,7 +190,9 @@ function Recovery.classify(state, loadCode)
             return false, "SURFACE_ENTRY_RESUME_UNSUPPORTED"
         end
 
-    elseif state.progress.phase == "main_shaft" or state.progress.phase == "junction" then
+    elseif state.progress.phase == "main_side_start"
+        or state.progress.phase == "main_side_return"
+        or state.progress.phase == "main_shaft" or state.progress.phase == "junction" then
         local resume = state.resumeCheckpoint
         local landing = state.floorLandings and state.floorLandings[state.progress.floor]
         local savedConfig = state.configSnapshot
@@ -182,24 +200,58 @@ function Recovery.classify(state, loadCode)
         if not resume or not resume.pose or not sameCursor(resume.progress, state.progress)
             or state.progress.floor < 1
             or type(spacing) ~= "number" or spacing < 1
+            or (state.progress.phase == "main_side_start"
+                and state.progress.nextAction ~= "turn_into_main")
+            or (state.progress.phase == "main_side_return"
+                and state.progress.nextAction ~= "return_to_landing")
             or (state.progress.phase == "main_shaft" and state.progress.nextAction ~= "mine_main_cell")
             or (state.progress.phase == "junction"
                 and state.progress.nextAction ~= "turn_to_left_branch"
                 and state.progress.nextAction ~= "restore_main_facing")
             or not landing or type(landing.landing) ~= "table"
-            or not samePose(state.pose, resume.pose) then
+            or (state.progress.phase ~= "main_side_start"
+                and state.progress.phase ~= "main_side_return"
+                and not samePose(state.pose, resume.pose)) then
             return false, state.progress.phase == "junction"
                 and "JUNCTION_RESUME_UNSUPPORTED" or "MAIN_SHAFT_RESUME_UNSUPPORTED"
         end
-        if state.progress.phase == "main_shaft" then
+        local mainSide = state.progress.mainSide or "right"
+        if state.progress.phase == "main_side_start" then
+            local startFacing = (landing.landing.facing
+                + (mainSide == "left" and 3 or 1)) % 4
+            if state.progress.branchPair ~= 1 or state.progress.mainOffset ~= 0
+                or state.progress.offset ~= 0
+                or state.pose.x ~= landing.landing.x
+                or state.pose.y ~= landing.landing.y
+                or state.pose.z ~= landing.landing.z
+                or (state.pose.facing ~= landing.landing.facing
+                    and state.pose.facing ~= startFacing)
+                or not samePose(resume.pose, landing.landing) then
+                return false, "MAIN_SIDE_START_RESUME_UNSUPPORTED"
+            end
+        elseif state.progress.phase == "main_side_return" then
+            local savedCount = savedConfig and savedConfig.num_branches
+            if type(savedCount) ~= "number" or savedCount < 1
+                or state.progress.branchPair ~= savedCount
+                or state.progress.mainOffset ~= savedCount * spacing
+                or state.progress.offset ~= 0
+                or not matchesJunctionPose(resume.pose, landing.landing,
+                    state.progress.mainOffset, mainSide)
+                or not onMainReturn(state.pose, landing.landing,
+                    state.progress.mainOffset, mainSide)
+                or not RouteHome.path(state.route, state.pose, nil, landing.landing) then
+                return false, "MAIN_SIDE_RETURN_RESUME_UNSUPPORTED"
+            end
+        elseif state.progress.phase == "main_shaft" then
             local mainOffset = (state.progress.branchPair - 1) * spacing
             local cellOffset = mainOffset + state.progress.offset
             if state.progress.mainOffset ~= mainOffset or state.progress.offset >= spacing
-                or not matchesJunctionPose(state.pose, landing.landing, cellOffset) then
+                or not matchesJunctionPose(state.pose, landing.landing, cellOffset, mainSide) then
                 return false, "MAIN_SHAFT_RESUME_UNSUPPORTED"
             end
         elseif state.progress.branchPair * spacing ~= state.progress.mainOffset
-            or not matchesJunctionPose(state.pose, landing.landing, state.progress.mainOffset) then
+            or not matchesJunctionPose(state.pose, landing.landing,
+                state.progress.mainOffset, mainSide) then
             return false, "JUNCTION_RESUME_UNSUPPORTED"
         end
         local homePath = RouteHome.path(state.route, state.pose, nil,
@@ -224,7 +276,8 @@ function Recovery.classify(state, loadCode)
             { floor = landing.floor, pose = landing.landing },
             savedConfig.stair_steps_per_floor)
         if not grid then return false, "BRANCH_RESUME_UNSUPPORTED" end
-        local junction = grid.junction(state.progress.mainOffset)
+        local junction = grid.junction(state.progress.mainOffset,
+            state.progress.mainSide or "right")
         local branch = grid.branch(junction, state.progress.side)
         local traversal = branch and BranchTraversal.new(branch, savedConfig.branch_length)
         local expected
@@ -293,6 +346,8 @@ function Recovery.classify(state, loadCode)
             { x = 0, y = 0, z = 0, facing = 0 })
         if not homePath then return false, "HOME_ROUTE_UNAVAILABLE" end
     elseif state.progress.phase ~= "surface_entry" and state.progress.phase ~= "stairs"
+        and state.progress.phase ~= "main_side_start"
+        and state.progress.phase ~= "main_side_return"
         and state.progress.phase ~= "main_shaft" and state.progress.phase ~= "junction"
         and state.progress.phase ~= "branch_outbound_lower"
         and state.progress.phase ~= "branch_turnaround"
