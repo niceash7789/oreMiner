@@ -26,7 +26,19 @@ if not fs.exists(baselinePath) then
     error("oreMiner active baseline not found: " .. baselinePath)
 end
 
+-- CC:Tweaked's dofile executes files in an environment whose require resolves
+-- module paths from the running program. If that loader is absent, report it
+-- here instead of wrapping the resulting nil-global error on this launcher line.
+if type(require) ~= "function" then
+    error("oreMiner cannot load modules because global 'require' is unavailable; run it in the CC:Tweaked shell and update with 'git pull'.")
+end
+
 local loaded, runtimeError = pcall(dofile, baselinePath, ...)
 if not loaded then
-    error("oreMiner active baseline failed: " .. tostring(runtimeError))
+    local message = tostring(runtimeError)
+    if message:find("global 'require'", 1, true)
+        or message:find("global 'require'", 1, true) then
+        error("oreMiner cannot load modules because global 'require' is unavailable; run it in the CC:Tweaked shell and update with 'git pull'. Original error: " .. message)
+    end
+    error("oreMiner active baseline failed: " .. message)
 end
