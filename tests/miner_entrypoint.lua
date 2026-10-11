@@ -16,6 +16,8 @@ local loadedPath
 local loadedArguments
 local ok, result = runWith({
     turtle = {},
+    require = function() return {} end,
+    os = { epoch = function() return 0 end },
     shell = {
         getRunningProgram = function()
             return "disk/oreMiner/miner.lua"
@@ -49,6 +51,8 @@ assert(loadedArguments[1] == "status" and loadedArguments[2] == "--read-only",
 
 ok, result = runWith({
     turtle = {},
+    require = function() return {} end,
+    os = { epoch = function() return 0 end },
     shell = { getRunningProgram = function() return "miner.lua" end },
     fs = {
         getDir = function() return "" end,
@@ -63,5 +67,15 @@ assert(tostring(result):find("active baseline not found", 1, true), "missing bas
 ok, result = runWith({ turtle = false })
 assert(ok == false, "launcher should reject non-turtle computers")
 assert(tostring(result):find("must be run on a CC:Tweaked turtle", 1, true), "turtle error should be specific")
+
+ok, result = runWith({ turtle = {}, require = false, os = { epoch = function() return 0 end } })
+assert(ok == false, "launcher should reject runtimes without require")
+assert(tostring(result):find("requires the CC:Tweaked require, os.epoch, fs, and shell APIs", 1, true),
+    "missing module loader error should explain the runtime requirement")
+
+ok, result = runWith({ turtle = {}, require = function() end, os = {} })
+assert(ok == false, "launcher should reject runtimes without os.epoch")
+assert(tostring(result):find("requires the CC:Tweaked require, os.epoch, fs, and shell APIs", 1, true),
+    "missing clock API error should explain the runtime requirement")
 
 print("miner entrypoint checks passed")

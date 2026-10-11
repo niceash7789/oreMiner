@@ -6,7 +6,7 @@ Keep the original phase-one miner as a reference while a writable copy serves as
 
 ## Implemented behavior
 
-The root `miner.lua` resolves `src/branch_miner.lua` relative to its own installed location and executes it in the normal CC:Tweaked environment. It forwards all shell arguments so `miner status` and `miner resume` reach the coordinator. It fails before loading when the turtle, filesystem, shell, or active baseline file is unavailable. Runtime failures from the active program are reported with entry-point context.
+The root `miner.lua` resolves `src/branch_miner.lua` relative to its own installed location and executes it in the normal CC:Tweaked environment. It forwards all shell arguments so `miner status` and `miner resume` reach the coordinator. It fails before loading when the turtle, CC:Tweaked module loader and clock, filesystem, shell, or active baseline file is unavailable. The coordinator and focused modules use CC:Tweaked's `require` and `os.epoch`; alternate/minimal Lua shells that omit them are unsupported. Runtime failures from the active program are reported with entry-point context.
 
 `reference/branch_miner_phase1.lua` is the preserved original. `src/branch_miner.lua` is its writable working copy. A worker implementing a checklist item should modify the relevant active routine directly when needed, extract its distinct responsibility into the appropriate focused module under `src/`, correct the plan-listed defects in that slice, test it, and replace the inline logic with a narrow module call. As extraction proceeds, `src/branch_miner.lua` should become a short high-level coordinator.
 
@@ -27,7 +27,7 @@ Completed modules are wired immediately when they replace behavior the active ba
 
 ## Dependencies and current limitations
 
-The launcher depends on the CC:Tweaked `turtle`, `fs`, and `shell` globals. Configuration is now file-backed and validated, but the active coordinator does not yet run the isolated surface-entry/stairs modules or the later multi-floor phase machine. Do not treat this baseline as V1-complete or safe for unattended operation.
+The launcher depends on the CC:Tweaked `turtle`, `fs`, `shell`, `require`, and `os.epoch` APIs. Configuration is now file-backed and validated, but the active coordinator does not yet run the isolated surface-entry/stairs modules or the later multi-floor phase machine. Do not treat this baseline as V1-complete or safe for unattended operation.
 
 ## Verification
 
