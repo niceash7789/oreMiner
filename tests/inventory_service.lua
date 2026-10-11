@@ -342,6 +342,7 @@ assert(not torchSupplied and torchSupplyCode == "NO_TORCHES",
 assert(shortSupplyTravel == 1 and pose.x == 0 and pose.y == 0 and pose.z == 0
     and shortSupplyStage == "at_base",
     "short supply must keep the durable service checkpoint at base")
+supplyAvailable = true
 local resumedAfterRestock = torchFailureService.resume({
     x = 0, y = -8, z = -13, facing = 1,
 })

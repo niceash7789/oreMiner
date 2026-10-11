@@ -154,6 +154,7 @@ local torchQuotaSupplies = {
     { name = "minecraft:torch", count = 64 },
     { name = "minecraft:cobblestone", count = 16 },
     { name = "minecraft:coal", count = 64 },
+    { name = "minecraft:coal", count = 1 },
 }
 local quotaSelected, quotaFuel = 1, 0
 local quotaApi = {

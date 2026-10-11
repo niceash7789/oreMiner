@@ -61,12 +61,15 @@ local originalPolicyIsPaving = activeConfig.isPaving
 
 local selectedSlot = 5
 local pavingCount = 16
+local coalCount = 64
 local placements = 0
 local torchPlacementFrames = {}
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
 local firstShaftStart
+local firstMainTunnelTrace = {}
+local firstMainTunnelBackMoves = 0
 
 local function recordPhysicalAction(kind, direction)
     local raw = persistedFiles["oreMiner/state.json"]
@@ -78,6 +81,16 @@ local function recordPhysicalAction(kind, direction)
     assert(state.progress and state.progress.workUnitId,
         "physical actions require a durable logical cursor")
     physicalActionProgress[#physicalActionProgress + 1] = state.progress
+    if kind == "move" and state.service == nil and state.progress.phase == "main_shaft"
+        and state.progress.floor == 1 and state.progress.branchPair == 1 then
+        if direction == "forward" then
+            firstMainTunnelTrace[#firstMainTunnelTrace + 1] = {
+                cursorOffset = state.progress.offset, x = world.x,
+            }
+        elseif direction == "back" then
+            firstMainTunnelBackMoves = firstMainTunnelBackMoves + 1
+        end
+    end
     if not firstShaftStart and kind == "move" and direction == "forward"
         and state.progress.phase == "branch_outbound_lower"
         and state.progress.branchPair == 1 and state.progress.side == "left"
@@ -108,6 +121,7 @@ local turtleApi = {
     getItemCount = function(slot)
         if slot == 2 then return pavingCount end
         if slot == 3 then return 64 end
+        if slot == 4 then return coalCount end
         return 0
     end,
     getItemDetail = function(slot)
@@ -115,6 +129,7 @@ local turtleApi = {
             return { name = "test:paver" }
         end
         if slot == 3 then return { name = "minecraft:torch" } end
+        if slot == 4 and coalCount > 0 then return { name = "minecraft:coal" } end
         return nil
     end,
     refuel = function() return false end,
@@ -156,7 +171,12 @@ local turtleApi = {
     digUp = function() return false end,
     digDown = function() return false end,
     attack = function() return false end,
-    inspect = function() return false end,
+    inspect = function()
+        if world.x == 0 and world.y == 0 and world.z == 0 and world.facing == 3 then
+            return true, { name = "minecraft:chest" }
+        end
+        return false
+    end,
     inspectUp = function() return false end,
     inspectDown = function() return false end,
     placeDown = function()
@@ -180,6 +200,7 @@ local turtleApi = {
         return false
     end,
     transferTo = function() return true end,
+    suck = function() return false end,
     drop = function() return true end,
 }
 
@@ -282,7 +303,8 @@ activeConfig.isPaving = originalPolicyIsPaving
 assert(ok, runtimeError)
 assert(failedOneReport, "the test should inject an optional reporting failure")
 assert(ok, runtimeError)
-assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard")
+assert(guardedOperations > 0, "inventory pressure should consolidate through the slot guard: "
+    .. tostring(output[#output]))
 assert(pavingChecks == 0, "disabled default paving should not classify items")
 assert(placements == 0, "disabled default paving should not place blocks")
 local leftShaftTorch, rightShaftTorch = false, false
@@ -290,7 +312,7 @@ local stairTorchInsidePassage = false
 for _, torchPose in ipairs(torchPlacementFrames) do
     if torchPose.y == -8 and torchPose.facing == 1 then leftShaftTorch = true end
     if torchPose.y == -8 and torchPose.facing == 3 then rightShaftTorch = true end
-    if torchPose.x == 0 and torchPose.y == -4 and torchPose.z == -8
+    if torchPose.x == 0 and torchPose.y == -3 and torchPose.z == -8
         and torchPose.facing == 1 and torchPose.progress
         and torchPose.progress.phase == "stairs" then
         stairTorchInsidePassage = true
@@ -301,8 +323,20 @@ assert(leftShaftTorch and rightShaftTorch,
 assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -8
     and firstShaftStart.z == -13 and firstShaftStart.facing == 0,
     "the first shaft should start three blocks along the perpendicular main tunnel")
+assert(#firstMainTunnelTrace == 3 and firstMainTunnelBackMoves == 0
+    and firstMainTunnelTrace[1].cursorOffset == 0 and firstMainTunnelTrace[1].x == 0
+    and firstMainTunnelTrace[2].cursorOffset == 1 and firstMainTunnelTrace[2].x == 1
+    and firstMainTunnelTrace[3].cursorOffset == 2 and firstMainTunnelTrace[3].x == 2,
+    "the first main tunnel must advance continuously for three cells before its shaft")
+local torchLocations = {}
+for _, frame in ipairs(torchPlacementFrames) do
+    torchLocations[#torchLocations + 1] = string.format("(%d,%d,%d,%d:%s)",
+        frame.x, frame.y, frame.z, frame.facing,
+        frame.progress and frame.progress.phase or "none")
+end
 assert(stairTorchInsidePassage,
-    "stair torches should place into the cleared 3x3 passage without stepping into or digging a niche")
+    "stair torches should place into the cleared passage without a niche: "
+        .. table.concat(torchLocations, ", "))
 assert(selectedSlot == 5, "active helpers should restore the original selected slot")
 -- A completed baseline job now follows recorded cleared edges home and restores
 -- its original surface facing before reporting success.

@@ -46,6 +46,24 @@ local function run(startFacing, outboundFacing)
         "helper must restore facing using checked turns")
 end
 
+local shaftDigCalls, shaftPlaceCalls = 0, 0
+local shaftPose = { x = 3, y = -8, z = -13, facing = 1 }
+local shaftResult = Lighting.placeRight({
+    pose = shaftPose, outboundFacing = 0, alreadyClear = true,
+    turn = function(direction)
+        local updated, outcome = Pose.afterTurn(shaftPose, direction, true)
+        shaftPose = updated
+        return updated, outcome
+    end,
+    dig = function() shaftDigCalls = shaftDigCalls + 1; return Result.new(true, "DUG") end,
+    place = function() shaftPlaceCalls = shaftPlaceCalls + 1; return Result.new(true, "PLACED") end,
+    poseNow = function() return shaftPose end,
+})
+assert(shaftResult.ok and shaftDigCalls == 0 and shaftPlaceCalls == 1,
+    "main and branch shaft torches must place in the cleared passage without digging a side niche")
+assert(shaftPose.x == 3 and shaftPose.y == -8 and shaftPose.z == -13 and shaftPose.facing == 1,
+    "shaft torch placement must leave the turtle at the exact mining pose")
+
 for outbound = 0, 3 do
     for start = 0, 3 do run(start, outbound) end
 end

@@ -125,6 +125,8 @@ assert(savedStats:statistics().blocks_mined == 7,
     "regular checkpoint writes must include the live statistics provider")
 
 local pausedSession = assert(Checkpoint.create(config, pose, route, "paused-run", "paused.json", fs, textutils))
+assert(pausedSession:setProgress(assert(MiningCursor.stairs(1, 0, "enter_surface")),
+    pose, route, config))
 assert(pausedSession:markPaused(pose, route, config))
 local pausedReloaded, pausedCode = Checkpoint.load("paused.json", config, fs, textutils)
 assert(pausedCode == "STATE_LOADED" and pausedReloaded:status() == "paused",

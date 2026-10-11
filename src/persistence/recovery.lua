@@ -153,6 +153,10 @@ function Recovery.classify(state, loadCode)
         for key, value in pairs(state) do targetState[key] = value end
         targetState.pose = resume.pose
         targetState.service = nil
+        if recoverableServiceError then
+            targetState.status = "mining"
+            targetState.error = nil
+        end
         local targetAllowed, targetCode = Recovery.classify(targetState, loadCode)
         if not targetAllowed then return false, targetCode end
         return true, "RESUME_SAFE_SERVICE"
@@ -241,62 +245,14 @@ function Recovery.classify(state, loadCode)
 
     elseif state.progress.phase == "stairs" then
         if state.progress.nextAction ~= "cross_landing" then
+            local stack = state.routeStack or { records = {} }
+            if #stack.records > 0 then
+                return false, "STAIR_ACTION_PENDING_UNSUPPORTED"
+            end
             if state.progress.nextAction == "prepare_landing" then
                 return false, "LANDING_CARVE_RESUME_UNSUPPORTED"
             end
-            local floor, step = state.progress.floor, state.progress.stairStep
-            local previous = state.floorLandings and state.floorLandings[floor - 1]
-            local resume = state.resumeCheckpoint
-            local stack = state.routeStack or { records = {} }
-            if floor < 1 or step < 1 or step > state.configSnapshot.stair_steps_per_floor
-                or not previous or not resume or not sameCursor(resume.progress, state.progress)
-                or not samePose(resume.pose, state.pose)
-                or not RouteHome.path(state.route, state.pose, nil,
-                    { x = 0, y = 0, z = 0, facing = 0 }) then
-                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
-            end
-            if floor == 1 then
-                if previous ~= nil then return false, "STAIR_SLICE_RESUME_UNSUPPORTED" end
-            elseif type(previous) ~= "table" or previous.floor ~= floor - 1
-                or type(previous.steps) ~= "number" or previous.steps < 1
-                or previous.steps ~= math.floor(previous.steps)
-                or (previous.entryMoves ~= 1 and previous.entryMoves ~= 4)
-                or not RouteHome.path(state.route, state.pose, nil, previous.landing) then
-                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
-            end
-            local expected = floor == 1 and { x = 0, y = 0, z = 0, facing = 0 }
-                or previous.landing
-            for _ = 1, previous and previous.steps or 0 do
-                expected = assert(require("src.navigation.pose").afterMove(expected, "forward", true))
-                expected = assert(require("src.navigation.pose").afterMove(expected, "down", true))
-            end
-            local beforeSlice = require("src.navigation.pose").afterMove(expected, "forward", true)
-            for index = 1, #stack.records do
-                local record = stack.records[index]
-                if record.action ~= "forward" and record.action ~= "back"
-                    and record.action ~= "up" and record.action ~= "down"
-                    and record.action ~= "turnLeft" and record.action ~= "turnRight" then
-                    return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
-                end
-            end
-            local pose = require("src.navigation.pose")
-            local stackPose = beforeSlice
-            for _, record in ipairs(stack.records) do
-                local action = record.action
-                if action == "forward" or action == "back" or action == "up" or action == "down" then
-                    stackPose = assert(pose.afterMove(stackPose, action, true))
-                else
-                    stackPose = assert(pose.afterTurn(stackPose,
-                        action == "turnLeft" and "left" or "right", true))
-                end
-            end
-            if not samePose(stackPose, state.pose) then
-                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
-            end
-            if floor > 1 and step - 1 > previous.steps then
-                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
-            end
-            return true, "RESUME_SAFE_STAIR_SLICE"
+            return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
         end
         local floor = state.progress.floor
         local previous = state.floorLandings and state.floorLandings[floor - 1]

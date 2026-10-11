@@ -1,5 +1,6 @@
 local files = {}
-local moves = 0
+local routeMoves = 0
+local turns = 0
 local selected = 1
 require("tests.config_fixture")
 
@@ -10,12 +11,15 @@ local turtleApi = {
     getItemCount = function() return 0 end,
     getItemDetail = function() return nil end,
     refuel = function() return false end,
-    forward = function() moves = moves + 1 return true end,
-    back = function() moves = moves + 1 return true end,
-    up = function() moves = moves + 1 return true end,
-    down = function() moves = moves + 1 return true end,
-    turnLeft = function() moves = moves + 1 return true end,
-    turnRight = function() moves = moves + 1 return true end,
+    suck = function() return false end,
+    drop = function() return false end,
+    inspect = function() return true, { name = "minecraft:chest" } end,
+    forward = function() routeMoves = routeMoves + 1 return true end,
+    back = function() routeMoves = routeMoves + 1 return true end,
+    up = function() routeMoves = routeMoves + 1 return true end,
+    down = function() routeMoves = routeMoves + 1 return true end,
+    turnLeft = function() turns = turns + 1 return true end,
+    turnRight = function() turns = turns + 1 return true end,
 }
 
 local function serialize(value)
@@ -65,7 +69,12 @@ environment.textutils = {
 environment.os = {}
 for key, value in pairs(os) do environment.os[key] = value end
 environment.os.epoch = function() return 0 end
-environment.sleep = function() end
+local waits = 0
+environment.sleep = function(seconds)
+    assert(seconds == 5)
+    waits = waits + 1
+    error("STOP_AFTER_FIRST_SUPPLY_WAIT")
+end
 environment.write = function() end
 environment.read = function() inputIndex = inputIndex + 1 return inputs[inputIndex] end
 environment.print = function() end
@@ -73,12 +82,15 @@ environment.print = function() end
 local chunk, loadError = loadfile("src/branch_miner.lua", "t", environment)
 assert(chunk, loadError)
 local ok, runtimeError = pcall(chunk)
-assert(ok, runtimeError)
-assert(moves == 0, "insufficient startup fuel must stop before movement or turning")
+assert(not ok and tostring(runtimeError):find("STOP_AFTER_FIRST_SUPPLY_WAIT", 1, true),
+    "temporary supply shortage should enter the bounded base retry")
+assert(routeMoves == 0 and turns == 2 and waits == 1,
+    "insufficient startup fuel must not start the mining route")
 
-local saved = assert(files["oreMiner/state.json"], "fatal fuel stop should remain durable")
+local saved = assert(files["oreMiner/state.json"], "supply wait should retain a durable checkpoint")
 local state = assert(load("return " .. saved))()
-assert(state.status == "error" and state.error == "NO_FUEL",
-    "startup fuel failure should persist NO_FUEL")
+assert(state.status == "mining" and state.pose.x == 0 and state.pose.y == 0
+    and state.pose.z == 0 and state.pose.facing == 0,
+    "temporary shortage should keep the saved run at its surface origin")
 
 print("startup fuel stop checks passed")

@@ -7,7 +7,7 @@ return {
         surfaceEntryLength = 4,
         stairStepsPerFloor = 8,
         stairWidth = 3,
-        stairHeight = 3,
+        stairHeight = 4,
         floorMainTurn = "right",
         branchLength = 30,
         branchPairs = 20,

@@ -126,13 +126,15 @@ local supplyWaitSession = assert(Checkpoint.create(crashConfig, mainPose, mainRo
     "crash-supply-wait", supplyWaitPath, fs, textutils))
 assert(supplyWaitSession:setProgress(supplyWaitCursor, mainPose, mainRoute, crashConfig))
 assert(supplyWaitSession:recordFloorLanding(landingRecord, mainPose, mainRoute, crashConfig))
-assert(supplyWaitSession:setService({ stage = "at_base", checkpoint = mainPose,
+assert(supplyWaitSession:setService({ stage = "at_base", checkpoint = origin,
     resumeProgress = supplyWaitCursor }, origin, mainRoute, crashConfig))
 assert(supplyWaitSession:markFatal("NO_TORCHES", origin, mainRoute, crashConfig))
 supplyWaitSession = nil
 local supplyWaitSnapshot, supplyWaitCode = State.load(supplyWaitPath, crashConfig, fs, textutils)
-assert(supplyWaitSnapshot and Recovery.classify(supplyWaitSnapshot, supplyWaitCode),
-    "known-pose supply-short service state must remain resumable after reboot")
+local supplyWaitAllowed, supplyWaitReason = Recovery.classify(supplyWaitSnapshot, supplyWaitCode)
+assert(supplyWaitSnapshot and supplyWaitAllowed,
+    "known-pose supply-short service state must remain resumable after reboot: "
+        .. tostring(supplyWaitReason))
 
 local cursorCrashCases = {
     { "surface-entry", assert(Cursor.stairs(1, 0, "enter_surface")), origin, true },
@@ -853,13 +855,13 @@ for _, record in ipairs({
 end
 
 local servicing = {}
-for key, value in pairs(state) do servicing[key] = value end
+for key, value in pairs(activeMain) do servicing[key] = value end
 servicing.pose = { x = 0, y = 0, z = 0, facing = 0 }
-servicing.resumeCheckpoint = { pose = state.pose, progress = state.progress }
-servicing.floorLandings = { [1] = { floor = 1, landing = state.pose } }
+servicing.resumeCheckpoint = { pose = activeMain.pose, progress = activeMain.progress }
+servicing.floorLandings = activeMain.floorLandings
 servicing.service = {
     stage = "at_base", checkpoint = { x = 0, y = 0, z = 0, facing = 0 },
-    resumeProgress = state.progress,
+    resumeProgress = activeMain.progress,
 }
 allowed, code = Recovery.classify(servicing, "STATE_LOADED")
 assert(allowed and code == "RESUME_SAFE_SERVICE",
@@ -874,7 +876,7 @@ servicing.service.resumeProgress = assert(Cursor.mainShaft(1, 2, 0, 1))
 allowed, code = Recovery.classify(servicing, "STATE_LOADED")
 assert(not allowed and code == "SERVICE_RESUME_UNSUPPORTED",
     "service recovery requires the complete original cursor")
-servicing.service.resumeProgress = state.progress
+servicing.service.resumeProgress = activeMain.progress
 servicing.route = { home = "0,0,0", edges = {} }
 allowed, code = Recovery.classify(servicing, "STATE_LOADED")
 assert(not allowed and code == "HOME_ROUTE_UNAVAILABLE",
@@ -882,25 +884,21 @@ assert(not allowed and code == "HOME_ROUTE_UNAVAILABLE",
 
 local vein = {}
 for key, value in pairs(state) do vein[key] = value end
-local veinCursor = assert(Cursor.mainShaft(1, 1, 1, 1))
-local veinCheckpoint = { x = 0, y = -8, z = -13, facing = 0 }
-local veinPose = { x = 0, y = -8, z = -15, facing = 0 }
-local unwindPose = { x = 0, y = -8, z = -14, facing = 0 }
+local veinCursor = mainCursor
+local veinCheckpoint = mainPose
+local veinPose = { x = 2, y = -8, z = -13, facing = 1 }
+local unwindPose = { x = 1, y = -8, z = -13, facing = 1 }
 vein.pose = veinPose
 vein.progress = veinCursor
+vein.configSnapshot = crashConfig
 vein.resumeCheckpoint = { pose = veinCheckpoint, progress = veinCursor }
-vein.floorLandings = { [1] = { floor = 1, origin = origin,
-    mouth = { x = 0, y = 0, z = -4, facing = 0 },
-    rear = { x = 0, y = -8, z = -12, facing = 0 },
-    landing = veinCheckpoint, steps = 8, entryMoves = 4 } }
-connect("0,-8,-13", "0,-8,-14")
-connect("0,-8,-14", "0,-8,-15")
+vein.floorLandings = { [1] = landingRecord }
 vein.route = mainRoute
 vein.vein = {
     stage = "active", checkpoint = veinCheckpoint,
-    visited = { ["0,-8,-13"] = true, ["0,-8,-14"] = true, ["0,-8,-15"] = true },
+    visited = { ["0,-8,-13"] = true, ["1,-8,-13"] = true, ["2,-8,-13"] = true },
     frontier = { { next = 1, rotateOnReturn = false }, { next = 1, rotateOnReturn = false } },
-    route = { { inverse = "back", facing = 0 }, { inverse = "back", facing = 0 } }, blocks = 3,
+    route = { { inverse = "back", facing = 1 }, { inverse = "back", facing = 1 } }, blocks = 3,
 }
 allowed, code = Recovery.classify(vein, "STATE_LOADED")
 assert(allowed and code == "RESUME_SAFE_CHECKPOINT",
@@ -909,13 +907,13 @@ local unwindingVein = {}
 for key, value in pairs(vein) do unwindingVein[key] = value end
 unwindingVein.vein = {
     stage = "unwinding", checkpoint = veinCheckpoint,
-    visited = { ["0,-8,-13"] = true, ["0,-8,-14"] = true, ["0,-8,-15"] = true },
+    visited = { ["0,-8,-13"] = true, ["1,-8,-13"] = true, ["2,-8,-13"] = true },
     frontier = { { next = 1, rotateOnReturn = false } },
-    route = { { inverse = "back", facing = 0 } }, blocks = 3,
+    route = { { inverse = "back", facing = 1 } }, blocks = 3,
 }
 unwindingVein.pose = unwindPose
 unwindingVein.resumeCheckpoint = { pose = veinCheckpoint, progress = veinCursor }
-unwindingVein.vein.visited["0,-8,-14"] = true
+unwindingVein.vein.visited["1,-8,-13"] = true
 allowed, code = Recovery.classify(unwindingVein, "STATE_LOADED")
 assert(allowed and code == "RESUME_SAFE_CHECKPOINT",
     "an interrupted unwind with complete landing and route evidence may resume from its committed intermediate pose")
@@ -930,12 +928,12 @@ local veinSession = assert(Checkpoint.create(crashConfig, unwindPose, mainRoute,
 assert(veinSession:setProgress(mainCursor, mainPose, mainRoute, crashConfig))
 assert(veinSession:recordFloorLanding(landingRecord, veinCheckpoint, mainRoute, crashConfig))
 assert(veinSession:setProgress(mainCursor, mainPose, mainRoute, crashConfig))
-local deeperPose = { x = 0, y = -8, z = -15, facing = 0 }
+local deeperPose = { x = 2, y = -8, z = -13, facing = 1 }
 local serializedUnwind = {}
 for key, value in pairs(unwindingVein.vein) do serializedUnwind[key] = value end
-serializedUnwind.route = { { inverse = "back", facing = 0 }, { inverse = "back", facing = 0 } }
+serializedUnwind.route = { { inverse = "back", facing = 1 }, { inverse = "back", facing = 1 } }
 serializedUnwind.frontier = { { next = 1, rotateOnReturn = false }, { next = 1, rotateOnReturn = false } }
-serializedUnwind.visited = { ["0,-8,-13"] = true, ["0,-8,-14"] = true, ["0,-8,-15"] = true }
+serializedUnwind.visited = { ["0,-8,-13"] = true, ["1,-8,-13"] = true, ["2,-8,-13"] = true }
 serializedUnwind.blocks = 3
 assert(veinSession:setVein(serializedUnwind, deeperPose, mainRoute, crashConfig))
 assert(veinSession:save(deeperPose, mainRoute, crashConfig))
@@ -950,7 +948,7 @@ local physicalPose = { x = deeperPose.x, y = deeperPose.y, z = deeperPose.z, fac
 local recoveryMoves = 0
 local function applyInverse(direction)
     if direction == "back" then
-        physicalPose.z = physicalPose.z + 1
+        physicalPose.x = physicalPose.x - 1
     else
         error("unexpected inverse in process-restart fixture: " .. tostring(direction))
     end
@@ -975,10 +973,10 @@ local firstRecoveryOk = pcall(VeinTraversal.unwindSaved, reloadedVeinState.vein,
     return true
 end)
 assert(not firstRecoveryOk and recoveryMoves == 1
-    and physicalPose.x == 0 and physicalPose.y == -8 and physicalPose.z == -14,
+    and physicalPose.x == 1 and physicalPose.y == -8 and physicalPose.z == -13,
     "injected restart follows a committed inverse and leaves exact shortened state")
 reloadedVeinState, veinLoadCode = State.load(veinPath, crashConfig, fs, textutils)
-assert(reloadedVeinState and reloadedVeinState.pose.z == -14
+assert(reloadedVeinState and reloadedVeinState.pose.x == 1
     and #reloadedVeinState.vein.route == 1,
     "second process reload sees the committed intermediate pose and one remaining inverse: "
         .. tostring(veinLoadCode))
@@ -1001,7 +999,7 @@ assert(resumedUnwind.ok and recoveryMoves == 2
     and physicalPose.z == veinCheckpoint.z and physicalPose.facing == veinCheckpoint.facing,
     "post-restart unwind must execute remaining inverse and restore the exact checkpoint")
 local afterUnwind, afterUnwindCode = State.load(veinPath, crashConfig, fs, textutils)
-assert(afterUnwind and afterUnwind.vein == nil and afterUnwind.pose.z == veinCheckpoint.z,
+assert(afterUnwind and afterUnwind.vein == nil and afterUnwind.pose.x == veinCheckpoint.x,
     "completed resumed unwind clears durable vein state at the exact checkpoint: " .. tostring(afterUnwindCode))
 
 -- If the first inverse fails after restart, no later edge is attempted and
@@ -1019,8 +1017,8 @@ assert(failedSession:recordFloorLanding(landingRecord, veinCheckpoint, mainRoute
 assert(failedSession:save(failedRecovery.pose, mainRoute, crashConfig))
 local serializedFailedUnwind = {}
 for key, value in pairs(failedRecovery.vein) do serializedFailedUnwind[key] = value end
-serializedFailedUnwind.route = { { inverse = "back", facing = 0 } }
-serializedFailedUnwind.visited = { ["0,-8,-13"] = true, ["0,-8,-14"] = true }
+serializedFailedUnwind.route = { { inverse = "back", facing = 1 } }
+serializedFailedUnwind.visited = { ["0,-8,-13"] = true, ["1,-8,-13"] = true }
 serializedFailedUnwind.blocks = 2
 assert(failedSession:setVein(serializedFailedUnwind, failedRecovery.pose, mainRoute, crashConfig))
 failedSession = nil
@@ -1044,14 +1042,14 @@ assert(not failedResult.ok and failedResult.code == "VEIN_RETURN_BLOCKED" and fa
     "failed resumed inverse must stop without another physical action")
 local failedAfter, failedAfterCode = State.load(veinPath, crashConfig, fs, textutils)
 assert(failedAfter and failedAfter.vein and #failedAfter.vein.route == 1
-    and failedAfter.pose.z == unwindPose.z,
+    and failedAfter.pose.x == unwindPose.x,
     "failed inverse must retain its durable route and committed pose: " .. tostring(failedAfterCode))
 failedReloadedSession = nil
 
 local enteringVein = {}
 for key, value in pairs(vein) do enteringVein[key] = value end
 enteringVein.vein = { stage = "entering", checkpoint = veinCheckpoint,
-    entryPose = veinPose, visited = { ["0,-8,-13"] = true }, frontier = {}, route = {}, blocks = 0 }
+    entryPose = unwindPose, visited = { ["0,-8,-13"] = true }, frontier = {}, route = {}, blocks = 0 }
 enteringVein.pose = veinCheckpoint
 enteringVein.resumeCheckpoint = { pose = veinCheckpoint, progress = veinCursor }
 allowed, code = Recovery.classify(enteringVein, "STATE_LOADED")
@@ -1060,7 +1058,7 @@ assert(not allowed and code == "VEIN_RESUME_UNSUPPORTED",
 local brokenVeinRoute = {}
 for key, value in pairs(vein) do brokenVeinRoute[key] = value end
 brokenVeinRoute.route = { home = "0,0,0", edges = {
-    ["0,-8,-15"] = { ["0,0,0"] = true }, ["0,0,0"] = { ["0,-8,-15"] = true },
+    ["2,-8,-13"] = { ["0,0,0"] = true }, ["0,0,0"] = { ["2,-8,-13"] = true },
 } }
 allowed, code = Recovery.classify(brokenVeinRoute, "STATE_LOADED")
 assert(not allowed and code == "VEIN_RESUME_UNSUPPORTED",

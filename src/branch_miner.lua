@@ -44,6 +44,7 @@ local MainShaftBackfill = require("src.mining.main_shaft_backfill")
 local Lighting = require("src.lighting.right_wall")
 local InventoryService = require("src.inventory.service")
 local Resupply = require("src.inventory.resupply")
+local Chest = require("src.inventory.chest")
 local BranchEjection = require("src.inventory.branch_ejection")
 local Checkpoint = require("src.persistence.checkpoint")
 local PhysicalAction = require("src.persistence.physical_action")
@@ -732,6 +733,40 @@ local function serviceInventoryIfFull()
     return serviced
 end
 
+local function prepareStartupSupplies()
+    local entryMoves = config.mining.surfaceEntryLength
+    local targetFuel, fuelCode = ResumeCommitment.targetFuelForTrips(
+        entryMoves, entryMoves, config.fuel_reserve, 1)
+    if not targetFuel then return false, fuelCode or "INVALID_RESUME_COMMITMENT" end
+
+    local homeFacing = pos.facing
+    local supplyFacing = (homeFacing + 3) % 4
+    local faced, faceOutcome = turnToFacing(supplyFacing)
+    if not faced then return false, faceOutcome.code or "SUPPLY_FACING_FAILED" end
+
+    local found, block = turtle.inspect()
+    if found ~= true or not block or not Chest.acceptsBlock(block.name, config.base) then
+        local restored, restoreOutcome = turnToFacing(homeFacing)
+        if not restored then return false, restoreOutcome.code or "POSITION_ERROR" end
+        return false, "NO_SUPPLY_CHEST"
+    end
+
+    local torchesEnabled = config.features.torches and config.lighting.enabled
+    local supplied = Resupply.run({
+        turtle = turtle,
+        itemConfig = itemConfig,
+        targetFuel = targetFuel,
+        torchTarget = torchesEnabled and config.supplies.torchTarget or 0,
+        minimumTorches = torchesEnabled and config.supplies.minimumTorchesToDepart or 0,
+    })
+    local restored, restoreOutcome = turnToFacing(homeFacing)
+    if not restored then return false, restoreOutcome.code or "POSITION_ERROR" end
+    if type(supplied) ~= "table" or supplied.ok ~= true then
+        return false, type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
+    end
+    return true, "STARTUP_SUPPLIES_READY"
+end
+
 local function serviceBeforeVeinSeed()
     local allowed, code = PressureGate.beforeDig(inventoryPressureReached, function()
         local serviced, serviceCode = serviceInventoryRaw()
@@ -798,9 +833,16 @@ local function mineVein(checkpoint, seedInverse)
         end,
         inspect = inspect,
         dig = function(direction)
-            if direction == "up" then return digUp()
-            elseif direction == "down" then return digDown()
-            else return digForward() end
+            -- The reference vein routine consumed a boolean from digForward/
+            -- digUp/digDown. The safe helpers now return typed Result tables,
+            -- while VeinTraversal deliberately accepts only literal true.
+            -- Adapt the result here so a successfully dug ore is entered.
+            local outcome
+            if direction == "up" then outcome = digUp()
+            elseif direction == "down" then outcome = digDown()
+            else outcome = digForward() end
+            return type(outcome) == "table" and outcome.ok == true
+                and type(outcome.dug) == "number" and outcome.dug > 0
         end,
         move = function(direction)
             local moved = movements[direction]
@@ -1153,11 +1195,6 @@ local function placeTunnelTorch(outboundFacing, distance, force, routeId)
     end
     local key = string.format("floor-%d-%s-%d", activeFloor, routeId or "main", distance)
     if checkpoint and checkpoint:hasTorchPlacement(key) then return true end
-    local function clearTorchNiche()
-        local dug = digForward()
-        if dug.ok == true or dug.code == "NO_BLOCK" then return Result.new(true, "NICHE_CLEAR") end
-        return dug
-    end
     local selected = SlotGuard.run(turtle, function()
         local slot
         for index = 1, 16 do
@@ -1182,7 +1219,7 @@ local function placeTunnelTorch(outboundFacing, distance, force, routeId)
             outboundFacing = outboundFacing,
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
-            dig = clearTorchNiche,
+            alreadyClear = true,
             place = function()
                 if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
                 stats:add("torches_placed", 1)
@@ -1800,6 +1837,16 @@ local function executeMining(returnTarget, deferSummary, resumeCursor)
 
             local mainDistance = mainOffsetBeforePair + step
             if not placeTunnelTorch(pos.facing, mainDistance, false, "main") then return false end
+
+            local nextMainCursor
+            if step < config.spacing then
+                nextMainCursor = MiningCursor.mainShaft(
+                    branch, step + 1, mainOffsetBeforePair, activeFloor)
+            else
+                nextMainCursor = MiningCursor.junction(
+                    branch, branch * config.spacing, "turn_to_left_branch", activeFloor)
+            end
+            if not persistMiningCursor(nextMainCursor) then return false end
 
             if not serviceInventoryIfFull() then
                 return false
@@ -2606,11 +2653,20 @@ local function main(...)
         return
     elseif confirmConfiguration() then
         if not newRun() then error("STATE_WRITE_FAILED: unable to create initial snapshot") end
+        local suppliesReady, supplyCode
+        repeat
+            suppliesReady, supplyCode = prepareStartupSupplies()
+            if not suppliesReady and (supplyCode == "NO_FUEL_SUPPLY" or supplyCode == "NO_TORCHES") then
+                print("Supply is short. Waiting at base; restock the left chest to start.")
+                sleep(5)
+            end
+        until suppliesReady or (supplyCode ~= "NO_FUEL_SUPPLY" and supplyCode ~= "NO_TORCHES")
         local ok
-        if hasStartupFuel() then
+        if suppliesReady and hasStartupFuel() then
             ok = executeFloors()
         else
-            print("Stopping before movement: NO_FUEL")
+            persistenceError = supplyCode or "NO_FUEL"
+            print("Stopping before movement: " .. tostring(persistenceError))
             ok = false
         end
         if ok then
