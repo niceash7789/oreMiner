@@ -9,7 +9,8 @@ local function runWith(overrides, ...)
 
     local chunk, loadError = loadfile("miner.lua", "t", environment)
     assert(chunk, loadError)
-    return pcall(chunk, ...)
+    local ok, result = pcall(chunk, ...)
+    return ok, result, environment
 end
 
 local loadedPath
@@ -34,10 +35,15 @@ local ok, result = runWith({
         exists = function(path)
             return path == "disk/oreMiner/src/branch_miner.lua"
         end,
+        open = function(path, mode)
+            assert(path == "disk/oreMiner/src/branch_miner.lua" and mode == "r")
+            return { readAll = function() return "capture(require, ...)" end, close = function() end }
+        end,
     },
-    dofile = function(path, ...)
-        loadedPath = path
+    capture = function(moduleLoader, ...)
+        loadedPath = "disk/oreMiner/src/branch_miner.lua"
         loadedArguments = { ... }
+        assert(type(moduleLoader) == "function")
     end,
 }, "status", "--read-only")
 
@@ -68,14 +74,40 @@ ok, result = runWith({ turtle = false })
 assert(ok == false, "launcher should reject non-turtle computers")
 assert(tostring(result):find("must be run on a CC:Tweaked turtle", 1, true), "turtle error should be specific")
 
-ok, result = runWith({ turtle = {}, require = false, os = { epoch = function() return 0 end } })
-assert(ok == false, "launcher should reject runtimes without require")
-assert(tostring(result):find("requires the CC:Tweaked require, os.epoch, fs, and shell APIs", 1, true),
-    "missing module loader error should explain the runtime requirement")
+local loadedModule
+local fallbackEnvironment
+ok, result, fallbackEnvironment = runWith({
+    turtle = {},
+    require = false,
+    os = { epoch = function() return 0 end },
+    shell = { getRunningProgram = function() return "miner.lua" end },
+    fs = {
+        getDir = function() return "" end,
+        combine = function(_, path) return path end,
+        exists = function() return true end,
+        open = function(path)
+            local source
+            if path == "src/branch_miner.lua" then
+                source = "capture(require, ...)"
+            elseif path == "src.fixture.lua" then
+                source = "return { answer = 42 }"
+            end
+            if not source then return nil end
+            return { readAll = function() return source end, close = function() end }
+        end,
+    },
+    capture = function(moduleLoader) loadedModule = moduleLoader end,
+})
+assert(ok, result)
+assert(type(loadedModule) == "function", "launcher should provide a module loader when require is absent")
+assert(fallbackEnvironment.require("src.fixture").answer == 42,
+    "fallback loader should load repository modules")
+assert(fallbackEnvironment.require("src.fixture").answer == 42,
+    "fallback loader should cache loaded modules")
 
 ok, result = runWith({ turtle = {}, require = function() end, os = {} })
 assert(ok == false, "launcher should reject runtimes without os.epoch")
-assert(tostring(result):find("requires the CC:Tweaked require, os.epoch, fs, and shell APIs", 1, true),
+assert(tostring(result):find("requires the CC:Tweaked os.epoch, filesystem, Lua load, and shell APIs", 1, true),
     "missing clock API error should explain the runtime requirement")
 
 ok, result = runWith({
@@ -87,11 +119,16 @@ ok, result = runWith({
         getDir = function() return "" end,
         combine = function(_, path) return path end,
         exists = function() return true end,
+        open = function(path)
+            if path == "branch_miner.lua" then
+                return { readAll = function() return "error(\"test failure\")" end, close = function() end }
+            end
+            return nil
+        end,
     },
-    dofile = function() error("attempt to call global 'require' (a nil value)") end,
 })
-assert(ok == false, "launcher should report module-loader failures from the active file")
-assert(tostring(result):find("cannot load modules because global 'require' is unavailable", 1, true),
-    "wrapped require error should point to the runtime/module-loader problem")
+assert(ok == false, "launcher should report runtime errors from the active file")
+assert(tostring(result):find("active baseline failed: .*test failure"),
+    "runtime errors should include the active source failure")
 
 print("miner entrypoint checks passed")
