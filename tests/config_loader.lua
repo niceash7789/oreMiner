@@ -12,12 +12,16 @@ local normalized, result = Loader.normalize(source)
 assert(result.ok and result.code == "CONFIG_VALID")
 assert(normalized ~= source and normalized.mining ~= source.mining,
     "normalization must not mutate the loaded config table")
-assert(normalized.branch_length == 30 and normalized.num_branches == 2
-    and normalized.spacing == 3 and normalized.fuel_reserve == 100)
-assert(normalized.pave == false and normalized.vein_mine == true)
-assert(normalized.inventory.retainedItems["minecraft:cobblestone"] == 64)
-assert(normalized.inventory.fuelRetainedCount == 64
-    and normalized.inventory.torchRetainedCount == 64)
+assert(normalized.branch_length == source.mining.branchLength
+    and normalized.num_branches == source.mining.branchPairs
+    and normalized.spacing == source.mining.branchSpacing
+    and normalized.fuel_reserve == source.fuel.reserve)
+assert(normalized.pave == source.features.paving
+    and normalized.vein_mine == source.ore.enabled)
+assert(normalized.inventory.retainedItems["minecraft:cobblestone"]
+    == source.inventory.keep["minecraft:cobblestone"])
+assert(normalized.inventory.fuelRetainedCount == source.inventory.keep["minecraft:coal"]
+    and normalized.inventory.torchRetainedCount == source.inventory.keep["minecraft:torch"])
 assert(source.branch_length == nil and source.inventory.retainedItems == nil,
     "compatibility fields must exist only on the normalized copy")
 
