@@ -127,6 +127,9 @@ local function persistMiningCursor(cursor)
 end
 
 local function beginPhysicalAction(kind, direction)
+    if type(minerExitRequested) == "function" and minerExitRequested() then
+        error("EXIT_REQUESTED", 0)
+    end
     if not checkpoint then return false, "STATE_NOT_INITIALIZED" end
     local ok, code = checkpoint:beginAction(kind, direction, pos, knownRoute, configSnapshot())
     if not ok then persistenceError = code end
@@ -234,6 +237,9 @@ local move
 local turn
 
 local function attemptMove(movement)
+    if type(minerExitRequested) == "function" and minerExitRequested() then
+        error("EXIT_REQUESTED", 0)
+    end
     local updated, result = Motion.moveWithPolicy(pos, knownRoute, movement, turtle, {
         reserve = config.fuel_reserve,
         getFuelLevel = turtle.getFuelLevel,
@@ -306,6 +312,9 @@ local function attemptMove(movement)
 end
 
 turn = function(direction)
+    if type(minerExitRequested) == "function" and minerExitRequested() then
+        error("EXIT_REQUESTED", 0)
+    end
     local expectedAction = direction == "left" and "turnLeft" or "turnRight"
     local ready, reason
     if veinMovementCommitPending then
@@ -2346,6 +2355,9 @@ local function main(...)
                     or supplyCode == "NO_TORCHES") then
                     print("Supply is short. Waiting at base; restock the left chest to resume.")
                     sleep(5)
+                    if type(minerExitRequested) == "function" and minerExitRequested() then
+                        error("EXIT_REQUESTED", 0)
+                    end
                 end
             until suppliesReady or (supplyCode ~= "NO_FUEL_SUPPLY"
                 and supplyCode ~= "NO_TORCHES")
@@ -2414,6 +2426,9 @@ local function main(...)
                     or serviceCode == "NO_FUEL_SUPPLY") then
                     print("Supply is short. Waiting at base; restock the left chest to resume.")
                     sleep(5)
+                    if type(minerExitRequested) == "function" and minerExitRequested() then
+                        error("EXIT_REQUESTED", 0)
+                    end
                 end
             until serviced or (serviceCode ~= "NO_TORCHES"
                 and serviceCode ~= "NO_FUEL_SUPPLY")
@@ -2658,6 +2673,9 @@ local function main(...)
             if not suppliesReady and (supplyCode == "NO_FUEL_SUPPLY" or supplyCode == "NO_TORCHES") then
                 print("Supply is short. Waiting at base; restock the left chest to start.")
                 sleep(5)
+                if type(minerExitRequested) == "function" and minerExitRequested() then
+                    error("EXIT_REQUESTED", 0)
+                end
             end
         until suppliesReady or (supplyCode ~= "NO_FUEL_SUPPLY" and supplyCode ~= "NO_TORCHES")
         local ok

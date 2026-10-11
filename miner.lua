@@ -77,13 +77,42 @@ if not baselineHandle then error("oreMiner cannot read active baseline: " .. bas
 local baselineSource = baselineHandle.readAll()
 baselineHandle.close()
 if type(baselineSource) ~= "string" then error("oreMiner active baseline is unreadable: " .. baselinePath) end
-local baselineEnvironment = setmetatable({ require = require }, { __index = _ENV })
+local exitRequested = false
+local baselineEnvironment = setmetatable({
+    require = require,
+    minerExitRequested = function() return exitRequested end,
+}, { __index = _ENV })
 local baselineChunk, compileError = load(baselineSource, "@" .. baselinePath, "t", baselineEnvironment)
 if not baselineChunk then error("oreMiner active baseline has invalid Lua syntax: " .. tostring(compileError)) end
 
-local loaded, runtimeError = pcall(baselineChunk, ...)
+local arguments = { ... }
+local activeMining = arguments[1] == nil or arguments[1] == "resume"
+local loaded, runtimeError
+if activeMining and type(os.pullEventRaw) == "function" then
+    local ExitHome = require("src.safety.exit_home")
+    loaded, runtimeError = ExitHome.runActive(function()
+        baselineChunk(table.unpack(arguments))
+    end, os.pullEventRaw, function() exitRequested = true end)
+else
+    loaded, runtimeError = pcall(baselineChunk, ...)
+end
+if exitRequested then
+    exitRequested = false
+    require("src.safety.exit_home").run(function() baselineChunk("home") end, print)
+    return
+end
 if not loaded then
     local message = tostring(runtimeError)
+    -- Ctrl+T normally raises "Terminated" from os.pullEvent. Only a mining
+    -- invocation turns that request into a checked, persisted home trip.
+    if activeMining
+        and (message == "Terminated" or message:match(":%d+: Terminated$")) then
+        local ExitHome = require("src.safety.exit_home")
+        if ExitHome.isTermination(runtimeError) then
+            ExitHome.run(function() baselineChunk("home") end, print)
+            return
+        end
+    end
     if message:find("global 'require'", 1, true) then
         error("oreMiner module loader failed: " .. message)
     end

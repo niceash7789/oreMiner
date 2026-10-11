@@ -132,4 +132,99 @@ assert(ok == false, "launcher should report runtime errors from the active file"
 assert(tostring(result):find("active baseline failed: .*test failure"),
     "runtime errors should include the active source failure")
 
+local function terminationRun(command)
+    local calls = {}
+    local messages = {}
+    local options = {
+        turtle = {},
+        require = function(name)
+            assert(name == "src.safety.exit_home")
+            return require(name)
+        end,
+        os = { epoch = function() return 0 end },
+        shell = { getRunningProgram = function() return "miner.lua" end },
+        fs = {
+            getDir = function() return "" end,
+            combine = function(_, path) return path end,
+            exists = function() return true end,
+            open = function(path)
+                assert(path == "src/branch_miner.lua")
+                return {
+                    readAll = function()
+                        return 'record(...); if ... ~= "home" then error("Terminated", 0) end'
+                    end,
+                    close = function() end,
+                }
+            end,
+        },
+        record = function(value) calls[#calls + 1] = value or "start" end,
+        print = function(value) messages[#messages + 1] = value end,
+    }
+    local success, problem
+    if command == nil then
+        success, problem = runWith(options)
+    else
+        success, problem = runWith(options, command)
+    end
+    return success, problem, calls, messages
+end
+
+local terminated, terminationProblem, calls, messages = terminationRun()
+assert(terminated, terminationProblem)
+assert(calls[1] == "start" and calls[2] == "home" and #calls == 2,
+    "Ctrl+T during mining should dispatch the checked home command once")
+assert(messages[1]:find("returning home", 1, true))
+
+terminated, terminationProblem, calls = terminationRun("resume")
+assert(terminated, terminationProblem)
+assert(calls[1] == "resume" and calls[2] == "home" and #calls == 2,
+    "Ctrl+T during resume should return home")
+
+terminated, terminationProblem, calls = terminationRun("status")
+assert(not terminated and tostring(terminationProblem):find("Terminated", 1, true))
+assert(#calls == 1 and calls[1] == "status",
+    "read-only commands must not start a home trip")
+
+local gracefulCalls = {}
+local events = { { "terminate" }, { "turtle_response", true } }
+local eventIndex = 0
+terminated, terminationProblem = runWith({
+    turtle = {},
+    require = function(name) return require(name) end,
+    os = {
+        epoch = function() return 0 end,
+        pullEventRaw = function()
+            eventIndex = eventIndex + 1
+            return table.unpack(events[eventIndex])
+        end,
+    },
+    shell = { getRunningProgram = function() return "miner.lua" end },
+    fs = {
+        getDir = function() return "" end,
+        combine = function(_, path) return path end,
+        exists = function() return true end,
+        open = function()
+            return {
+                readAll = function()
+                    return [[
+                        if ... == "home" then record("home"); return end
+                        record("move started")
+                        local event, succeeded = coroutine.yield("turtle_response")
+                        assert(event == "turtle_response" and succeeded)
+                        record("move committed")
+                        if minerExitRequested() then error("EXIT_REQUESTED", 0) end
+                    ]]
+                end,
+                close = function() end,
+            }
+        end,
+    },
+    record = function(value) gracefulCalls[#gracefulCalls + 1] = value end,
+    print = function() end,
+})
+assert(terminated, terminationProblem)
+assert(gracefulCalls[1] == "move started" and gracefulCalls[2] == "move committed"
+    and gracefulCalls[3] == "home" and #gracefulCalls == 3,
+    "graceful exit should wait for a movement response before running home")
+
 print("miner entrypoint checks passed")
