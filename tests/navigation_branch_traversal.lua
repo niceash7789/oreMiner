@@ -6,7 +6,7 @@ local origin = { x = 0, y = 0, z = 0, facing = 0 }
 local grid = assert(FloorGrid.new(origin, 0, {
     floor = 1,
     pose = { x = 0, y = -8, z = -13, facing = 0 },
-}))
+}, 8))
 local junction = assert(grid.junction(3))
 local branch = assert(grid.branch(junction, "left"))
 local traversal = assert(BranchTraversal.new(branch, 4))
@@ -28,6 +28,16 @@ local canonical = assert(traversal.canonicalJunctionPose())
 assert(canonical.x == junction.x and canonical.y == junction.y
     and canonical.z == junction.z and canonical.facing == junction.facing,
     "completed traversal should identify the canonical lower junction")
+
+local oppositeJunction = assert(grid.junction(3, "left"))
+for _, side in ipairs({ "left", "right" }) do
+    local oppositeBranch = assert(grid.branch(oppositeJunction, side))
+    local oppositeTraversal = assert(BranchTraversal.new(oppositeBranch, 4))
+    local far = assert(oppositeTraversal.outboundPose(4))
+    local home = assert(oppositeTraversal.canonicalJunctionPose())
+    assert(far.x == -3 and far.y == -8 and home.facing == 3,
+        "both mirrored shaft routes must return to their left-main junction")
+end
 
 local invalid, invalidStatus = BranchTraversal.new(branch, 0)
 assert(invalid == nil and invalidStatus.code == "INVALID_LENGTH")

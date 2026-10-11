@@ -96,7 +96,7 @@ exerciseReturn(cursor, route)
 exerciseReturn(cursor, route, 1)
 
 -- Branch lower offset and upper scan offset, based on the same recorded floor.
-local grid = assert(FloorGrid.new(origin, 0, { floor = 1, pose = landing }))
+local grid = assert(FloorGrid.new(origin, 0, { floor = 1, pose = landing }, 8))
 local junction = assert(grid.junction(4))
 for _, side in ipairs({ "left", "right" }) do
     local branch = assert(grid.branch(junction, side))

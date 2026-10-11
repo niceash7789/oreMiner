@@ -503,6 +503,10 @@ opposite.pose = landingPose
 opposite.resumeCheckpoint = { pose = landingPose, progress = opposite.progress }
 allowed, code = Recovery.classify(opposite, "STATE_LOADED")
 assert(allowed, "left-side start must resume from the landing: " .. tostring(code))
+opposite.pose = { x = 0, y = -8, z = -13, facing = 3 }
+allowed, code = Recovery.classify(opposite, "STATE_LOADED")
+assert(allowed, "a committed left turn must resume without reentering the shaft: "
+    .. tostring(code))
 opposite.progress = assert(Cursor.mainShaft(1, 2, 0, 1, "left"))
 opposite.pose = { x = -1, y = -8, z = -13, facing = 3 }
 opposite.resumeCheckpoint = { pose = opposite.pose, progress = opposite.progress }

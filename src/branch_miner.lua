@@ -2520,8 +2520,7 @@ local function main(...)
                 pose = pos,
                 route = knownRoute,
                 targetPose = travelTarget,
-                homeFacing = travelTarget.x == 0 and travelTarget.y == 0
-                    and travelTarget.z == 0 and 0 or nil,
+                homeFacing = travelTarget.facing,
                 move = checkedMoveForRoute,
                 turn = checkedTurnForRoute,
             })
