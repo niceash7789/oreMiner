@@ -78,4 +78,20 @@ assert(ok == false, "launcher should reject runtimes without os.epoch")
 assert(tostring(result):find("requires the CC:Tweaked require, os.epoch, fs, and shell APIs", 1, true),
     "missing clock API error should explain the runtime requirement")
 
+ok, result = runWith({
+    turtle = {},
+    require = function() end,
+    os = { epoch = function() return 0 end },
+    shell = { getRunningProgram = function() return "miner.lua" end },
+    fs = {
+        getDir = function() return "" end,
+        combine = function(_, path) return path end,
+        exists = function() return true end,
+    },
+    dofile = function() error("attempt to call global 'require' (a nil value)") end,
+})
+assert(ok == false, "launcher should report module-loader failures from the active file")
+assert(tostring(result):find("cannot load modules because global 'require' is unavailable", 1, true),
+    "wrapped require error should point to the runtime/module-loader problem")
+
 print("miner entrypoint checks passed")

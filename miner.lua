@@ -36,8 +36,7 @@ end
 local loaded, runtimeError = pcall(dofile, baselinePath, ...)
 if not loaded then
     local message = tostring(runtimeError)
-    if message:find("global 'require'", 1, true)
-        or message:find("global 'require'", 1, true) then
+    if message:find("global 'require'", 1, true) then
         error("oreMiner cannot load modules because global 'require' is unavailable; run it in the CC:Tweaked shell and update with 'git pull'. Original error: " .. message)
     end
     error("oreMiner active baseline failed: " .. message)
