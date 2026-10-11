@@ -126,6 +126,17 @@ local function dropCurrentSlot(api)
     return true
 end
 
+local function returnUnwantedSupply(api, count)
+    if type(count) ~= "number" or count <= 0 or api.drop() ~= true then
+        return false, "SUPPLY_RETURN_FAILED"
+    end
+    local remaining = api.getItemCount(api.getSelectedSlot())
+    if type(remaining) ~= "number" or remaining ~= 0 then
+        return false, "SUPPLY_RETURN_FAILED"
+    end
+    return true
+end
+
 local function runUnsafe(options)
     local api = options.turtle
     local maxPulls = options.maxPulls or 32
@@ -154,12 +165,8 @@ local function runUnsafe(options)
                     if not returned then return { ok = false, code = returnCode } end
                 end
             elseif not detail or not ItemPolicy.isFuel(detail.name, options.itemConfig) then
-                local before = count
-                local dropped = api.drop()
-                if dropped ~= true or api.getItemCount(slot) ~= 0 or before <= 0 then
-                    return { ok = false, code = "SUPPLY_RETURN_FAILED" }
-                end
-                return { ok = false, code = "UNSUPPORTED_SUPPLY_ITEM" }
+                local returned, returnCode = returnUnwantedSupply(api, count)
+                if not returned then return { ok = false, code = returnCode } end
             else
                 fueled, fuelCode = refuelTo(api, options.itemConfig, options.targetFuel)
                 if fueled then break end
@@ -200,11 +207,8 @@ local function runUnsafe(options)
                 if not returned then return { ok = false, code = returnCode } end
             end
         else
-            local dropped = api.drop()
-            if dropped ~= true or api.getItemCount(slot) ~= 0 then
-                return { ok = false, code = "SUPPLY_RETURN_FAILED" }
-            end
-            return { ok = false, code = "UNSUPPORTED_SUPPLY_ITEM" }
+            local returned, returnCode = returnUnwantedSupply(api, count)
+            if not returned then return { ok = false, code = returnCode } end
         end
         torches = inventoryCount(api, "minecraft:torch")
         if torches == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end
@@ -247,10 +251,8 @@ local function runUnsafe(options)
                 if not returned then return { ok = false, code = returnCode } end
             end
         elseif not ItemPolicy.isFuel(detail.name, options.itemConfig) then
-            if api.drop() ~= true or api.getItemCount(slot) ~= 0 then
-                return { ok = false, code = "SUPPLY_RETURN_FAILED" }
-            end
-            return { ok = false, code = "UNSUPPORTED_SUPPLY_ITEM" }
+            local returned, returnCode = returnUnwantedSupply(api, amount)
+            if not returned then return { ok = false, code = returnCode } end
         end
         onboardFuel = inventoryFuelCount(api, options.itemConfig)
         if onboardFuel == nil then return { ok = false, code = "SUPPLY_COUNT_UNAVAILABLE" } end

@@ -112,6 +112,15 @@ run({
     { name = "minecraft:coal", count = 2 },
     { name = "minecraft:coal", count = 2 },
 })
+-- Unexpected chest contents are returned and skipped; scanning continues
+-- through later slots until both configured supply categories are found.
+run({
+    { name = "minecraft:dirt", count = 8 },
+    { name = "minecraft:coal", count = 2 },
+    { name = "minecraft:gravel", count = 5 },
+    { name = "minecraft:torch", count = 4 },
+    { name = "minecraft:coal", count = 2 },
+})
 
 local selected = 3
 local emptySupply = {
@@ -143,6 +152,7 @@ assert(selected == 3, "failed resupply must restore selected slot")
 local torchQuotaStacks = { [1] = { name = "minecraft:torch", count = 64 } }
 local torchQuotaSupplies = {
     { name = "minecraft:torch", count = 64 },
+    { name = "minecraft:cobblestone", count = 16 },
     { name = "minecraft:coal", count = 64 },
 }
 local quotaSelected, quotaFuel = 1, 0

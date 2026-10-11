@@ -1,6 +1,5 @@
--- Places a torch in the wall defined as right by the route's outbound frame.
--- The caller supplies checked navigation and mining callbacks; this module
--- always returns to the starting pose and facing before reporting success.
+-- Places a torch in the route-defined right cell. The caller may mark that
+-- target as already clear to skip excavation; pose/facing is always restored.
 local Turn = require("src.navigation.turn")
 local Result = require("src.safety.result")
 

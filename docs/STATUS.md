@@ -1,5 +1,7 @@
 # Implementation status
 
+- Latest user-directed change: fuel/torch resupply now returns and skips unrelated or malformed supply-chest stacks, continuing its bounded scan for configured fuel and torches. `tests/inventory_resupply.lua` includes interleaved unwanted contents. Lua checks are pending in this environment; no in-world chest check was performed.
+
 - Latest user-directed change: temporary fuel or torch shortages at the supply chest now leave the durable service checkpoint at base and retry every five seconds; restocking resumes the saved route. Supply-short service states remain eligible for `miner resume` after reboot. Focused service and recovery tests were updated; run them with Lua 5.4 when available. No physical release check was performed.
 
 - Current scope: single-turtle MVP in `MINER_PLAN.md`; NEXT/LATER/EXPERIMENTAL and fleet work remain excluded.

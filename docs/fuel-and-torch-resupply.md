@@ -2,7 +2,7 @@
 
 ## Purpose and behavior
 
-Restore enough internal fuel for the saved checkpoint's known-route round trip, one bounded work move, and the configured reserve, then pull torches toward the configured stock target and restore the physical emergency-fuel item quota from the verified left supply chest. The configured retained torch and fuel quantities are hard onboard caps as well as restock targets (64 each by default, one stack); incidental torch stacks encountered while searching for fuel are returned when they exceed the torch cap. Torch target is best effort; departure requires the separate minimum torch count. The bounded extractor supports fuel-first and torch-first chest ordering. When stock is temporarily insufficient, inventory service remains checkpointed at base and repeats the bounded check every five seconds until both requirements are met. Missing chests, unsupported items, and transfer faults stop for operator repair.
+Restore enough internal fuel for the saved checkpoint's known-route round trip, one bounded work move, and the configured reserve, then pull torches toward the configured stock target and restore the physical emergency-fuel item quota from the verified left supply chest. The configured retained torch and fuel quantities are hard onboard caps as well as restock targets (64 each by default, one stack); incidental torch stacks encountered while searching for fuel are returned when they exceed the torch cap. Torch target is best effort; departure requires the separate minimum torch count. The bounded extractor supports fuel-first and torch-first chest ordering. Every pull is inspected: configured fuel and torches are retained as needed, while unrelated or malformed contents are returned to the chest and skipped so later slots can be scanned. When stock is temporarily insufficient, inventory service remains checkpointed at base and repeats the bounded check every five seconds until both requirements are met. Missing chests and transfer faults stop for operator repair.
 
 ## Public entry point
 
@@ -13,11 +13,11 @@ Restore enough internal fuel for the saved checkpoint's known-route round trip, 
 
 ## Invariants and assumptions
 
-- The service faces the exact configured supply chest before each resupply operation; the chest contract allows configured fuel IDs and `minecraft:torch` only.
+- The service faces the exact configured supply chest before each resupply operation. Every pulled stack is inspected; only configured fuel IDs and `minecraft:torch` are used, and other items are returned with a verified drop before scanning continues.
 - A fuel item is consumed only when `refuel(0)` verifies it. The API must return literal `true`; truthy non-boolean values fail closed. Resupply additionally requires each consumed item to reduce its stack and increase reported fuel.
 - Departure requires fuel for both route legs, one bounded work move, and reserve, plus at least `minimumTorches`. If the left chest is temporarily short, the coordinator stays at base and retries the durable service stage, without replaying the saved mining route. `miner resume` also accepts a saved supply-short service state after a reboot. Resupply pulls toward `torchTarget` while supply and capacity remain, but an exhausted chest or full inventory is acceptable when the minimum is already met.
 - After filling the tank, resupply retains at most `inventory.fuelRetainedCount` items across configured fuel IDs. This onboard quota is separate from internal tank fuel and is restored during every base service. Resupply retains at most `inventory.torchRetainedCount` torches; excess torch stacks encountered while searching for fuel are returned to the supply chest.
-- Supply pulls and the amount of mixed-chest scanning are finite. Unsupported items are returned to the chest only after a verified drop.
+- Supply pulls and the amount of mixed-chest scanning are finite. Unwanted items are ignored only after a verified return to the chest; a failed return stops resupply.
 
 ## Dependencies and limitations
 
