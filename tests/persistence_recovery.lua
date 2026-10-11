@@ -54,7 +54,8 @@ local crashConfig = {
 }
 local origin = { x = 0, y = 0, z = 0, facing = 0 }
 local mainCursor = assert(Cursor.mainShaft(1, 1, 0, 1))
-local mainPose = { x = 0, y = -8, z = -13, facing = 0 }
+local mainPose = { x = 0, y = -8, z = -13, facing = 1 }
+local landingPose = { x = 0, y = -8, z = -13, facing = 0 }
 local mainRoute = { home = "0,0,0", edges = {} }
 local function connect(from, to)
     mainRoute.edges[from] = mainRoute.edges[from] or {}
@@ -76,6 +77,9 @@ for step = 1, 8 do
 end
 local landingKey = "0,-8,-13"
 connect(previous, landingKey)
+connect("0,-8,-13", "1,-8,-13")
+connect("1,-8,-13", "2,-8,-13")
+connect("2,-8,-13", "3,-8,-13")
 local function crashAfter(label, writeBoundary, expectedSafe)
     local path = "crash-" .. label .. ".json"
     disk = {}
@@ -86,7 +90,7 @@ local function crashAfter(label, writeBoundary, expectedSafe)
     assert(session:recordFloorLanding({ floor = 1, origin = origin,
         mouth = { x = 0, y = 0, z = -4, facing = 0 },
         rear = { x = 0, y = -8, z = -12, facing = 0 },
-        landing = mainPose, steps = 8, entryMoves = 4 }, mainPose, mainRoute, crashConfig),
+        landing = landingPose, steps = 8, entryMoves = 4 }, mainPose, mainRoute, crashConfig),
         "landing must be durable for main-shaft recovery at " .. label)
     assert(writeBoundary(session), "crash boundary must persist: " .. label)
     session = nil -- discard all in-memory coordinator state
@@ -111,8 +115,25 @@ local landingRecord = {
     floor = 1, origin = origin,
     mouth = { x = 0, y = 0, z = -4, facing = 0 },
     rear = { x = 0, y = -8, z = -12, facing = 0 },
-    landing = mainPose, steps = 8, entryMoves = 4,
+    landing = landingPose, steps = 8, entryMoves = 4,
 }
+-- A supply shortage during interrupted service stays recoverable across a
+-- process restart so `miner resume` can wait for later chest restocking.
+disk = {}
+local supplyWaitPath = "crash-supply-wait.json"
+local supplyWaitCursor = assert(Cursor.mainShaft(1, 1, 0, 1))
+local supplyWaitSession = assert(Checkpoint.create(crashConfig, mainPose, mainRoute,
+    "crash-supply-wait", supplyWaitPath, fs, textutils))
+assert(supplyWaitSession:setProgress(supplyWaitCursor, mainPose, mainRoute, crashConfig))
+assert(supplyWaitSession:recordFloorLanding(landingRecord, mainPose, mainRoute, crashConfig))
+assert(supplyWaitSession:setService({ stage = "at_base", checkpoint = mainPose,
+    resumeProgress = supplyWaitCursor }, origin, mainRoute, crashConfig))
+assert(supplyWaitSession:markFatal("NO_TORCHES", origin, mainRoute, crashConfig))
+supplyWaitSession = nil
+local supplyWaitSnapshot, supplyWaitCode = State.load(supplyWaitPath, crashConfig, fs, textutils)
+assert(supplyWaitSnapshot and Recovery.classify(supplyWaitSnapshot, supplyWaitCode),
+    "known-pose supply-short service state must remain resumable after reboot")
+
 local cursorCrashCases = {
     { "surface-entry", assert(Cursor.stairs(1, 0, "enter_surface")), origin, true },
     { "main-shaft", mainCursor, mainPose, true },
@@ -330,7 +351,7 @@ assert(serviceSession:setProgress(mainCursor, mainPose, mainRoute, crashConfig))
 assert(serviceSession:recordFloorLanding({ floor = 1, origin = origin,
     mouth = { x = 0, y = 0, z = -4, facing = 0 },
     rear = { x = 0, y = -8, z = -12, facing = 0 },
-    landing = mainPose, steps = 8, entryMoves = 4 }, mainPose, mainRoute, crashConfig))
+    landing = landingPose, steps = 8, entryMoves = 4 }, mainPose, mainRoute, crashConfig))
 assert(serviceSession:setService({ stage = "unloading", checkpoint = origin,
     resumeProgress = mainCursor }, origin, mainRoute, crashConfig))
 serviceSession = nil
@@ -427,7 +448,7 @@ assert(not allowed and code == "MAIN_SHAFT_RESUME_UNSUPPORTED",
 -- A committed pose inside a floor route is not sufficient: until the
 -- executor can dispatch that exact next action, resume must remain closed.
 local unsupportedCursors = {
-    assert(Cursor.branch(1, "left", "branch_lower_return", 0, 1, "return_branch_cell", 1)),
+assert(Cursor.branch(1, "left", "branch_lower_return", 0, 3, "return_branch_cell", 1)),
 }
 for _, cursor in ipairs(unsupportedCursors) do
     local active = {}
@@ -441,23 +462,31 @@ end
 
 local activeMain = {}
 for key, value in pairs(state) do activeMain[key] = value end
+activeMain.pose = mainPose
+activeMain.configSnapshot = crashConfig
 activeMain.resumeCheckpoint = { pose = activeMain.pose, progress = activeMain.progress }
 activeMain.floorLandings = { [1] = { landing = { x = 0, y = -8, z = -13, facing = 0 } } }
 allowed, code = Recovery.classify(activeMain, "STATE_LOADED")
 assert(allowed and code == "RESUME_SAFE_CHECKPOINT",
     "a committed main-shaft cursor with its floor landing is restartable")
 
-local junctionPose = { x = 2, y = -8, z = -13, facing = 1 }
+local junctionPose = { x = 6, y = -8, z = -13, facing = 1 }
 local junctionRoute = { home = "0,0,0", edges = {
-    ["2,-8,-13"] = { ["0,-8,-13"] = true },
-    ["0,-8,-13"] = { ["2,-8,-13"] = true, ["0,0,0"] = true },
+    ["6,-8,-13"] = { ["5,-8,-13"] = true },
+    ["5,-8,-13"] = { ["6,-8,-13"] = true, ["4,-8,-13"] = true },
+    ["4,-8,-13"] = { ["5,-8,-13"] = true, ["3,-8,-13"] = true },
+    ["3,-8,-13"] = { ["4,-8,-13"] = true, ["2,-8,-13"] = true },
+    ["2,-8,-13"] = { ["3,-8,-13"] = true, ["1,-8,-13"] = true },
+    ["1,-8,-13"] = { ["2,-8,-13"] = true, ["0,-8,-13"] = true },
+    ["0,-8,-13"] = { ["1,-8,-13"] = true, ["0,0,0"] = true },
     ["0,0,0"] = { ["0,-8,-13"] = true },
 } }
 for _, action in ipairs({ "turn_to_left_branch", "restore_main_facing" }) do
-    local junctionCursor = assert(Cursor.junction(2, 2, action, 1))
+    local junctionCursor = assert(Cursor.junction(2, 6, action, 1))
     local junction = {}
     for key, value in pairs(state) do junction[key] = value end
     junction.pose = junctionPose
+junction.configSnapshot = crashConfig
     junction.route = junctionRoute
     junction.progress = junctionCursor
     junction.resumeCheckpoint = { pose = junctionPose, progress = junctionCursor }
@@ -468,7 +497,7 @@ for _, action in ipairs({ "turn_to_left_branch", "restore_main_facing" }) do
 
     junction.resumeCheckpoint = {
         pose = junctionPose,
-        progress = assert(Cursor.junction(2, 2,
+        progress = assert(Cursor.junction(2, 6,
             action == "turn_to_left_branch" and "restore_main_facing" or "turn_to_left_branch", 1)),
     }
     allowed, code = Recovery.classify(junction, "STATE_LOADED")
@@ -487,10 +516,10 @@ assert(not allowed and code == "MAIN_SHAFT_RESUME_UNSUPPORTED",
     "main-shaft recovery must match the complete saved next-action cursor")
 
 local branchCursor = assert(Cursor.branch(1, "left", "branch_outbound_lower", 2,
-    1, "mine_branch_cell", 1))
+    3, "mine_branch_cell", 1))
 local branchState = {}
 for key, value in pairs(state) do branchState[key] = value end
-branchState.pose = { x = 1, y = -8, z = -15, facing = 0 }
+branchState.pose = { x = 3, y = -8, z = -15, facing = 0 }
 branchState.progress = branchCursor
 branchState.configSnapshot = { branch_length = 30, num_branches = 3, spacing = 3 }
 branchState.floorLandings = { [1] = {
@@ -499,9 +528,11 @@ branchState.floorLandings = { [1] = {
 } }
 branchState.resumeCheckpoint = { pose = branchState.pose, progress = branchCursor }
 branchState.route = { home = "0,0,0", edges = {
-    ["1,-8,-15"] = { ["1,-8,-14"] = true },
-    ["1,-8,-14"] = { ["1,-8,-15"] = true, ["1,-8,-13"] = true },
-    ["1,-8,-13"] = { ["1,-8,-14"] = true, ["0,-8,-13"] = true },
+    ["3,-8,-15"] = { ["3,-8,-14"] = true },
+    ["3,-8,-14"] = { ["3,-8,-15"] = true, ["3,-8,-13"] = true },
+    ["3,-8,-13"] = { ["3,-8,-14"] = true, ["2,-8,-13"] = true },
+    ["2,-8,-13"] = { ["3,-8,-13"] = true, ["1,-8,-13"] = true },
+    ["1,-8,-13"] = { ["2,-8,-13"] = true, ["0,-8,-13"] = true },
     ["0,-8,-13"] = { ["1,-8,-13"] = true, ["0,0,0"] = true },
     ["0,0,0"] = { ["0,-8,-13"] = true },
 } }
@@ -510,10 +541,10 @@ assert(allowed and code == "RESUME_SAFE_CHECKPOINT",
     "a geometrically valid lower-outbound branch cursor with a known home route is resumable")
 
 local returnCursors = {
-    { "branch_turnaround", 30, "prepare_branch_return", { x = 1, y = -8, z = -43, facing = 0 } },
-    { "branch_upper_return", 12, "scan_and_return_branch_cell", { x = 1, y = -7, z = -25, facing = 2 } },
-    { "branch_upper_return", 0, "scan_and_return_branch_cell", { x = 1, y = -7, z = -13, facing = 2 } },
-    { "branch_return_to_junction", 0, "descend_to_junction", { x = 1, y = -8, z = -13, facing = 1 } },
+    { "branch_turnaround", 30, "prepare_branch_return", { x = 3, y = -8, z = -43, facing = 0 } },
+    { "branch_upper_return", 12, "scan_and_return_branch_cell", { x = 3, y = -7, z = -25, facing = 2 } },
+    { "branch_upper_return", 0, "scan_and_return_branch_cell", { x = 3, y = -7, z = -13, facing = 2 } },
+    { "branch_return_to_junction", 0, "descend_to_junction", { x = 3, y = -8, z = -13, facing = 1 } },
 }
 local function routeToOrigin(pose)
     local route = { home = "0,0,0", edges = {} }
@@ -539,7 +570,7 @@ local function routeToOrigin(pose)
     return route
 end
 for _, item in ipairs(returnCursors) do
-    local cursor = assert(Cursor.branch(1, "left", item[1], item[2], 1, item[3], 1))
+    local cursor = assert(Cursor.branch(1, "left", item[1], item[2], 3, item[3], 1))
     local active = {}
     for key, value in pairs(branchState) do active[key] = value end
     active.progress = cursor
@@ -560,18 +591,18 @@ end
 -- Recovery must preserve the complete serialized cursor and match its pose to
 -- the landing-derived branch geometry; either kind of tampering must fail.
 local branchCrashCases = {
-    { "branch_outbound_lower", 2, "mine_branch_cell", 1 },
-    { "branch_turnaround", 30, "prepare_branch_return", 1 },
-    { "branch_upper_return", 12, "scan_and_return_branch_cell", 2 },
-    { "branch_return_to_junction", 0, "descend_to_junction", 1 },
+    { "branch_outbound_lower", 2, "mine_branch_cell", 3 },
+    { "branch_turnaround", 30, "prepare_branch_return", 3 },
+    { "branch_upper_return", 12, "scan_and_return_branch_cell", 3 },
+    { "branch_return_to_junction", 0, "descend_to_junction", 3 },
 }
 for _, side in ipairs({ "left", "right" }) do
     for index, item in ipairs(branchCrashCases) do
-        local cursor = assert(Cursor.branch(1, side, item[1], item[2], 1, item[3], 1))
+        local cursor = assert(Cursor.branch(1, side, item[1], item[2], 3, item[3], 1))
         local landing = { x = 0, y = -8, z = -13, facing = 0 }
         local grid = assert(require("src.navigation.floor_grid").new(origin, 0,
             { floor = 1, pose = landing }))
-        local junction = grid.junction(1)
+        local junction = grid.junction(3)
         local branch = grid.branch(junction, side)
         local traversal = assert(require("src.navigation.branch_traversal").new(branch, 30))
         local pose
@@ -636,7 +667,7 @@ for _, side in ipairs({ "left", "right" }) do
         local tampered = {}
         for key, value in pairs(recovered) do tampered[key] = value end
         tampered.resumeCheckpoint = { pose = pose,
-            progress = assert(Cursor.branch(1, side, item[1], item[2], 1, item[3], 2)) }
+            progress = assert(Cursor.branch(1, side, item[1], item[2], 3, item[3], 2)) }
         allowed, code = Recovery.classify(tampered, loadCode)
         assert(not allowed and code == "BRANCH_RESUME_UNSUPPORTED",
             "branch restart must reject a changed next action: " .. side .. " " .. item[1])
@@ -698,7 +729,7 @@ transitionSession = nil
 -- The legacy lower-return transitions remain part of the validated phase
 -- machine contract even though the active executor uses the upper return.
 local lowerCursor = assert(Cursor.branch(1, "right", "branch_turnaround", 30,
-    1, "prepare_branch_return", 1))
+    3, "prepare_branch_return", 1))
 local lowerSession = assert(Checkpoint.create(crashConfig, mainPose, mainRoute,
     "crash-lower-phase-transitions", "crash-lower-phase-transitions.json", fs, textutils))
 assert(lowerSession:setProgress(lowerCursor, mainPose, mainRoute, crashConfig))
@@ -733,13 +764,13 @@ lowerSession = nil
 -- from a committed branch checkpoint and route the resumed target explicitly.
 local serviceOrigin = { x = 0, y = 0, z = 0, facing = 0 }
 for _, item in ipairs({
-    { branchCursor, { x = 1, y = -8, z = -15, facing = 0 } },
+    { branchCursor, { x = 3, y = -8, z = -15, facing = 0 } },
     { assert(Cursor.branch(1, "left", "branch_turnaround", 30,
-        1, "prepare_branch_return", 1)), { x = 1, y = -8, z = -43, facing = 0 } },
+        3, "prepare_branch_return", 1)), { x = 3, y = -8, z = -43, facing = 0 } },
     { assert(Cursor.branch(1, "left", "branch_upper_return", 12,
-        1, "scan_and_return_branch_cell", 1)), { x = 1, y = -7, z = -25, facing = 2 } },
+        3, "scan_and_return_branch_cell", 1)), { x = 3, y = -7, z = -25, facing = 2 } },
     { assert(Cursor.branch(1, "left", "branch_return_to_junction", 0,
-        1, "descend_to_junction", 1)), { x = 1, y = -8, z = -13, facing = 1 } },
+        3, "descend_to_junction", 1)), { x = 3, y = -8, z = -13, facing = 1 } },
 }) do
     local cursor, checkpointPose = item[1], item[2]
     local serviceState = {}
@@ -759,13 +790,13 @@ for _, item in ipairs({
             "service replay should admit " .. cursor.phase .. " at stage " .. stage)
     end
     serviceState.service.resumeProgress = assert(Cursor.branch(1, "left",
-        "branch_outbound_lower", 3, 1, "mine_branch_cell", 1))
+        "branch_outbound_lower", 3, 3, "mine_branch_cell", 1))
     allowed, code = Recovery.classify(serviceState, "STATE_LOADED")
     assert(not allowed and code == "SERVICE_RESUME_UNSUPPORTED",
         "service replay must reject a cursor altered during the trip")
 end
 
-branchState.pose = { x = 1, y = -8, z = -16, facing = 0 }
+branchState.pose = { x = 3, y = -8, z = -16, facing = 0 }
 branchState.resumeCheckpoint = { pose = branchState.pose, progress = branchCursor }
 allowed, code = Recovery.classify(branchState, "STATE_LOADED")
 assert(not allowed and code == "BRANCH_RESUME_UNSUPPORTED",

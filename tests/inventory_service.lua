@@ -304,35 +304,49 @@ local departureSaved, departureCode = departureFailureService.serviceIfNeeded()
 assert(not departureSaved and departureCode == "STATE_WRITE_FAILED" and departureTravelCalls == 0,
     "failed pre-departure checkpoint must stop before home travel")
 
--- If the supply chest cannot meet the minimum torch quota, service remains at
--- the verified base pose and must not replay the saved mining route.
+-- If supplies are temporarily short, service remains at the verified base
+-- pose with its durable stage intact; a later retry resumes the saved route.
 pose.x, pose.y, pose.z, pose.facing = 0, -8, -13, 1
 count = 70
-local torchFailureTravel = 0
+local shortSupplyTravel = 0
+local shortSupplyStage
+local supplyAvailable = false
 local torchFailureService = InventoryService.new({
     turtle = api,
     config = config,
     itemConfig = defaults,
     pose = function() return pose end,
-    checkpoint = { setService = function() return true end },
+    checkpoint = { setService = function(_, value)
+        shortSupplyStage = value and value.stage or nil
+        return true
+    end },
     progress = function() return currentProgress end,
     route = function() return {} end,
     configSnapshot = function() return {} end,
     turnToFacing = function(facing) pose.facing = facing; return true end,
     travel = function(target)
-        torchFailureTravel = torchFailureTravel + 1
+        shortSupplyTravel = shortSupplyTravel + 1
         pose.x, pose.y, pose.z, pose.facing = target.x, target.y, target.z, target.facing
         return true, "ROUTE_TARGET_REACHED"
     end,
-    resupply = function() return { ok = false, code = "NO_TORCHES" } end,
+    resupply = function()
+        return supplyAvailable and { ok = true, code = "RESUPPLY_COMPLETE" }
+            or { ok = false, code = "NO_TORCHES" }
+    end,
     report = function() end,
     reportError = function() end,
 })
 local torchSupplied, torchSupplyCode = torchFailureService.serviceIfNeeded(true)
 assert(not torchSupplied and torchSupplyCode == "NO_TORCHES",
-    "an unmet minimum torch quota must be reported to the coordinator")
-assert(torchFailureTravel == 1 and pose.x == 0 and pose.y == 0 and pose.z == 0,
-    "failed torch resupply must stay at base without replay travel")
+    "a temporary torch shortage must be reported for retry")
+assert(shortSupplyTravel == 1 and pose.x == 0 and pose.y == 0 and pose.z == 0
+    and shortSupplyStage == "at_base",
+    "short supply must keep the durable service checkpoint at base")
+local resumedAfterRestock = torchFailureService.resume({
+    x = 0, y = -8, z = -13, facing = 1,
+})
+assert(resumedAfterRestock and shortSupplyTravel == 3 and shortSupplyStage == nil,
+    "a later successful supply check must replay to the saved checkpoint and clear service")
 
 -- A failed durable clear must not be hidden by a boolean fallback: otherwise
 -- the next startup could mistake an uncleared service trip for normal mining.

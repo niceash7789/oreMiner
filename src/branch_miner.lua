@@ -1229,12 +1229,6 @@ local function placeStairTorch(slicePose)
         return copyCurrentPose().facing == originalFacing, Result.new(true, "STAIR_TORCH_RESTORED")
     end
 
-    local function alreadyClearTorchCell()
-        -- The adjacent right-column passage cell was cleared by this slice.
-        -- Place the non-blocking torch there without carving a wall niche.
-        return Result.new(true, "TORCH_CELL_ALREADY_CLEAR")
-    end
-
     local selected = SlotGuard.run(turtle, function()
         local slot
         for index = 1, 16 do
@@ -1254,7 +1248,7 @@ local function placeStairTorch(slicePose)
             pose = copyCurrentPose(), outboundFacing = originalFacing,
             poseNow = copyCurrentPose,
             turn = checkedTurnForRoute,
-            dig = alreadyClearTorchCell,
+            alreadyClear = true,
             place = function()
                 if turtle.place() ~= true then return Result.new(false, "TORCH_PLACE_FAILED") end
                 stats:add("torches_placed", 1)
@@ -2367,7 +2361,16 @@ local function main(...)
             travelTarget = { x = 0, y = 0, z = 0, facing = 0 }
         end
         if snapshot.service then
-            local serviced, serviceCode = inventoryService.resume(target)
+            local serviced, serviceCode
+            repeat
+                serviced, serviceCode = inventoryService.resume(target)
+                if not serviced and (serviceCode == "NO_TORCHES"
+                    or serviceCode == "NO_FUEL_SUPPLY") then
+                    print("Supply is short. Waiting at base; restock the left chest to resume.")
+                    sleep(5)
+                end
+            until serviced or (serviceCode ~= "NO_TORCHES"
+                and serviceCode ~= "NO_FUEL_SUPPLY")
             if not serviced then
                 -- Service-stage failures (for example a chest that was fixed
                 -- after the last attempt) retain a known pose and checkpoint.
@@ -2375,8 +2378,7 @@ local function main(...)
                 -- failures remain terminal through their existing paths.
                 if serviceCode ~= "NO_SUPPLY_CHEST" and serviceCode ~= "NO_OUTPUT_CHEST"
                     and serviceCode ~= "NO_BULK_CHEST" and serviceCode ~= "CHEST_FULL"
-                    and serviceCode ~= "UNLOAD_FAILED" and serviceCode ~= "NO_TORCHES"
-                    and serviceCode ~= "NO_FUEL_SUPPLY" then
+                    and serviceCode ~= "UNLOAD_FAILED" then
                     markFatal(serviceCode or "SERVICE_RESUME_FAILED")
                 end
                 print("Resume stopped safely: " .. tostring(serviceCode))

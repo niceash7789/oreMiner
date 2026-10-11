@@ -77,6 +77,25 @@ local digFailure = Lighting.placeRight({
 assert(not digFailure.ok and digFailure.code == "DIG_BLOCKED" and digCalls == 1,
     "failed niche clear must restore facing and avoid placement")
 
+local clearDigCalls, clearPlaceCalls = 0, 0
+local clearPose = { x = 4, y = -4, z = -8, facing = 0 }
+local alreadyClear = Lighting.placeRight({
+    pose = clearPose, outboundFacing = 0,
+    turn = function(direction)
+        local updated, outcome = Pose.afterTurn(clearPose, direction, true)
+        clearPose = updated
+        return updated, outcome
+    end,
+    alreadyClear = true,
+    dig = function() clearDigCalls = clearDigCalls + 1; return Result.new(true, "DUG") end,
+    place = function() clearPlaceCalls = clearPlaceCalls + 1; return Result.new(true, "PLACED") end,
+    poseNow = function() return clearPose end,
+})
+assert(alreadyClear.ok and clearDigCalls == 0 and clearPlaceCalls == 1,
+    "an already-cleared passage placement must place once without invoking any dig callback")
+assert(clearPose.x == 4 and clearPose.y == -4 and clearPose.z == -8 and clearPose.facing == 0,
+    "an already-cleared passage placement must restore its exact pose and facing")
+
 local driftingPose = { x = 0, y = 0, z = 0, facing = 0 }
 local poseMismatch = Lighting.placeRight({
     pose = { x = 0, y = 0, z = 0, facing = 0 }, outboundFacing = 0,

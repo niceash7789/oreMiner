@@ -142,12 +142,12 @@ One stair slice is a deterministic excavation sweep:
 1. From the current centre-bottom checkpoint, clear and move forward into the middle of the target slice.
 2. Clear the centre block below and two blocks above, using a checked up/down move to clear the fourth cell.
 3. Sweep into the left column, clear one block below and two above, and return to centre.
-4. Sweep into the right column, clear one block below and two above, optionally carve/place a torch in a niche beyond the outer right wall, and return to centre. Skip torch placement on a landing slice so the right-turn floor entrance remains clear.
+4. Sweep into the right column, clear one block below and two above, and return to centre. If scheduled, place a non-blocking torch into an already-cleared cell in the right column inside the passage; do not dig a torch niche or add a movement. Skip torch placement on a landing slice so the right-turn floor entrance remains clear.
 5. Restore the stairs facing and move down into the target slice's centre-bottom checkpoint.
 
 The lateral sweep creates a 3-wide × 4-tall cross-section while restoring the turtle to the centreline. Each slice advances one block forward and one block down. A landing adds a 3-wide × 3-long flat platform: the completed eighth slice is the rear-centre cell, the saved landing pose is one level block forward at the centre cell, and the front-centre cell is one more level block forward. With the four-block surface entry and default interval, the landing centres are 13 blocks forward/8 blocks down for floor 1 and 23 blocks forward/16 blocks down for floor 2. In general, floor `n` has depth `-n * stairStepsPerFloor` and centreline forward offset `surfaceEntryLength + n * (stairStepsPerFloor + 2) - 1`. The inverse slice climb is up, then back; landing crossings are recorded level moves. Every movement is persisted separately.
 
-“Right-hand side” is defined by the planned outbound direction of that route, not whichever way the turtle happens to face while returning. Stair torches go on the outer right wall relative to the descent direction. Main-shaft and shaft torches go on the right wall relative to their outbound mining direction. Return and service travel never places torches.
+“Right-hand side” is defined by the planned outbound direction of that route, not whichever way the turtle happens to face while returning. Stair torches occupy a cleared right-column cell inside the passage without digging; main-shaft and shaft torches go on the right wall relative to their outbound mining direction. Return and service travel never places torches.
 
 At each landing centre, the floor's main shaft turns right relative to the stairs direction. With the documented facing convention, northbound stairs produce an eastbound main shaft. Paired shafts therefore run north/south and do not occupy the stairs centreline.
 
@@ -555,7 +555,7 @@ At base, process inventory in this order:
 
 For each drop, verify post-drop counts; a successful partial transfer is not a complete unload. Safety may consume coal below the keep quota. “Keep 64” is a service target, not a prohibition against using emergency fuel.
 
-The left chest deliberately contains both fuel and torches. Basic turtle `suck` cannot select an exact chest slot, so V1 must use bounded pull/classify cycles and a strict chest-content contract: only configured fuel items and configured torch items belong in that chest. If the requested resource cannot be obtained without filling the turtle, stop at base with `NO_FUEL_SUPPLY` or `NO_TORCHES`; do not loop forever. This limitation should be tested with fuel-first and torch-first chest ordering.
+The left chest deliberately contains both fuel and torches. Basic turtle `suck` cannot select an exact chest slot, so V1 must use bounded pull/classify cycles and a strict chest-content contract: only configured fuel items and configured torch items belong in that chest. If stock is temporarily insufficient, remain at base and retry the bounded check periodically until enough fuel and torches are available. Missing chests, unsupported items, and transfer faults remain stopped service errors. This behavior should be tested with fuel-first and torch-first chest ordering and delayed restocking.
 
 ### Base layout recommendation
 
@@ -735,7 +735,7 @@ Safe V1 behaviour is to stop. Turtles cannot reliably solve every flowing-water/
 
 Torch placement is an MVP requirement. A route carries a fixed outbound frame, so “right” remains stable even when the turtle later faces home.
 
-- Staircase: from the right-middle sweep position, carve/place into a niche beyond the outer right wall so the 3-wide passage stays clear. Never place on a landing slice, because the floor main tunnel exits to that side.
+- Staircase: from the centreline, place into the already-cleared right-column passage cell. Do not dig a torch niche or move laterally for placement. Never place on a landing slice, because the floor main tunnel exits to that side.
 - Floor main tunnel: at the configured height, carve a one-block torch niche in the right wall and place into it.
 - Branch: carve the same right-side niche relative to that branch's outbound direction.
 - Return, unwind, climb, and service travel: never place torches.
@@ -744,13 +744,13 @@ The default cadence is every four stair slices and every eight floor-tunnel bloc
 
 - [x] **MVP / P0** Implement a route-frame right-side helper independent of current facing. `Lighting.rightSide` returns the adjacent pose and absolute right heading; `tests/lighting_right_wall.lua` covers all route and current facings. — **AI-2**
 - [x] **MVP / P0** Implement right-side torch/niche placement with exact pose/facing restoration. `Lighting.placeRight` restores facing through checked turns and, when supplied, verifies the live committed pose; the coordinator supplies that callback. `tests/lighting_right_wall.lua` covers all headings and injected coordinate drift. Persistent duplicate suppression remains a separate unchecked requirement. — **AI-2**
-- [ ] **MVP / P0** Place stair torches only on the outer right wall, never in the cleared 3×4 passage. `StairSlice` completes the cleared passage before the outer-right placement and unwinds its recorded approach on failure; rerun the slice and active-baseline tests after the geometry change.
+- [ ] **MVP / P0** Place stair torches in an already-cleared right-column cell inside the passage without digging or extra movement. `StairSlice` completes the passage before placement; verify that the active callback uses no dig or lateral move and still restores facing.
 - [x] **MVP / P0** Skip torch placement on every landing slice so the right-turn floor entrance remains unobstructed. `StairRoute` suppresses placement on the final slice; `tests/stair_route.lua` verifies cadence and landing exclusion. — **AI-2**
 - [x] **MVP / P0** Place floor-main and branch torches only on their outbound right wall. The coordinator uses each route's fixed outbound frame; `tests/active_baseline_wiring.lua` verifies both branch headings and the main route. — **AI-2**
 - [x] **MVP / P1** Apply the configured stair/tunnel intervals by route distance, not global move count. `tests/stair_route.lua` and `tests/active_baseline_wiring.lua` cover configured cadence. — **AI-1**
 - [x] **MVP / P1** Count and persist torches placed so restart does not duplicate the same placement checkpoint. `Checkpoint` stores route-distance placement keys; `tests/persistence_state.lua` verifies persistence and distinct placements. — **AI-1**
 - [x] **MVP / P0** When the torch quota falls below the minimum needed for the current leg, finish the safe checkpoint and return for resupply. The coordinator checks torch stock at persisted work-unit boundaries and routes stock below `minimumTorchesToDepart` through the checkpointed service/resupply/exact-return path; `tests/inventory_service.lua` verifies forced service uses that path. — **AI-2**
-- [x] **MVP / P0** If the left chest cannot supply the minimum, stop at base with `NO_TORCHES`. `Resupply.run` returns this typed failure and inventory service stops before replay travel; `tests/inventory_service.lua` verifies it remains at origin. — **AI-2**
+- [x] **MVP / P0** If the left chest is temporarily short of the minimum fuel or torch stock, remain at base and keep checking until restocked. Supply-short service checkpoints remain resumable after reboot; fatal chest/layout or transfer faults still stop for operator repair. — **AI-2**
 - [ ] **NEXT / P2** Support separate main/branch intervals or adaptive spacing if playtesting shows the tunnel cadence is unsuitable. — **AI-1**
 
 ## 12. Failure and recovery strategy
@@ -768,8 +768,8 @@ Recommended error codes:
 | Code | Meaning | Automatic action |
 |---|---|---|
 | `NO_FUEL` | Cannot satisfy route-home invariant | Stop; if already at base, request fuel. |
-| `NO_FUEL_SUPPLY` | Left supply chest cannot provide enough permitted fuel | Stay at base and stop. |
-| `NO_TORCHES` | Left supply chest cannot meet the minimum torch quota | Stay at base and stop. |
+| `NO_FUEL_SUPPLY` | Left supply chest is temporarily short of the required fuel | Stay at base and retry bounded supply checks periodically. |
+| `NO_TORCHES` | Left supply chest is temporarily short of the minimum torch quota | Stay at base and retry bounded supply checks periodically. |
 | `CHEST_FULL` | Verified remainder after output drop | Stay at base and stop. |
 | `NO_SUPPLY_CHEST` | Required left fuel/torch chest absent | Stay at base and stop. |
 | `NO_OUTPUT_CHEST` | Required right primary output chest absent | Stay at base and stop. |
@@ -1156,7 +1156,7 @@ Run these first in a controlled test gallery with short tunnels, visible coordin
 - [ ] Simulate/construct a pending-action state and verify the turtle refuses automatic recovery. — **AI-1**
 - [ ] Encounter water and lava in isolated, controlled tests and verify no blind continuation. — **AI-1**
 - [ ] Verify every placed torch is on the route-defined right wall, including left and right branches. — **AI-1**
-- [ ] Verify stair torches use outer-right niches and never block the 3×4 passage or right-turn floor entrance. — **AI-1**
+- [ ] Verify stair torches occupy a cleared passage cell without digging and never block the right-turn floor entrance. — **AI-1**
 - [ ] Complete a short job, perform the final main upper scan, and finish at origin. — **AI-1**
 
 ### Release gates

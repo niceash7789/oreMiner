@@ -45,7 +45,8 @@ function Recovery.classify(state, loadCode)
         return false, "POSITION_UNCERTAIN"
     end
     local recoverableServiceError = type(state) == "table" and state.status == "error"
-        and state.error == "NO_SUPPLY_CHEST" and state.service ~= nil
+        and state.service ~= nil and (state.error == "NO_SUPPLY_CHEST"
+            or state.error == "NO_FUEL_SUPPLY" or state.error == "NO_TORCHES")
     if type(state) ~= "table" or (state.status ~= "mining" and state.status ~= "paused"
         and not recoverableServiceError)
         or state.poseCertainty ~= "known" or state.pendingAction ~= nil
@@ -239,20 +240,63 @@ function Recovery.classify(state, loadCode)
         if not homePath then return false, "HOME_ROUTE_UNAVAILABLE" end
 
     elseif state.progress.phase == "stairs" then
-        -- Mid-stair cursors can refer to either a completed centreline slice
-        -- or an interrupted multi-action sweep. Until that distinction is
-        -- persisted explicitly, never infer that replaying the slice is safe.
         if state.progress.nextAction ~= "cross_landing" then
-            -- A non-empty local stack means the committed pose is inside a
-            -- multi-action unit. It is useful for operator diagnosis, but it
-            -- does not prove whether the last physical action completed.
-            if state.routeStack and #state.routeStack.records > 0 then
-                return false, "STAIR_ACTION_PENDING_UNSUPPORTED"
-            end
             if state.progress.nextAction == "prepare_landing" then
                 return false, "LANDING_CARVE_RESUME_UNSUPPORTED"
             end
-            return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+            local floor, step = state.progress.floor, state.progress.stairStep
+            local previous = state.floorLandings and state.floorLandings[floor - 1]
+            local resume = state.resumeCheckpoint
+            local stack = state.routeStack or { records = {} }
+            if floor < 1 or step < 1 or step > state.configSnapshot.stair_steps_per_floor
+                or not previous or not resume or not sameCursor(resume.progress, state.progress)
+                or not samePose(resume.pose, state.pose)
+                or not RouteHome.path(state.route, state.pose, nil,
+                    { x = 0, y = 0, z = 0, facing = 0 }) then
+                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+            end
+            if floor == 1 then
+                if previous ~= nil then return false, "STAIR_SLICE_RESUME_UNSUPPORTED" end
+            elseif type(previous) ~= "table" or previous.floor ~= floor - 1
+                or type(previous.steps) ~= "number" or previous.steps < 1
+                or previous.steps ~= math.floor(previous.steps)
+                or (previous.entryMoves ~= 1 and previous.entryMoves ~= 4)
+                or not RouteHome.path(state.route, state.pose, nil, previous.landing) then
+                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+            end
+            local expected = floor == 1 and { x = 0, y = 0, z = 0, facing = 0 }
+                or previous.landing
+            for _ = 1, previous and previous.steps or 0 do
+                expected = assert(require("src.navigation.pose").afterMove(expected, "forward", true))
+                expected = assert(require("src.navigation.pose").afterMove(expected, "down", true))
+            end
+            local beforeSlice = require("src.navigation.pose").afterMove(expected, "forward", true)
+            for index = 1, #stack.records do
+                local record = stack.records[index]
+                if record.action ~= "forward" and record.action ~= "back"
+                    and record.action ~= "up" and record.action ~= "down"
+                    and record.action ~= "turnLeft" and record.action ~= "turnRight" then
+                    return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+                end
+            end
+            local pose = require("src.navigation.pose")
+            local stackPose = beforeSlice
+            for _, record in ipairs(stack.records) do
+                local action = record.action
+                if action == "forward" or action == "back" or action == "up" or action == "down" then
+                    stackPose = assert(pose.afterMove(stackPose, action, true))
+                else
+                    stackPose = assert(pose.afterTurn(stackPose,
+                        action == "turnLeft" and "left" or "right", true))
+                end
+            end
+            if not samePose(stackPose, state.pose) then
+                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+            end
+            if floor > 1 and step - 1 > previous.steps then
+                return false, "STAIR_SLICE_RESUME_UNSUPPORTED"
+            end
+            return true, "RESUME_SAFE_STAIR_SLICE"
         end
         local floor = state.progress.floor
         local previous = state.floorLandings and state.floorLandings[floor - 1]

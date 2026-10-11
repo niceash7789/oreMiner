@@ -49,7 +49,7 @@ assert(absent == nil and absentCode == "STATE_MISSING",
     "only an installation with no active or backup snapshot may start as a new run")
 local state = assert(State.new(config, pose, route, "run-1"))
 local returnCursor = assert(MiningCursor.branch(1, "left", "branch_upper_return",
-    1, 1, "scan_and_return_branch_cell", 1))
+    1, 3, "scan_and_return_branch_cell", 1))
 local framedReturn = assert(MiningCursor.withWorkUnit(returnCursor,
     { x = 0, y = 1, z = 0, facing = 3 }, {
         branch_length = config.branch_length, num_branches = config.num_branches,
@@ -171,7 +171,7 @@ local rejectedTemp, rejectedTempCode = State.load("schema-bad-temp.json", config
 assert(rejectedTemp == nil and rejectedTempCode == "STATE_CORRUPT",
     "a decodable but schema-invalid temp must not be promoted")
 
-state.progress = assert(MiningCursor.junction(1, 1, "turn_to_left_branch"))
+state.progress = assert(MiningCursor.junction(1, 3, "turn_to_left_branch"))
 -- Model the checkpoint API's atomic cursor/resume-target update.
 state.resumeCheckpoint.progress = state.progress
 assert(State.save(state, "state.json", fs, textutils), "second snapshot should rotate the first to backup")
@@ -429,7 +429,7 @@ local nextProgress = {
     side = "left",
     phase = "branch_outbound_lower",
     offset = 3,
-    mainOffset = 2,
+    mainOffset = 6,
     nextAction = "mine_branch_cell",
 }
 local nextProgressOk, nextProgressCode = session:setProgress(nextProgress, pose, route, config)

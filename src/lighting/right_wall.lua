@@ -36,7 +36,8 @@ end
 function Lighting.placeRight(ops)
     if type(ops) ~= "table" or type(ops.pose) ~= "table"
         or not validFacing(ops.outboundFacing)
-        or type(ops.turn) ~= "function" or type(ops.dig) ~= "function"
+        or type(ops.turn) ~= "function"
+        or (ops.alreadyClear ~= true and type(ops.dig) ~= "function")
         or type(ops.place) ~= "function" then
         return Result.new(false, "LIGHTING_INVALID_OPTIONS")
     end
@@ -47,11 +48,13 @@ function Lighting.placeRight(ops)
     local facing, turnResult = Turn.face(start, rightFacing, ops.turn)
     if not turnResult.ok then return turnResult end
 
-    local dug = ops.dig()
-    if type(dug) ~= "table" or dug.ok ~= true then
-        local restored, restoreResult = Turn.face(facing, start.facing, ops.turn)
-        if not restoreResult.ok then return Result.new(false, "LIGHTING_RESTORE_FAILED", nil, { cause = restoreResult.code }) end
-        return type(dug) == "table" and dug or Result.new(false, "LIGHTING_DIG_FAILED")
+    if ops.alreadyClear ~= true then
+        local dug = ops.dig()
+        if type(dug) ~= "table" or dug.ok ~= true then
+            local restored, restoreResult = Turn.face(facing, start.facing, ops.turn)
+            if not restoreResult.ok then return Result.new(false, "LIGHTING_RESTORE_FAILED", nil, { cause = restoreResult.code }) end
+            return type(dug) == "table" and dug or Result.new(false, "LIGHTING_DIG_FAILED")
+        end
     end
 
     local placed = ops.place()

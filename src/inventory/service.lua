@@ -144,6 +144,11 @@ function Service.new(deps)
             local supplied = deps.resupply(saved, deps.route())
             if type(supplied) ~= "table" or supplied.ok ~= true then
                 local code = type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
+                if code == "NO_FUEL_SUPPLY" or code == "NO_TORCHES" then
+                    deps.report("[Inventory] Waiting at supply chest for "
+                        .. (code == "NO_TORCHES" and "torches" or "fuel") .. "...")
+                    return false, code
+                end
                 deps.reportError("Supply service failed (" .. tostring(code) .. ").")
                 return false, code
             end

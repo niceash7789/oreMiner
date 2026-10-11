@@ -1,5 +1,7 @@
 # Implementation status
 
+- Latest user-directed change: temporary fuel or torch shortages at the supply chest now leave the durable service checkpoint at base and retry every five seconds; restocking resumes the saved route. Supply-short service states remain eligible for `miner resume` after reboot. Focused service and recovery tests were updated; run them with Lua 5.4 when available. No physical release check was performed.
+
 - Current scope: single-turtle MVP in `MINER_PLAN.md`; NEXT/LATER/EXPERIMENTAL and fleet work remain excluded.
 - Last changed item: user-directed stairs clearance update to 3-wide × 4-tall; plan, config validation, slice geometry, focused tests, and operator docs were updated. This item is not marked complete until the focused Lua checks pass.
 - Next eligible item: run `tests/navigation_stair_slice.lua`, `tests/numeric_validation.lua`, `tests/stair_route.lua`, and `tests/active_baseline_wiring.lua` with Lua 5.4, then resume the prior MVP backlog item: mock 15th/16th-slot growth during vein unwind and prove return uses only the cleared route.

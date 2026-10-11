@@ -48,7 +48,7 @@ defaults.paving.protectedItems = { "minecraft:coal", "minecraft:torch" }
 defaults.paving.isPaving = true
 fileConfig.mining.branchLength = 1
 fileConfig.mining.branchPairs = 1
-fileConfig.mining.branchSpacing = 2
+fileConfig.mining.branchSpacing = 3
 fileConfig.mining.floorCount = 4
 fileConfig.lighting.tunnelInterval = 1
 fileConfig.features.torches = true
@@ -66,6 +66,7 @@ local torchPlacementFrames = {}
 local world = { x = 0, y = 0, z = 0, facing = 0 }
 local persistedFiles = {}
 local physicalActionProgress = {}
+local firstShaftStart
 
 local function recordPhysicalAction(kind, direction)
     local raw = persistedFiles["oreMiner/state.json"]
@@ -77,6 +78,14 @@ local function recordPhysicalAction(kind, direction)
     assert(state.progress and state.progress.workUnitId,
         "physical actions require a durable logical cursor")
     physicalActionProgress[#physicalActionProgress + 1] = state.progress
+    if not firstShaftStart and kind == "move" and direction == "forward"
+        and state.progress.phase == "branch_outbound_lower"
+        and state.progress.branchPair == 1 and state.progress.side == "left"
+        and state.progress.offset == 0 then
+        firstShaftStart = {
+            x = world.x, y = world.y, z = world.z, facing = world.facing,
+        }
+    end
 end
 
 local function translateForward()
@@ -160,8 +169,11 @@ local turtleApi = {
     end,
     place = function()
         if selectedSlot == 3 then
+            local savedState = persistedFiles["oreMiner/state.json"]
+            local progress = savedState and assert(load("return " .. savedState))().progress
             torchPlacementFrames[#torchPlacementFrames + 1] = {
                 x = world.x, y = world.y, z = world.z, facing = world.facing,
+                progress = progress,
             }
             return true
         end
@@ -274,12 +286,23 @@ assert(guardedOperations > 0, "inventory pressure should consolidate through the
 assert(pavingChecks == 0, "disabled default paving should not classify items")
 assert(placements == 0, "disabled default paving should not place blocks")
 local leftShaftTorch, rightShaftTorch = false, false
+local stairTorchInsidePassage = false
 for _, torchPose in ipairs(torchPlacementFrames) do
     if torchPose.y == -8 and torchPose.facing == 1 then leftShaftTorch = true end
     if torchPose.y == -8 and torchPose.facing == 3 then rightShaftTorch = true end
+    if torchPose.x == 0 and torchPose.y == -4 and torchPose.z == -8
+        and torchPose.facing == 1 and torchPose.progress
+        and torchPose.progress.phase == "stairs" then
+        stairTorchInsidePassage = true
+    end
 end
 assert(leftShaftTorch and rightShaftTorch,
     "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
+assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -8
+    and firstShaftStart.z == -13 and firstShaftStart.facing == 0,
+    "the first shaft should start three blocks along the perpendicular main tunnel")
+assert(stairTorchInsidePassage,
+    "stair torches should place into the cleared 3x3 passage without stepping into or digging a niche")
 assert(selectedSlot == 5, "active helpers should restore the original selected slot")
 -- A completed baseline job now follows recorded cleared edges home and restores
 -- its original surface facing before reporting success.
