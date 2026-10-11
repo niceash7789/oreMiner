@@ -65,4 +65,5 @@
 - Run only the relevant checks for the assigned item; report checks that could not run.
 - Keep changes narrow. Do not introduce dependencies, generated artifacts, binaries, or large data files without an explicit need.
 - Preserve user changes. Never reset or overwrite unrelated files.
+- After completing and verifying a coherent unit of work, commit its files with a descriptive message without waiting for separate permission. Stage only files changed for that unit; leave unrelated user changes untouched. For MVP implementation, commit at completed checklist items rather than waiting for the entire MVP.
 
