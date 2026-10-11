@@ -1354,7 +1354,7 @@ local function mineBranch(length, branchPair, side, mainOffset, resumeDistance, 
         pose = savedLanding.landing,
     } or nil
     local grid, gridStatus = FloorGrid.new({ x = 0, y = 0, z = 0, facing = 0 }, 0,
-        gridLanding)
+        gridLanding, config.mining.stairStepsPerFloor)
     if not grid then
         print("ERROR: " .. gridStatus.code)
         return false, gridStatus

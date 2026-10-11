@@ -5,7 +5,7 @@ return {
     mining = {
         floorCount = 4,
         surfaceEntryLength = 4,
-        stairStepsPerFloor = 8,
+        stairStepsPerFloor = 4,
         stairWidth = 3,
         stairHeight = 4,
         floorMainTurn = "right",
@@ -70,7 +70,7 @@ return {
     lighting = {
         enabled = true,
         itemNames = { "minecraft:torch" },
-        stairInterval = 4,
+        stairInterval = 2,
         tunnelInterval = 8,
         skipLandingSlice = true,
         side = "right",

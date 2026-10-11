@@ -50,6 +50,8 @@ fileConfig.mining.branchLength = 1
 fileConfig.mining.branchPairs = 1
 fileConfig.mining.branchSpacing = 3
 fileConfig.mining.floorCount = 4
+fileConfig.mining.stairStepsPerFloor = 4
+fileConfig.lighting.stairInterval = 2
 fileConfig.lighting.tunnelInterval = 1
 fileConfig.features.torches = true
 fileConfig.lighting.enabled = true
@@ -447,9 +449,9 @@ assert(placements == 0, "disabled default paving should not place blocks")
 local leftShaftTorch, rightShaftTorch = false, false
 local stairTorchInsidePassage = false
 for _, torchPose in ipairs(torchPlacementFrames) do
-    if torchPose.y == -8 and torchPose.facing == 1 then leftShaftTorch = true end
-    if torchPose.y == -8 and torchPose.facing == 3 then rightShaftTorch = true end
-    if torchPose.x == 0 and torchPose.y == -3 and torchPose.z == -8
+    if torchPose.y == -4 and torchPose.facing == 1 then leftShaftTorch = true end
+    if torchPose.y == -4 and torchPose.facing == 3 then rightShaftTorch = true end
+    if torchPose.x == 0 and torchPose.y == -1 and torchPose.z == -6
         and torchPose.facing == 1 and torchPose.progress
         and torchPose.progress.phase == "stairs" then
         stairTorchInsidePassage = true
@@ -459,7 +461,9 @@ assert(leftShaftTorch and rightShaftTorch,
     "each shaft should place at its scheduled outbound cell facing its route-defined right wall")
 assert(torchNicheDigs >= 2,
     "floor tunnel torches should carve their right-wall niche before placement")
-assert(failedTorchPlace, "the fixture should exercise a failed branch torch placement")
+assert(failedTorchPlace, "the fixture should exercise a failed branch torch placement: "
+    .. table.concat(output, " | ") .. string.format(" world=(%d,%d,%d,%d)",
+        world.x, world.y, world.z, world.facing))
 local warnedAboutTorch = false
 for _, line in ipairs(output) do
     if line:find("WARNING: Skipped right-wall torch", 1, true) then
@@ -468,8 +472,8 @@ for _, line in ipairs(output) do
     end
 end
 assert(warnedAboutTorch, "failed branch torch placement should warn and keep mining")
-assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -8
-    and firstShaftStart.z == -13 and firstShaftStart.facing == 0,
+assert(firstShaftStart and firstShaftStart.x == 3 and firstShaftStart.y == -4
+    and firstShaftStart.z == -9 and firstShaftStart.facing == 0,
     "the first shaft should start three blocks along the perpendicular main tunnel")
 assert(#firstMainTunnelTrace == 3 and firstMainTunnelBackMoves == 0
     and firstMainTunnelTrace[1].cursorOffset == 0 and firstMainTunnelTrace[1].x == 0
@@ -494,11 +498,11 @@ local finalState = assert(load("return " .. assert(persistedFiles["oreMiner/stat
 assert(finalState.status == "complete", "the multi-floor run should commit completion at surface origin")
 assert(not finalState.lighting.placed["floor-2-left-shaft-3-1"],
     "failed branch torch placement must not be committed to the lighting ledger")
-assert(finalState.floorLandings[1].landing.y == -8
-    and finalState.floorLandings[1].landing.z == -13,
+assert(finalState.floorLandings[1].landing.y == -4
+    and finalState.floorLandings[1].landing.z == -9,
     "floor 1 landing should be saved at the specified depth and offset")
-assert(finalState.floorLandings[4].landing.y == -32
-    and finalState.floorLandings[4].landing.z == -43,
+assert(finalState.floorLandings[4].landing.y == -16
+    and finalState.floorLandings[4].landing.z == -27,
     "floor 4 landing should be saved at the configured depth and offset")
 assert(finalState.progress.floor == 4,
     "the durable mining cursor should retain the active floor identity")

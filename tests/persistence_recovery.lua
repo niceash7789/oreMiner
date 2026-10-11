@@ -50,6 +50,7 @@ local textutils = {
 }
 local crashConfig = {
     branch_length = 30, num_branches = 20, spacing = 3,
+    stair_steps_per_floor = 8,
     pave = false, vein_mine = true,
 }
 local origin = { x = 0, y = 0, z = 0, facing = 0 }
@@ -523,7 +524,10 @@ local branchState = {}
 for key, value in pairs(state) do branchState[key] = value end
 branchState.pose = { x = 3, y = -8, z = -15, facing = 0 }
 branchState.progress = branchCursor
-branchState.configSnapshot = { branch_length = 30, num_branches = 3, spacing = 3 }
+branchState.configSnapshot = {
+    branch_length = 30, num_branches = 3, spacing = 3,
+    stair_steps_per_floor = 8,
+}
 branchState.floorLandings = { [1] = {
     floor = 1,
     landing = { x = 0, y = -8, z = -13, facing = 0 },
@@ -603,7 +607,7 @@ for _, side in ipairs({ "left", "right" }) do
         local cursor = assert(Cursor.branch(1, side, item[1], item[2], 3, item[3], 1))
         local landing = { x = 0, y = -8, z = -13, facing = 0 }
         local grid = assert(require("src.navigation.floor_grid").new(origin, 0,
-            { floor = 1, pose = landing }))
+            { floor = 1, pose = landing }, 8))
         local junction = grid.junction(3)
         local branch = grid.branch(junction, side)
         local traversal = assert(require("src.navigation.branch_traversal").new(branch, 30))

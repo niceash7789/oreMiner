@@ -87,8 +87,12 @@ for _, item in ipairs({
     rejected(config, "nested " .. item[1] .. " should reject values above its upper bound")
 end
 local config = activeConfig()
-config.mining = { stairStepsPerFloor = 8 }
-accepted(config, "V1 stair slice count of eight should validate")
+config.mining = { stairStepsPerFloor = 4 }
+accepted(config, "minimum stair interval should validate")
+config.mining.stairStepsPerFloor = 8
+accepted(config, "larger stair interval should validate")
+config.mining.stairStepsPerFloor = 64
+accepted(config, "maximum stair interval should validate")
 for _, field in ipairs({ "floorCount", "branchLength", "branchPairs" }) do
     config = activeConfig()
     config.mining = { [field] = 1 }
@@ -110,11 +114,12 @@ for _, value in ipairs({ 1, 3, 2.5, false }) do
     local reason = rejected(config, "V1 should reject tunnel height " .. tostring(value))
     assert(reason == "mining.tunnelHeight must be 2 in V1", "unexpected tunnel height error")
 end
-for _, value in ipairs({ 1, 7, 9, 16 }) do
+for _, value in ipairs({ 1, 2, 3, 65 }) do
     config = activeConfig()
     config.mining = { stairStepsPerFloor = value }
-    local reason = rejected(config, "V1 should reject stair slice count " .. value)
-    assert(reason == "mining.stairStepsPerFloor must be 8 in V1", "unexpected stair count error")
+    local reason = rejected(config, "V1 should reject unsafe stair slice count " .. value)
+    assert(reason == "mining.stairStepsPerFloor must be an integer from 4 through 64",
+        "unexpected stair count error")
 end
 config = activeConfig()
 config.mining = { surfaceEntryLength = 4, stairWidth = 3, stairHeight = 4 }

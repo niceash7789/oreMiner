@@ -6,7 +6,7 @@ Define floor geometry from a recorded staircase landing while retaining the fixe
 
 ## Implemented behavior
 
-`FloorGrid.new(origin, staircaseFacing, landing)` requires the original surface pose and an explicit `{ floor, pose }` landing record. It verifies V1 geometry including the forward move from stair rear-centre to landing-centre: floor 1 is 13 blocks forward from origin; each later segment adds one landing crossing, eight stair slices, and one landing-centre move (10 blocks per floor interval). The floor main tunnel faces right from the recorded staircase direction. The first shaft-pair junction is reached after one full configured spacing segment from the landing (three blocks by default); later junctions are another spacing segment apart. The coordinator advances continuously through each segment, scanning each cell, before turning into the paired shafts. `grid.junction(mainOffset)` locates a lower-level junction from the landing, and `grid.branch(junctionPose, side)` gives the left or right branch's lower-lane origin, heading, and canonical main-facing junction. The same paired geometry is anchored independently at each floor's landing.
+`FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)` requires the original surface pose, an explicit `{ floor, pose }` landing record, and the validated stair interval. It verifies V1 geometry including the forward move from stair rear-centre to landing-centre: with four steps, floor 1 is 9 blocks forward from origin; each later segment adds one landing crossing, four stair slices, and one landing-centre move (6 blocks per floor interval). In general, the forward offset is `3 + floor * (stairStepsPerFloor + 2)` and the depth is `-floor * stairStepsPerFloor`. The floor main tunnel faces right from the recorded staircase direction. The first shaft-pair junction is reached after one full configured spacing segment from the landing (three blocks by default); later junctions are another spacing segment apart. The coordinator advances continuously through each segment, scanning each cell, before turning into the paired shafts. `grid.junction(mainOffset)` locates a lower-level junction from the landing, and `grid.branch(junctionPose, side)` gives the left or right branch's lower-lane origin, heading, and canonical main-facing junction. The same paired geometry is anchored independently at each floor's landing.
 
 `MainShaft.new(landingPose, mainFacing, length)` defines the straight main-shaft segment from that recorded landing. It accepts only the canonical right-turn heading and returns bounded poses along the segment; `isCanonicalReturn` recognizes the exact landing centre with main-shaft facing. The active coordinator turns right after landing, excavates each configured cell two blocks high, and returns over its recorded route to the landing before it marks the floor complete. The 10-block mock geometry test verifies endpoint displacement for every stairs-facing direction.
 
@@ -14,7 +14,7 @@ Define floor geometry from a recorded staircase landing while retaining the fixe
 
 - `require("src.navigation.floor_grid")`
 - `require("src.navigation.main_shaft")`
-- `FloorGrid.new(origin, staircaseFacing, landing)` returns a floor grid and structured status.
+- `FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)` returns a floor grid and structured status.
 - `grid.junction(mainOffset)` returns a main-tunnel junction pose.
 - `grid.branch(junctionPose, "left"|"right")` returns branch origin, facing, and `junctionFacing`.
 - `MainShaft.new(landingPose, mainFacing, length)` returns a bounded main-shaft geometry object and structured status.
@@ -25,13 +25,13 @@ Define floor geometry from a recorded staircase landing while retaining the fixe
 
 - Pose coordinates use `0=north/-z`, `1=east/+x`, `2=south/+z`, `3=west/-x`.
 - The supplied landing is the canonical floor entry and faces the initial staircase direction.
-- Floor one geometry is four surface-entry moves, eight slices, and one move to the landing centre. Each later interval is one prior-landing crossing, eight slices, and one move to its landing centre; unsupported geometry is rejected.
+- Floor one geometry is four surface-entry moves, the configured slices, and one move to the landing centre. Each later interval is one prior-landing crossing, the configured slices, and one move to its landing centre; unsupported geometry is rejected.
 - Branch headings are perpendicular to the floor main heading, and both begin at the same lower-lane junction.
 - Returned poses are newly allocated; inputs are not mutated.
 
 ## Dependencies and limitations
 
-Both geometry modules are pure and do not move the turtle. The main-shaft helper does not clear blocks, persist a cursor, or execute a return; the coordinator retains those responsibilities.
+Both geometry modules are pure and do not move the turtle. The floor grid uses `src/core/stair_geometry.lua` for the validated 4–64 slice interval; recovery passes the saved interval and fails closed if it is absent or invalid. The main-shaft helper does not clear blocks, persist a cursor, or execute a return; the coordinator retains those responsibilities.
 
 ## Verification
 

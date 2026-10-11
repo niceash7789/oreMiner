@@ -1,5 +1,6 @@
 -- Geometry for a floor grid anchored to one recorded staircase landing.
 local FloorGrid = {}
+local StairGeometry = require("src.core.stair_geometry")
 
 local function isInteger(value)
     return type(value) == "number" and value == math.floor(value)
@@ -44,7 +45,7 @@ local function turn(facing, side)
 end
 
 -- Requires the landing record; no floor coordinates are inferred from surface origin.
-function FloorGrid.new(origin, staircaseFacing, landing)
+function FloorGrid.new(origin, staircaseFacing, landing, stairStepsPerFloor)
     if not validPose(origin) then
         return nil, failure("INVALID_ORIGIN", "Surface origin must be a valid pose.")
     end
@@ -55,13 +56,19 @@ function FloorGrid.new(origin, staircaseFacing, landing)
         or not validPose(landing.pose) then
         return nil, failure("INVALID_LANDING", "A floor number and recorded landing pose are required.")
     end
+    if not isInteger(stairStepsPerFloor)
+        or stairStepsPerFloor < StairGeometry.MIN_STEPS
+        or stairStepsPerFloor > StairGeometry.MAX_STEPS then
+        return nil, failure("INVALID_STAIR_STEPS", "A validated stair interval is required.")
+    end
 
     local expected = copyPose(origin)
-    expected.y = origin.y - landing.floor * 8
-    -- Floor one has four entry moves, eight slices, and one centre move.
-    -- Each later segment crosses the prior landing, adds eight slices, then
+    expected.y = origin.y - landing.floor * stairStepsPerFloor
+    -- Floor one has four entry moves, the configured slices, and one centre move.
+    -- Each later segment crosses the prior landing, adds configured slices, then
     -- moves from stair rear-centre to the new landing centre.
-    expected = step(expected, staircaseFacing, 3 + landing.floor * 10)
+    expected = step(expected, staircaseFacing,
+        3 + landing.floor * (stairStepsPerFloor + 2))
     if landing.pose.x ~= expected.x or landing.pose.y ~= expected.y
         or landing.pose.z ~= expected.z or landing.pose.facing ~= staircaseFacing then
         return nil, failure("LANDING_MISMATCH", "Recorded landing does not match the fixed V1 origin and stair geometry.")

@@ -5,7 +5,7 @@ local origin = { x = 0, y = 0, z = 0, facing = 0 }
 local grid, status = FloorGrid.new(origin, 0, {
     floor = 1,
     pose = { x = 0, y = -8, z = -13, facing = 0 },
-})
+}, 8)
 assert(status.ok, "recorded floor-one landing should create a grid")
 assert(grid.mainFacing == 1, "main tunnel should turn right from staircase facing")
 
@@ -22,24 +22,37 @@ assert(right.facing == 2, "right branch should face south")
 local secondGrid = assert(FloorGrid.new(origin, 0, {
     floor = 2,
     pose = { x = 0, y = -16, z = -23, facing = 0 },
-}))
+}, 8))
 assert(secondGrid.landing.pose.y == -16 and secondGrid.landing.pose.z == -23,
     "each floor grid should anchor to its own recorded landing")
 
-local missingLanding, missingStatus = FloorGrid.new(origin, 0, { floor = 1 })
+local shortGrid = assert(FloorGrid.new(origin, 0, {
+    floor = 2,
+    pose = { x = 0, y = -8, z = -15, facing = 0 },
+}, 4))
+assert(shortGrid.landing.pose.y == -8 and shortGrid.landing.pose.z == -15,
+    "four-step floors should derive their own landing geometry")
+
+local missingLanding, missingStatus = FloorGrid.new(origin, 0, { floor = 1 }, 8)
 assert(missingLanding == nil and missingStatus.code == "INVALID_LANDING",
     "grid creation must require a recorded landing pose")
 local wrongLanding, wrongStatus = FloorGrid.new(origin, 0, {
     floor = 1,
     pose = { x = 0, y = -8, z = -8, facing = 0 },
-})
+}, 8)
 assert(wrongLanding == nil and wrongStatus.code == "LANDING_MISMATCH",
     "grid must reject a landing inconsistent with the fixed origin contract")
 local wrongFacing, facingStatus = FloorGrid.new(origin, 1, {
     floor = 1,
     pose = { x = 0, y = -8, z = -13, facing = 0 },
-})
+}, 8)
 assert(wrongFacing == nil and facingStatus.code == "ORIGIN_FACING_MISMATCH",
     "grid must preserve the initial facing contract")
+
+local missingSteps, missingStepsStatus = FloorGrid.new(origin, 0, {
+    floor = 1, pose = { x = 0, y = -4, z = -9, facing = 0 },
+})
+assert(missingSteps == nil and missingStepsStatus.code == "INVALID_STAIR_STEPS",
+    "grid must require a validated interval instead of assuming eight")
 
 print("navigation floor-grid checks passed")

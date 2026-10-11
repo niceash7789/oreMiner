@@ -10,6 +10,8 @@ Carve one bounded 3-wide by 4-tall descending stairs slice, restore the turtle t
 
 `StairSlice.climb` follows the inverse slice geometry: up, forward to cancel the lateral offset, then back to the preceding centreline. It does not call a clear or dig operation. `StairRoute.returnToSurface` validates that resulting offset before continuing the recorded route.
 
+The job configuration accepts `mining.stairStepsPerFloor` from 4 through 64. Four is the example interval, so floor 1 is four blocks below the surface and each later floor is four blocks below the prior landing. The configured count is passed to `StairRoute.descend`, recorded in each landing route, and used by floor-grid and recovery pose validation. Changing it in an installed `config.lua` during a saved run makes the configuration snapshot incompatible; finish or safely clear that run before starting a job at another interval.
+
 `StairRoute.returnToSurface` preflights the saved origin, entry length, step count, and mouth/rear/landing geometry against the V1 route before issuing its first inverse action. A pose-valid but geometrically corrupted route returns `LANDING_ROUTE_INVALID` without moving.
 
 The deterministic slice test runs the geometry for all four initial facings at a translated pose, verifies all twelve route-relative target cells, checks the centre and lateral clear sub-phases at their expected positions and headings (proving each lateral sweep returns to centre before the next begins), and asserts the exact forward/down displacement with facing preserved. `tests/stair_route.lua` composes recorded floor 2 and floor 1 inverse routes through the four-block entry to exact surface origin, injects a failed inverse move to prove the route stops immediately, and verifies corrupted route geometry is rejected before any movement. Software verification is pending for this geometry update; the in-world stairs width and height remain an operator check.
@@ -31,6 +33,7 @@ The deterministic slice test runs the geometry for all four initial facings at a
 - Every lateral move and turn is recorded and unwound in strict reverse order.
 - Each lateral column returns to the target centreline before another column or the final descent begins.
 - Successful descent preserves the starting facing and has net displacement one forward plus one down.
+- Every landing is exactly the configured number of slices below the previous landing; saved routes are validated against their recorded count.
 - Stair torches occupy an already-cleared right-column passage cell; no torch-specific dig or lateral move is permitted.
 - The service callback runs only at a committed centre-bottom checkpoint; it cannot interrupt a lateral sweep.
 - Inverse climb stays on the recorded centreline. Its checked movement callback may dig a block in the target cell and retry within limits.

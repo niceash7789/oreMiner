@@ -1,4 +1,5 @@
 local NumericValidation = {}
+local StairGeometry = require("src.core.stair_geometry")
 
 local MAX_BRANCH_LENGTH = 256
 local MAX_BRANCH_PAIRS = 100
@@ -118,8 +119,10 @@ function NumericValidation.validate(config)
     if mining.tunnelHeight ~= nil and mining.tunnelHeight ~= 2 then
         return false, "mining.tunnelHeight must be 2 in V1"
     end
-    if mining.stairStepsPerFloor ~= nil and mining.stairStepsPerFloor ~= 8 then
-        return false, "mining.stairStepsPerFloor must be 8 in V1"
+    if mining.stairStepsPerFloor ~= nil
+        and not integerInRange(mining.stairStepsPerFloor,
+            StairGeometry.MIN_STEPS, StairGeometry.MAX_STEPS) then
+        return false, "mining.stairStepsPerFloor must be an integer from 4 through 64"
     end
     if mining.floorMainTurn ~= nil and mining.floorMainTurn ~= "right" then
         return false, "mining.floorMainTurn must be right in V1"
