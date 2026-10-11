@@ -3,6 +3,7 @@ local Motion = require("src.navigation.motion")
 local RouteHome = require("src.navigation.route_home")
 local State = require("src.persistence.state")
 local FakeTurtle = require("tests.fake_turtle")
+local Result = require("src.safety.result")
 
 local origin = { x = 0, y = 0, z = 0, facing = 0 }
 local route = assert(KnownRoute.new(origin))
@@ -63,9 +64,9 @@ local failedPose = pose
 local failedTrail = table.concat(route.trail, ";")
 local stopped, failure = RouteHome.run({
     pose = pose, route = route, homeFacing = 0,
-    turn = function(direction) face(direction) return pose, { ok = true, code = "TURN" } end,
+    turn = function(direction) face(direction) return pose, Result.new(true, "TURN") end,
     move = function()
-        return pose, { ok = false, code = "RETURN_BLOCKED" }
+        return pose, Result.new(false, "RETURN_BLOCKED")
     end,
 })
 assert(failure.code == "RETURN_BLOCKED" and stopped.x == failedPose.x
@@ -74,8 +75,8 @@ assert(table.concat(route.trail, ";") == failedTrail)
 
 local arrived, outcome = RouteHome.run({
     pose = pose, route = route, homeFacing = 0,
-    turn = function(direction) face(direction) return pose, { ok = true, code = "TURN" } end,
-    move = function(direction) advance(direction) return pose, { ok = true, code = "MOVE" } end,
+    turn = function(direction) face(direction) return pose, Result.new(true, "TURN") end,
+    move = function(direction) advance(direction) return pose, Result.new(true, "MOVE") end,
 })
 assert(outcome.ok and outcome.code == "HOME_REACHED")
 assert(arrived.x == 0 and arrived.y == 0 and arrived.z == 0 and arrived.facing == 0)

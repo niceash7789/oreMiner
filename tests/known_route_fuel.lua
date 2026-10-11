@@ -4,6 +4,13 @@ local RoutePolicy = require("src.fuel.route_policy")
 
 local home = assert(Pose.new(0, 0, 0, 0))
 local route = assert(KnownRoute.new(home))
+local departure, departureCode, departureFuel = RoutePolicy.canMove({
+    pose = home, route = route, movement = "forward", reserve = 2,
+    getFuelLevel = function() return 3 end,
+})
+assert(not departure and departureCode == "INSUFFICIENT_FUEL"
+    and departureFuel == 4,
+    "departure must pay for its own move, the full return, and the reserve")
 local function pose(x, y, z)
     return { x = x, y = y, z = z, facing = 0 }
 end
