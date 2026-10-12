@@ -391,7 +391,7 @@ local function digForward(optional)
     local digFailure
     local result = DigClear.run({
         detect = turtle.detect,
-        inspect = function() local found, data = turtle.inspect(); return found and data or nil end,
+        inspect = function() local found, data = turtle.inspect(); return found and data or false end,
         dig = function()
             local outcome = PhysicalAction.run(checkpoint, "dig", "forward", pos,
                 knownRoute, configSnapshot(), turtle.dig)
@@ -419,7 +419,7 @@ local function digUp()
     local digFailure
     local result = DigClear.run({
         detect = turtle.detectUp,
-        inspect = function() local found, data = turtle.inspectUp(); return found and data or nil end,
+        inspect = function() local found, data = turtle.inspectUp(); return found and data or false end,
         dig = function()
             local outcome = PhysicalAction.run(checkpoint, "dig", "up", pos,
                 knownRoute, configSnapshot(), turtle.digUp)
@@ -444,7 +444,7 @@ local function digDown()
     local digFailure
     local result = DigClear.run({
         detect = turtle.detectDown,
-        inspect = function() local found, data = turtle.inspectDown(); return found and data or nil end,
+        inspect = function() local found, data = turtle.inspectDown(); return found and data or false end,
         dig = function()
             local outcome = PhysicalAction.run(checkpoint, "dig", "down", pos,
                 knownRoute, configSnapshot(), turtle.digDown)

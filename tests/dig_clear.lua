@@ -116,11 +116,44 @@ local invalidInspection = DigClear.run({
     maxAttempts = 2,
     maxElapsed = 3,
     detect = function() return true end,
-    inspect = function() return false end,
+    inspect = function() return nil end,
     dig = function() error("invalid inspection must stop before digging") end,
     now = function() return 0 end,
 })
 assert(not invalidInspection.ok and invalidInspection.code == "INVALID_BLOCK_INSPECTION")
+
+local vanished = true
+result = DigClear.run({
+    maxAttempts = 2, maxElapsed = 3,
+    detect = function() return vanished end,
+    inspect = function() vanished = false; return false end,
+    dig = function() error("vanished target must not be dug") end,
+    now = function() return 0 end,
+})
+assert(result.ok and result.attempts == 0 and result.dug == 0,
+    "a falling block disappearing between detection and inspection should be retried")
+
+local digRace = true
+result = DigClear.run({
+    maxAttempts = 2, maxElapsed = 3,
+    detect = function() return digRace end,
+    inspect = function() return { name = "minecraft:gravel" } end,
+    dig = function() digRace = false; return false end,
+    now = function() return 0 end,
+})
+assert(result.ok and result.attempts == 1 and result.dug == 0,
+    "a target vanishing during dig should not be classified as unbreakable")
+
+local observations = 0
+result = DigClear.run({
+    maxAttempts = 2, maxElapsed = 3,
+    detect = function() return true end,
+    inspect = function() observations = observations + 1; return false end,
+    dig = function() error("missing inspection target must not be dug") end,
+    now = function() return 0 end,
+})
+assert(not result.ok and result.code == "BLOCKED" and observations == 64,
+    "repeated detect/inspect races must remain globally bounded")
 
 local changingIdentityCalls = 0
 local alternating = DigClear.run({
