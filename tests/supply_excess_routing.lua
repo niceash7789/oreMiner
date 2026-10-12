@@ -43,13 +43,15 @@ local function run(supplyAccepts)
         reportError = function() end,
     })
     local ok, code = service.serviceIfNeeded(true)
-    assert(selected == 5 and pose.facing == 0)
+    assert(selected == 5 and pose.facing == 0,
+        "slot=" .. tostring(selected) .. " facing=" .. tostring(pose.facing)
+            .. " code=" .. tostring(code))
     return ok, code, drops, stacks
 end
 
 local ok, code, drops, stacks = run(true)
 assert(ok and code == "SERVICE_COMPLETE")
-assert(#drops == 3)
+assert(#drops == 3, "unexpected drops: " .. #drops .. " code=" .. tostring(code))
 assert(drops[1].facing == 3 and drops[1].name == "minecraft:coal" and drops[1].count == 16)
 assert(drops[2].facing == 3 and drops[2].name == "minecraft:torch" and drops[2].count == 6)
 assert(drops[3].facing == 1 and drops[3].name == "minecraft:iron_ore" and drops[3].count == 12)

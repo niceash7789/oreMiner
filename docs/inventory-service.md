@@ -28,6 +28,7 @@ When the coordinator supplies a resupply callback, base service re-verifies the 
 - Configured bulk IDs route rear only when `base.separateBulk=true`. All remaining excess, including ores and unknown items, routes right.
 - `inventory.retainedItems["minecraft:cobblestone"]` protects the configurable mandatory main-shaft backfill reserve across arbitrary slots, regardless of paving state. Unloading drops only cobblestone above this reserve.
 - The slot guard restores the selected slot after unloading, including helper failures.
+- A failed supply, bulk, or output drop restores the canonical base facing before returning its typed failure. A failed restore returns `POSITION_ERROR`.
 - The service is single-turtle and synchronous; the coordinator owns live pose and persistent checkpoints.
 
 ## Dependencies and limitations

@@ -53,6 +53,13 @@ function Service.new(deps)
 
     local function routeInventory(homeFacing)
         local guarded = SlotGuard.run(deps.turtle, function()
+            local function stopAfterUnloadFailure(result)
+                local restored, restoreCode = face(homeFacing)
+                if not restored then return { ok = false, code = restoreCode } end
+                return { ok = false,
+                    code = result.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
+                    cause = result.code }
+            end
             local supplyOk, supplyCode = verifyChest(
                 (homeFacing + 3) % 4, "NO_SUPPLY_CHEST", homeFacing)
             if not supplyOk then return { ok = false, code = supplyCode } end
@@ -61,8 +68,7 @@ function Service.new(deps)
                     or itemId == "minecraft:torch"
             end)
             if not supply.ok then
-                return { ok = false, code = supply.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
-                    cause = supply.code }
+                return stopAfterUnloadFailure(supply)
             end
 
             if deps.config.base.separateBulk == true then
@@ -71,8 +77,7 @@ function Service.new(deps)
                 if not bulkOk then return { ok = false, code = bulkCode } end
                 local bulk = Chest.unloadBulk(deps.turtle, deps.itemConfig)
                 if not bulk.ok then
-                    return { ok = false, code = bulk.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
-                        cause = bulk.code }
+                    return stopAfterUnloadFailure(bulk)
                 end
             end
 
@@ -84,8 +89,7 @@ function Service.new(deps)
                     and itemId ~= "minecraft:torch"
             end)
             if not output.ok then
-                return { ok = false, code = output.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
-                    cause = output.code }
+                return stopAfterUnloadFailure(output)
             end
 
             local restored, restoreCode = face(homeFacing)

@@ -237,6 +237,8 @@ local function verifyMissingChest(expectedCode, absentFacing, separateBulk)
     local missingApi = {
         getSelectedSlot = function() return 1 end,
         select = function() return true end,
+        getItemCount = function() return 0 end,
+        getItemDetail = function() return nil end,
         inspect = function()
             if chestPose.facing == absentFacing then return false end
             return true, { name = "minecraft:chest" }
