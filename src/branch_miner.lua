@@ -398,7 +398,9 @@ local function digForward(optional)
             if outcome.ok ~= true then digFailure = outcome end
             return outcome.ok == true
         end,
-        onBlock = function(name) print("Digging forward: " .. name) end,
+        onBlock = function(name, attempt)
+            if attempt > 1 then print("[DIG] Retrying " .. name) end
+        end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -424,7 +426,9 @@ local function digUp()
             if outcome.ok ~= true then digFailure = outcome end
             return outcome.ok == true
         end,
-        onBlock = function(name) print("Digging above: " .. name) end,
+        onBlock = function(name, attempt)
+            if attempt > 1 then print("[DIG] Retrying " .. name) end
+        end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -447,7 +451,9 @@ local function digDown()
             if outcome.ok ~= true then digFailure = outcome end
             return outcome.ok == true
         end,
-        onBlock = function(name) print("Digging below: " .. name) end,
+        onBlock = function(name, attempt)
+            if attempt > 1 then print("[DIG] Retrying " .. name) end
+        end,
         now = function() return os.epoch("utc") / 1000 end,
         maxAttempts = itemConfig.safety.digRetries,
         maxElapsed = itemConfig.safety.digTimeLimit,
@@ -737,7 +743,7 @@ local inventoryService = InventoryService.new({
     safeForward = safeForward,
     up = up,
     down = down,
-    report = function(message) print("  " .. message) end,
+    report = function(message) print(message) end,
     reportError = function(message) print("ERROR: " .. message) end,
 })
 local inventoryPressureReached = inventoryService.pressureReached
@@ -964,6 +970,7 @@ checkAndMineOre = function(mainShaftDirection, deferCandidate)
             return Result.new(true, "ORE_CANDIDATE_FOUND"),
                 { x = x, y = y, z = z, facing = pos.facing }
         end
+        print(Status.oreFound(data.name))
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
@@ -1020,6 +1027,7 @@ checkAndMineOreUp = function(mainShaftDirection, deferCandidate)
             return Result.new(true, "ORE_CANDIDATE_FOUND"),
                 { x = pos.x, y = pos.y + 1, z = pos.z, facing = pos.facing }
         end
+        print(Status.oreFound(data.name))
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
@@ -1079,6 +1087,7 @@ checkAndMineOreDown = function(mainShaftDirection, deferCandidate)
             return Result.new(true, "ORE_CANDIDATE_FOUND"),
                 { x = pos.x, y = pos.y - 1, z = pos.z, facing = pos.facing }
         end
+        print(Status.oreFound(data.name))
         stats:add("veins_found", 1)
         veinInventoryPressureReached = false
 
@@ -1568,61 +1577,6 @@ local function mineBranch(length, branchPair, side, mainOffset, mainSide,
     return true
 end
 
--- ============================================================================
--- FUEL STATUS
--- ============================================================================
-
-local function printFuelStatus(branch_num)
-    local level =
-        turtle.getFuelLevel()
-
-    if FuelLevel.isUnlimited(level) then
-        print("  [Fuel] Level: unlimited | Route admission: enabled")
-        return
-    end
-
-    local returnCost =
-        fuelToReturn()
-
-    local remaining_branches =
-        config.num_branches
-        - branch_num
-
-    local moves_per_branch =
-        config.spacing
-        + (config.branch_length * 4)
-
-    if config.vein_mine then
-        moves_per_branch =
-            moves_per_branch + 4
-    end
-
-    local fuel_to_finish =
-        remaining_branches
-        * moves_per_branch
-
-    local efficiency = "N/A"
-
-    if stats:get("fuel_used") > 0 then
-        efficiency =
-            string.format(
-                "%.1f",
-                stats:get("blocks_mined")
-                    / stats:get("fuel_used")
-            )
-    end
-
-    print(
-        string.format(
-            "  [Fuel] Level: %d | Return cost: %d | To finish: ~%d | Blocks/fuel: %s",
-            level,
-            returnCost,
-            fuel_to_finish,
-            efficiency
-        )
-    )
-end
-
 local function returnToKnownHome(returnTarget)
     local homePose, outcome = RouteHome.run({
         pose = pos,
@@ -1822,32 +1776,10 @@ local function executeMining(returnTarget, deferSummary, resumeCursor, requested
 
     local startedAt = os.epoch("utc") / 1000
 
-    print("=== Fuel Check ===")
-    print("Current fuel: " .. FuelLevel.format(turtle.getFuelLevel()))
-    print("Each move checks the recorded route home plus reserve.")
-
-    print("")
-
-    print(
-        "Starting branch mining operation..."
-    )
-
-    print(
-        string.format(
-            "Position: x=%d, y=%d, z=%d, facing=%d",
-            pos.x,
-            pos.y,
-            pos.z,
-            pos.facing
-        )
-    )
-
-    print("")
+    print(string.format("[MINE] Floor %d %s side", activeFloor, mainSide))
 
     local firstBranch = resumeStart and resumeStart.branch or 1
     for branch = firstBranch, config.num_branches do
-
-        print(Status.phase("MAIN", branch, config.num_branches, mainSide .. " main"))
 
         local branchResumeHere = resumeStart and branch == firstBranch
             and resumeCursor.phase ~= "main_shaft"
@@ -1900,8 +1832,6 @@ local function executeMining(returnTarget, deferSummary, resumeCursor, requested
         end
         end
 
-        print(Status.phase("BRANCH", branch, config.num_branches, "L out"))
-
         local resumedLeft = branchResumeHere and resumeStart.side == "left"
         local resumedRight = branchResumeHere and resumeStart.side == "right"
         if not resumedRight then
@@ -1928,8 +1858,6 @@ local function executeMining(returnTarget, deferSummary, resumeCursor, requested
             tryAutoRefuelCoal()
             if not serviceInventoryIfFull() then return false end
         end
-
-        print(Status.phase("BRANCH", branch, config.num_branches, "R out"))
 
         if not resumedRight then
             if turnRight() ~= true then
@@ -1966,17 +1894,6 @@ local function executeMining(returnTarget, deferSummary, resumeCursor, requested
 
         stats:add("branches_completed", 1)
 
-        local currentFuel =
-            turtle.getFuelLevel()
-
-        local fuelStr =
-        FuelLevel.format(currentFuel)
-
-        print(Status.branchComplete(branch, config.num_branches, stats:get("blocks_mined"), fuelStr))
-
-        printFuelStatus(branch)
-
-        print("")
     end
 
     if not resumeCursor or resumeCursor.phase ~= "main_side_return" then
@@ -1991,7 +1908,6 @@ local function executeMining(returnTarget, deferSummary, resumeCursor, requested
     end
 
     if deferSummary then
-        print("Floor mining pass complete; returned to its recorded landing.")
         return true
     end
 
@@ -2223,7 +2139,7 @@ local function executeFloors(firstFloor, resumeCursor)
             if not mineBothSides(landingPose, resumeCursor) then return false end
             resumeCursor = nil
         else
-            print(string.format("=== Floor %d/%d: stairs descent ===", floor, config.mining.floorCount))
+            print(string.format("[MINE] Descending to floor %d/%d", floor, config.mining.floorCount))
             local stairOutcome
             landingPose, stairOutcome = descendToLanding(floor)
             if stairOutcome.ok ~= true then
@@ -2247,6 +2163,7 @@ local function executeFloors(firstFloor, resumeCursor)
         stats:add("floors_completed", 1)
     end
 
+    print("[RETURN] To surface origin")
     for floor = config.mining.floorCount, 1, -1 do
         local route = checkpoint:floorLanding(floor)
         if not route then

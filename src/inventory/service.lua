@@ -2,6 +2,7 @@
 local Pressure = require("src.inventory.pressure")
 local SlotGuard = require("src.inventory.slot_guard")
 local Chest = require("src.inventory.chest")
+local ItemPolicy = require("src.config.item_policy")
 
 local Service = {}
 
@@ -55,6 +56,14 @@ function Service.new(deps)
             local supplyOk, supplyCode = verifyChest(
                 (homeFacing + 3) % 4, "NO_SUPPLY_CHEST", homeFacing)
             if not supplyOk then return { ok = false, code = supplyCode } end
+            local supply = Chest.unload(deps.turtle, deps.itemConfig, function(itemId)
+                return ItemPolicy.isFuel(itemId, deps.itemConfig)
+                    or itemId == "minecraft:torch"
+            end)
+            if not supply.ok then
+                return { ok = false, code = supply.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
+                    cause = supply.code }
+            end
 
             if deps.config.base.separateBulk == true then
                 local bulkOk, bulkCode = verifyChest(
@@ -70,7 +79,10 @@ function Service.new(deps)
             local outputOk, outputCode = verifyChest(
                 (homeFacing + 1) % 4, "NO_OUTPUT_CHEST", homeFacing)
             if not outputOk then return { ok = false, code = outputCode } end
-            local output = Chest.unload(deps.turtle, deps.itemConfig)
+            local output = Chest.unload(deps.turtle, deps.itemConfig, function(itemId)
+                return not ItemPolicy.isFuel(itemId, deps.itemConfig)
+                    and itemId ~= "minecraft:torch"
+            end)
             if not output.ok then
                 return { ok = false, code = output.code == "CHEST_FULL" and "CHEST_FULL" or "UNLOAD_FAILED",
                     cause = output.code }
@@ -106,8 +118,7 @@ function Service.new(deps)
         end
         local savedService, saveCode = persist("returning")
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
-        deps.report("[Inventory] " .. (triggerReason or "Service requested")
-            .. " - returning to chests...")
+        deps.report("[RETURN] To base: " .. (triggerReason or "service"))
         if type(deps.travel) ~= "function" then
             deps.reportError("Known-route inventory travel is unavailable.")
             return false, "RETURN_ROUTE_UNAVAILABLE"
@@ -132,8 +143,6 @@ function Service.new(deps)
             deps.reportError("Inventory service failed (" .. routed.code .. ").")
             return false, routed.code
         end
-        deps.report("[Inventory] Routed output; configured supply quotas preserved.")
-
         savedService, saveCode = persist("at_base", homePose)
         if not savedService then return false, saveCode or "STATE_WRITE_FAILED" end
 
@@ -145,7 +154,7 @@ function Service.new(deps)
             if type(supplied) ~= "table" or supplied.ok ~= true then
                 local code = type(supplied) == "table" and supplied.code or "RESUPPLY_FAILED"
                 if code == "NO_FUEL_SUPPLY" or code == "NO_TORCHES" then
-                    deps.report("[Inventory] Waiting at supply chest for "
+                    deps.report("[WAIT] Supply chest needs "
                         .. (code == "NO_TORCHES" and "torches" or "fuel") .. "...")
                     return false, code
                 end
@@ -154,7 +163,6 @@ function Service.new(deps)
             end
             local restored, restoreCode = face(homeFacing)
             if not restored then return false, restoreCode end
-            deps.report("[Inventory] Fuel and torches verified for departure.")
         end
 
         savedService, saveCode = persist("resuming", homePose)
@@ -171,7 +179,7 @@ function Service.new(deps)
             cleared, clearCode = checkpoint:setService(nil, deps.pose(), deps.route(), deps.configSnapshot())
         end
         if not cleared then return false, clearCode or "STATE_WRITE_FAILED" end
-        deps.report("[Inventory] Back at mining position.")
+        deps.report("[RESUME] Mining position reached")
         return true
     end
 
